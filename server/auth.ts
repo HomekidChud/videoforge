@@ -129,35 +129,48 @@ export function findKeyByHash(hash: string): ApiKey | undefined {
 // ---------------------------------------------------------------------------
 // Short-lived signed tokens for media URLs. <img>/<video>/download links can
 // not send Bearer headers, so the server issues a scoped HMAC token valid for
-// 6 hours for read-only access to media & render endpoints. The API key itself
-// is NEVER embedded in URLs.
+// 6 hours, bound to a specific resource (asset or render job) and read-only.
+// The API key itself is NEVER embedded in URLs.
 // ---------------------------------------------------------------------------
 
 const SHORT_TOKEN_TTL_MS = 6 * 60 * 60 * 1000; // 6h
 
+// The signing secret is derived from the owner key hash. On ephemeral
+// deployments the DB resets but VIDEOFORGE_BOOTSTRAP_KEY stays stable, so the
+// secret is stable too — which is intentional so tokens keep working across
+// restarts. Rotate the bootstrap key to invalidate all media tokens.
 function shortTokenSecret(): string {
-  // In production, derive from the server's owner key hash so the token
-  // changes if the DB is reset. In dev, a stable fallback.
   const ownerRow = listKeys().find((k) => k.scope === "admin");
   return `vf_short_${ownerRow ? ownerRow.keyHash : "dev"}`;
 }
 
-export function issueShortToken(): string {
+/**
+ * Issue a read-only media token scoped to a single resource (asset id or
+ * render-job id). Anyone holding the token can only fetch that resource.
+ */
+export function issueMediaToken(resourceId: string): string {
   const expiresAt = Date.now() + SHORT_TOKEN_TTL_MS;
-  const payload = `read:${expiresAt}`;
+  const payload = `read:${resourceId}:${expiresAt}`;
   const sig = crypto
     .createHmac("sha256", shortTokenSecret())
     .update(payload)
     .digest("base64url");
-  return `${expiresAt}.${sig}`;
+  return `${expiresAt}.${resourceId}.${sig}`;
 }
 
-export function verifyShortToken(token: string): boolean {
-  const [expiresStr, sig] = token.split(".");
-  if (!expiresStr || !sig) return false;
+/**
+ * Verify a signed media token for a specific resource. Returns true only if
+ * the token is well-formed, unexpired, bound to `resourceId`, and the
+ * signature matches. Tokens are NOT valid for write routes or other resources.
+ */
+export function verifyMediaToken(token: string, resourceId: string): boolean {
+  const parts = token.split(".");
+  if (parts.length !== 3) return false;
+  const [expiresStr, boundResource, sig] = parts;
+  if (boundResource !== resourceId) return false;
   const expiresAt = parseInt(expiresStr, 10);
   if (!isFinite(expiresAt) || expiresAt < Date.now()) return false;
-  const payload = `read:${expiresAt}`;
+  const payload = `read:${boundResource}:${expiresAt}`;
   const expected = crypto
     .createHmac("sha256", shortTokenSecret())
     .update(payload)
@@ -172,41 +185,21 @@ export function verifyShortToken(token: string): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * Configured on every /api/* route (except /api/keys which uses admin gate).
- *
- * Behavior:
- *  - Requires a valid API key with the right scope via Bearer header.
- *  - For media endpoints, a valid short-lived signed token (?st=…) also grants
- *    read-only access, so <img>/<video>/download links can authenticate.
+ * General-purpose scope gate. Requires a valid API key via Bearer header.
+ * Does NOT accept ?st= media tokens — those are only valid on specific
+ * media/download routes (see requireMediaAccess).
  */
 export function requireScope(scope: "read" | "write") {
   return function (req: Request, res: Response, next: NextFunction) {
     const authHeader = typeof req.headers.authorization === "string" ? req.headers.authorization : undefined;
-    // Media routes also accept a short-lived signed token (?st=…) so that
-    // <img>/<video>/download links can authenticate without headers.
-    const shortToken = typeof req.query?.st === "string" ? String(req.query.st) : undefined;
-    const authViaShortToken = shortToken ? verifyShortToken(shortToken) : false;
 
-    if (!authHeader && !authViaShortToken) {
+    if (!authHeader) {
       return res.status(401).json({
         message: "Unauthorized: missing Authorization header. Use 'Authorization: Bearer <api-key>'. See /#/api-docs for how to get a key.",
       });
     }
 
-    if (authViaShortToken) {
-      // Short token grants read-only scope regardless of route, but only if
-      // the route itself only requires "read". Write routes fall through to
-      // the Bearer check below (which will fail with no Authorization header).
-      if (scope === "read") {
-        (req as any).apiKey = { id: "st", label: "short token", scope: "read" as Scope, revoked: 0, keyHash: "", createdAt: 0 };
-        return next();
-      }
-      return res.status(403).json({
-        message: "Forbidden: short-lived tokens only allow read-only access. Use 'Authorization: Bearer <api-key>'.",
-      });
-    }
-
-    const m = authHeader!.match(/^Bearer\s+(.+)$/i);
+    const m = authHeader.match(/^Bearer\s+(.+)$/i);
     if (!m) {
       return res.status(401).json({ message: "Unauthorized: Authorization header must be 'Bearer <api-key>'." });
     }
@@ -250,11 +243,56 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
 // Express route registration (admin key management)
 // ---------------------------------------------------------------------------
 
+/**
+ * Media-route gate: accepts EITHER a valid Bearer API key OR a signed ?st=
+ * media token bound to the specific resource in the URL path. Only used on
+ * raw/thumb/download routes. Media tokens never grant write access.
+ */
+export function requireMediaAccess(kind: "asset" | "render") {
+  return function (req: Request, res: Response, next: NextFunction) {
+    const authHeader = typeof req.headers.authorization === "string" ? req.headers.authorization : undefined;
+
+    // Path 1: Bearer API key (same check as requireScope("read"))
+    if (authHeader) {
+      const m = authHeader.match(/^Bearer\s+(.+)$/i);
+      if (!m) return res.status(401).json({ message: "Unauthorized: Authorization header must be 'Bearer <api-key>'." });
+      const key = findKeyByHash(hashKey(m[1]));
+      if (!key) return res.status(401).json({ message: "Unauthorized: unknown or revoked API key." });
+      if (key.revoked) return res.status(403).json({ message: "Forbidden: this key has been revoked." });
+      if (!(["read", "write", "admin"] as Scope[]).includes(key.scope as Scope)) {
+        return res.status(403).json({ message: `Forbidden: this key has scope '${key.scope}' but this action requires 'read'.` });
+      }
+      (req as any).apiKey = key;
+      return next();
+    }
+
+    // Path 2: signed ?st= media token, bound to the exact resource in the URL
+    const st = typeof req.query?.st === "string" ? String(req.query.st) : undefined;
+    if (!st) {
+      return res.status(401).json({
+        message: "Unauthorized: missing Authorization header. Use 'Authorization: Bearer <api-key>' or a signed ?st= media token.",
+      });
+    }
+    const resourceId = kind === "asset" ? String(req.params.id) : String(req.params.id);
+    if (!verifyMediaToken(st, resourceId)) {
+      return res.status(401).json({ message: "Unauthorized: invalid or expired media token for this resource." });
+    }
+    (req as any).apiKey = { id: `st:${resourceId}`, label: "media token", scope: "read" as Scope, revoked: 0, keyHash: "", createdAt: 0 };
+    return next();
+  };
+}
+
 export function registerKeyRoutes(app: Express) {
-  // Issue a short-lived (6h) read-only media token. Requires any valid key
-  // with read scope, so <img>/<video>/download links can authenticate.
-  app.get("/api/auth/media-token", requireScope("read"), (_req, res) => {
-    res.json({ token: issueShortToken(), expiresAt: Date.now() + SHORT_TOKEN_TTL_MS });
+  // Issue a short-lived (6h) read-only media token for a specific asset or
+  // render job, so <img>/<video>/download links can authenticate. Requires
+  // any valid API key with read scope. NOT fetchable with another media token.
+  app.get("/api/auth/media-token/:resourceId", requireScope("read"), (req, res) => {
+    const resourceId = String(req.params.resourceId);
+    // sanity-check the id shape to prevent minting arbitrary junk tokens
+    if (!/^[a-f0-9]{4,64}$/i.test(resourceId)) {
+      return res.status(400).json({ message: "invalid resourceId" });
+    }
+    res.json({ token: issueMediaToken(resourceId), expiresAt: Date.now() + SHORT_TOKEN_TTL_MS });
   });
   // List all keys (admin only). Never returns the key itself, only metadata.
   app.get("/api/keys", requireAdmin, (_req, res) => {

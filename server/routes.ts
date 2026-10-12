@@ -9,7 +9,7 @@ import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import Busboy from "busboy";
 import type { Asset, Clip, Project, Timeline } from "@shared/schema";
-import { requireScope } from "./auth";
+import { requireScope, requireMediaAccess } from "./auth";
 
 const MEDIA_DIR = path.resolve("data/media");
 const OUTPUT_DIR = path.resolve("data/renders");
@@ -338,8 +338,8 @@ export async function registerRoutes(
     res.json({ deleted: true });
   });
 
-  // raw binary streaming
-  app.get("/api/media/:id/raw", requireScope("read"), (req, res) => {
+  // raw binary streaming — accepts either a Bearer key or a signed ?st= token
+  app.get("/api/media/:id/raw", requireMediaAccess("asset"), (req, res) => {
     const a = storage.getAsset(String(req.params.id));
     if (!a) return res.status(404).json({ message: "asset not found" });
     const stat = fs.statSync(a.storagePath);
@@ -349,8 +349,8 @@ export async function registerRoutes(
     fs.createReadStream(a.storagePath).pipe(res);
   });
 
-  // thumbnail (frame at 1s, or full image)
-  app.get("/api/media/:id/thumb", requireScope("read"), async (req, res) => {
+  // thumbnail (frame at 1s, or full image) — accepts Bearer key or signed ?st=
+  app.get("/api/media/:id/thumb", requireMediaAccess("asset"), async (req, res) => {
     const a = storage.getAsset(String(req.params.id));
     if (!a) return res.status(404).json({ message: "asset not found" });
     const thumb = path.join(MEDIA_DIR, `${a.id}_thumb.jpg`);
@@ -614,7 +614,7 @@ export async function registerRoutes(
     res.json(j);
   });
 
-  app.get("/api/renders/:id/download", requireScope("read"), (req, res) => {
+  app.get("/api/renders/:id/download", requireMediaAccess("render"), (req, res) => {
     const j = storage.getRenderJob(String(req.params.id));
     if (!j || j.status !== "done") return res.status(404).json({ message: "render not ready" });
     const outPath = path.join(OUTPUT_DIR, `${String(req.params.id)}.mp4`);

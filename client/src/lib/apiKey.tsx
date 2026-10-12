@@ -7,6 +7,15 @@ export function setKeyChangeNotifier(fn: (() => void) | null) {
   onKeyChange = fn;
 }
 
+/**
+ * Fires whenever the API key changes (sign-in / sign-out / cross-tab storage
+ * event) so caches can be invalidated.
+ */
+function notifyKeyChange() {
+  onKeyChange?.();
+  window.dispatchEvent(new CustomEvent("vf-key-change"));
+}
+
 // ---------------------------------------------------------------------------
 // API key storage. Key is kept in localStorage and exposed via a React
 // context so all fetches can attach it as a Bearer token.
@@ -52,7 +61,10 @@ export function ApiKeyProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // keep listeners in sync if the key changes elsewhere (e.g. another tab)
     const onStorage = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY) setApiKeyState(loadStoredKey());
+      if (e.key === STORAGE_KEY) {
+        setApiKeyState(loadStoredKey());
+        notifyKeyChange();
+      }
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
@@ -61,13 +73,13 @@ export function ApiKeyProvider({ children }: { children: React.ReactNode }) {
   const setApiKey = useCallback((key: string) => {
     storeKey(key);
     setApiKeyState(key);
-    onKeyChange?.();
+    notifyKeyChange();
   }, []);
 
   const clearApiKey = useCallback(() => {
     clearStoredKey();
     setApiKeyState(null);
-    onKeyChange?.();
+    notifyKeyChange();
   }, []);
 
   const value = useMemo(() => ({ apiKey, setApiKey, clearApiKey }), [apiKey, setApiKey, clearApiKey]);

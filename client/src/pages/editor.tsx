@@ -47,7 +47,7 @@ type RenderJobDTO = {
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
 
 import { loadStoredKey } from "@/lib/apiKey";
-import { useMediaUrl } from "@/lib/mediaUrl";
+import { useAuthedMediaUrl } from "@/lib/mediaUrl";
 
 async function api<T>(method: string, url: string, body?: any): Promise<T> {
   const key = loadStoredKey();
@@ -72,7 +72,6 @@ async function api<T>(method: string, url: string, body?: any): Promise<T> {
 
 export default function EditorPage() {
   const qc = useQueryClient();
-  const mediaUrl = useMediaUrl();
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState("Untitled project");
   const [timeline, setTimeline] = useState<Timeline>({
@@ -86,7 +85,9 @@ export default function EditorPage() {
   const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [renderJobId, setRenderJobId] = useState<string | null>(null);
-  const [renderResultUrl, setRenderResultUrl] = useState<string | null>(null);
+
+  // Media URL builders scoped to specific resources (asset / render job).
+  const mediaUrl = useAuthedMediaUrl();
 
   // ---------------------------------------------------------------- queries
 
@@ -170,18 +171,17 @@ export default function EditorPage() {
     },
     onSuccess: (r) => {
       setRenderJobId(r.jobId);
-      setRenderResultUrl(null);
       setToast("Render queued");
     },
   });
 
   // ------------------------------------------------------- render polling
 
-  useEffect(() => {
-    if (renderJobQ.data && renderJobQ.data.status === "done") {
-      setRenderResultUrl(mediaUrl(`/api/renders/${renderJobId}/download`));
-    }
-  }, [renderJobQ.data, renderJobId]);
+  // Download URL is derived from current token state, so it never goes stale.
+  const renderDone = renderJobQ.data?.status === "done";
+  const renderResultUrl = renderDone && renderJobId
+    ? mediaUrl(renderJobId, `/api/renders/${renderJobId}/download`)
+    : null;
 
   // --------------------------------------------------------------- editing
 
@@ -310,7 +310,7 @@ export default function EditorPage() {
               >
                 <div className="relative aspect-video bg-zinc-900 flex items-center justify-center overflow-hidden">
                   <img
-                    src={mediaUrl(a.thumbnailUrl)}
+                    src={mediaUrl(a.id, `/api/media/${a.id}/thumb`) || undefined}
                     alt=""
                     className="w-full h-full object-cover opacity-80 group-hover:opacity-100"
                     crossOrigin="anonymous"
@@ -335,7 +335,7 @@ export default function EditorPage() {
             {previewAssetId ? (
               <video
                 className="max-h-full max-w-full"
-                src={mediaUrl(`/api/media/${previewAssetId}/raw`)}
+                src={mediaUrl(previewAssetId, `/api/media/${previewAssetId}/raw`) || undefined}
                 controls
                 data-testid="video-preview"
               />
@@ -465,7 +465,6 @@ export default function EditorPage() {
                   setTimeline(p.timeline);
                   setSelectedClipId(null);
                   setRenderJobId(null);
-                  setRenderResultUrl(null);
                 }}
                 data-testid={`button-load-project-${p.id}`}
               >
@@ -514,7 +513,7 @@ function TimelinePreview({
 }: {
   clips: Clip[];
   assets: AssetDTO[];
-  mediaUrl: (url: string) => string;
+  mediaUrl: (resourceId: string, url: string) => string;
   onClipClick: (id: string) => void;
 }) {
   const videoClips = clips.filter((c) => c.track === "video");
@@ -542,7 +541,7 @@ function TimelinePreview({
             >
               {a && (
                 <img
-                  src={mediaUrl(a.thumbnailUrl)}
+                  src={mediaUrl(a.id, `/api/media/${a.id}/thumb`) || undefined}
                   alt=""
                   className="absolute inset-0 w-full h-full object-cover opacity-70 group-hover:opacity-100"
                   crossOrigin="anonymous"

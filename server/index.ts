@@ -69,9 +69,21 @@ app.use((req, res, next) => {
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
+      // strip querystring so signed media tokens never appear in logs
+      const safePath = path.split("?")[0];
+      let logLine = `${req.method} ${safePath} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+        // Redact sensitive fields before logging so media tokens and
+        // newly-minted plaintext API keys never appear in logs.
+        const safe = JSON.parse(JSON.stringify(capturedJsonResponse));
+        if (typeof safe === "object" && safe !== null) {
+          if (typeof safe.token === "string") safe.token = "<redacted>";
+          if (typeof safe.key === "string") safe.key = "<redacted>";
+          if (Array.isArray(safe.keys)) {
+            for (const k of safe.keys) if (k && typeof k === "object") k.key = undefined;
+          }
+        }
+        logLine += ` :: ${JSON.stringify(safe)}`;
       }
 
       log(logLine);
