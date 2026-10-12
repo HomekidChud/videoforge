@@ -188,10 +188,13 @@ async function runRender(jobId: string, projectId: string) {
     const assets = new Map(storage.listAssets().map((a) => [a.id, a]));
     const { inputs, filters, maps } = buildFilterGraph(project, assets);
     const outPath = path.join(OUTPUT_DIR, `${jobId}.mp4`);
+    // Some ffmpeg builds reject a trailing ';' in the filter graph
+    // ("No such filter: ''"). Strip it before passing to ffmpeg.
+    const filterArg = filters.join("").replace(/;\s*$/, "");
     const args = [
       "-y",
       ...inputs,
-      "-filter_complex", filters.join(""),
+      "-filter_complex", filterArg,
       ...maps,
       "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
       "-c:a", "aac", "-b:a", "160k",
@@ -199,7 +202,7 @@ async function runRender(jobId: string, projectId: string) {
       outPath,
     ];
     console.log(`[render ${jobId}] ffmpeg ${args.join(" ").slice(0, 800)}`);
-    console.log(`[render ${jobId}] full filter:\n${filters.join("")}`);
+    console.log(`[render ${jobId}] full filter:\n${filterArg}`);
     await new Promise<void>((resolve) => {
       const p = spawn("ffmpeg", args);
       p.stderr!.on("data", (d: Buffer) => {
