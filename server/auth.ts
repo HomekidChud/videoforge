@@ -41,6 +41,30 @@ function newKey(prefix: "vf_live_" | "vf_admin_"): string {
 let ownerKeyPlaintext: string | null = null;
 
 export async function ensureOwnerKeyExists(): Promise<string> {
+  // Preferred for hosted deployments: the admin key is supplied via
+  // VIDEOFORGE_BOOTSTRAP_KEY env var. This means the key never appears in
+  // logs, files, or URLs, and it survives ephemeral-filesystem restarts
+  // (the key hash is re-seeded into the DB on every boot).
+  const bootstrap = process.env.VIDEOFORGE_BOOTSTRAP_KEY?.trim();
+  if (bootstrap) {
+    const hash = hashKey(bootstrap);
+    const existing = listKeys().find((k) => k.keyHash === hash);
+    if (existing) return existing.id;
+    const row = db.insert(apiKeys)
+      .values({
+        id: crypto.randomUUID(),
+        label: "owner (bootstrap env)",
+        scope: "admin",
+        keyHash: hash,
+        revoked: 0,
+        createdAt: Date.now(),
+      })
+      .returning().get() as ApiKey;
+    console.log(`[auth] owner key seeded from VIDEOFORGE_BOOTSTRAP_KEY env var`);
+    return row.id;
+  }
+
+  // Local dev fallback: generate a random key and write it to OWNER_KEY.txt
   const existing = listKeys().find((k) => k.scope === "admin");
   if (existing) return existing.id;
 
@@ -103,6 +127,47 @@ export function findKeyByHash(hash: string): ApiKey | undefined {
 }
 
 // ---------------------------------------------------------------------------
+// Short-lived signed tokens for media URLs. <img>/<video>/download links can
+// not send Bearer headers, so the server issues a scoped HMAC token valid for
+// 6 hours for read-only access to media & render endpoints. The API key itself
+// is NEVER embedded in URLs.
+// ---------------------------------------------------------------------------
+
+const SHORT_TOKEN_TTL_MS = 6 * 60 * 60 * 1000; // 6h
+
+function shortTokenSecret(): string {
+  // In production, derive from the server's owner key hash so the token
+  // changes if the DB is reset. In dev, a stable fallback.
+  const ownerRow = listKeys().find((k) => k.scope === "admin");
+  return `vf_short_${ownerRow ? ownerRow.keyHash : "dev"}`;
+}
+
+export function issueShortToken(): string {
+  const expiresAt = Date.now() + SHORT_TOKEN_TTL_MS;
+  const payload = `read:${expiresAt}`;
+  const sig = crypto
+    .createHmac("sha256", shortTokenSecret())
+    .update(payload)
+    .digest("base64url");
+  return `${expiresAt}.${sig}`;
+}
+
+export function verifyShortToken(token: string): boolean {
+  const [expiresStr, sig] = token.split(".");
+  if (!expiresStr || !sig) return false;
+  const expiresAt = parseInt(expiresStr, 10);
+  if (!isFinite(expiresAt) || expiresAt < Date.now()) return false;
+  const payload = `read:${expiresAt}`;
+  const expected = crypto
+    .createHmac("sha256", shortTokenSecret())
+    .update(payload)
+    .digest("base64url");
+  const a = Buffer.from(sig, "base64url");
+  const b = Buffer.from(expected, "base64url");
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// ---------------------------------------------------------------------------
 // Middleware
 // ---------------------------------------------------------------------------
 
@@ -110,30 +175,38 @@ export function findKeyByHash(hash: string): ApiKey | undefined {
  * Configured on every /api/* route (except /api/keys which uses admin gate).
  *
  * Behavior:
- *  - If no Authorization header is provided AND the request came from the UI
- *    (cookie `vf_ui=1` set by the frontend), treat as full access (write).
- *  - Otherwise require a valid API key with the right scope.
- *
- * This means the editor UI works out of the box, but external agents / scripts
- * must present a key. Set `VITEFORGE_REQUIRE_UI_AUTH=1` to disable the UI bypass.
+ *  - Requires a valid API key with the right scope via Bearer header.
+ *  - For media endpoints, a valid short-lived signed token (?st=…) also grants
+ *    read-only access, so <img>/<video>/download links can authenticate.
  */
 export function requireScope(scope: "read" | "write") {
   return function (req: Request, res: Response, next: NextFunction) {
     const authHeader = typeof req.headers.authorization === "string" ? req.headers.authorization : undefined;
-    const isUi = req.headers.cookie?.includes("vf_ui=1") && process.env.VIDEOFORGE_REQUIRE_UI_AUTH !== "1";
+    // Media routes also accept a short-lived signed token (?st=…) so that
+    // <img>/<video>/download links can authenticate without headers.
+    const shortToken = typeof req.query?.st === "string" ? String(req.query.st) : undefined;
+    const authViaShortToken = shortToken ? verifyShortToken(shortToken) : false;
 
-    if (!authHeader) {
-      if (isUi) {
-        // UI bypass: treat as a write-capable key
-        (req as any).apiKey = { id: "ui", label: "UI session", scope: "write" as Scope, revoked: 0, keyHash: "", createdAt: 0 };
-        return next();
-      }
+    if (!authHeader && !authViaShortToken) {
       return res.status(401).json({
         message: "Unauthorized: missing Authorization header. Use 'Authorization: Bearer <api-key>'. See /#/api-docs for how to get a key.",
       });
     }
 
-    const m = authHeader.match(/^Bearer\s+(.+)$/i);
+    if (authViaShortToken) {
+      // Short token grants read-only scope regardless of route, but only if
+      // the route itself only requires "read". Write routes fall through to
+      // the Bearer check below (which will fail with no Authorization header).
+      if (scope === "read") {
+        (req as any).apiKey = { id: "st", label: "short token", scope: "read" as Scope, revoked: 0, keyHash: "", createdAt: 0 };
+        return next();
+      }
+      return res.status(403).json({
+        message: "Forbidden: short-lived tokens only allow read-only access. Use 'Authorization: Bearer <api-key>'.",
+      });
+    }
+
+    const m = authHeader!.match(/^Bearer\s+(.+)$/i);
     if (!m) {
       return res.status(401).json({ message: "Unauthorized: Authorization header must be 'Bearer <api-key>'." });
     }
@@ -178,6 +251,11 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
 // ---------------------------------------------------------------------------
 
 export function registerKeyRoutes(app: Express) {
+  // Issue a short-lived (6h) read-only media token. Requires any valid key
+  // with read scope, so <img>/<video>/download links can authenticate.
+  app.get("/api/auth/media-token", requireScope("read"), (_req, res) => {
+    res.json({ token: issueShortToken(), expiresAt: Date.now() + SHORT_TOKEN_TTL_MS });
+  });
   // List all keys (admin only). Never returns the key itself, only metadata.
   app.get("/api/keys", requireAdmin, (_req, res) => {
     res.json({

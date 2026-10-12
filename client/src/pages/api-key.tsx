@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useApiKey } from "@/lib/apiKey";
 
+const API_BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
+
 // ---------------------------------------------------------------------------
 // Login page. Users paste their VideoForge API key (read/write/admin).
 // ---------------------------------------------------------------------------
@@ -25,7 +27,7 @@ export default function ApiKeyPage() {
 
     // Validate the key by hitting a read-only endpoint.
     try {
-      const res = await fetch("/api/media", {
+      const res = await fetch(`${API_BASE}/api/media`, {
         headers: { Authorization: `Bearer ${trimmed}` },
       });
       if (!res.ok) {

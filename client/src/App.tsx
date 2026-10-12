@@ -8,7 +8,10 @@ import NotFound from "@/pages/not-found";
 import EditorPage from "@/pages/editor";
 import ApiDocsPage from "@/pages/api-docs";
 import ApiKeyPage from "@/pages/api-key";
-import { useApiKey, ApiKeyProvider } from "@/lib/apiKey";
+import { useApiKey, ApiKeyProvider, setKeyChangeNotifier } from "@/lib/apiKey";
+
+// Clear the query cache when the API key changes (sign-in / sign-out).
+setKeyChangeNotifier(() => queryClient.clear());
 
 // ---------------------------------------------------------------------------
 // Route gate: the editor and api-docs pages require a stored API key.
@@ -25,17 +28,11 @@ function AppRouter() {
   return (
     <Switch>
       <Route path="/api-key" component={ApiKeyPage} />
+      <Route path="/api-docs" component={ApiDocsPage} />
       <Route path="/">
         {() => (
           <RequireApiKey>
             <EditorPage />
-          </RequireApiKey>
-        )}
-      </Route>
-      <Route path="/api-docs">
-        {() => (
-          <RequireApiKey>
-            <ApiDocsPage />
           </RequireApiKey>
         )}
       </Route>

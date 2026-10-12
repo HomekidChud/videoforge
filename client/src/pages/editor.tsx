@@ -47,6 +47,7 @@ type RenderJobDTO = {
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
 
 import { loadStoredKey } from "@/lib/apiKey";
+import { useMediaUrl } from "@/lib/mediaUrl";
 
 async function api<T>(method: string, url: string, body?: any): Promise<T> {
   const key = loadStoredKey();
@@ -71,6 +72,7 @@ async function api<T>(method: string, url: string, body?: any): Promise<T> {
 
 export default function EditorPage() {
   const qc = useQueryClient();
+  const mediaUrl = useMediaUrl();
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState("Untitled project");
   const [timeline, setTimeline] = useState<Timeline>({
@@ -177,7 +179,7 @@ export default function EditorPage() {
 
   useEffect(() => {
     if (renderJobQ.data && renderJobQ.data.status === "done") {
-      setRenderResultUrl(`${API_BASE}/api/renders/${renderJobId}/download`);
+      setRenderResultUrl(mediaUrl(`/api/renders/${renderJobId}/download`));
     }
   }, [renderJobQ.data, renderJobId]);
 
@@ -308,7 +310,7 @@ export default function EditorPage() {
               >
                 <div className="relative aspect-video bg-zinc-900 flex items-center justify-center overflow-hidden">
                   <img
-                    src={`${API_BASE}${a.thumbnailUrl}`}
+                    src={mediaUrl(a.thumbnailUrl)}
                     alt=""
                     className="w-full h-full object-cover opacity-80 group-hover:opacity-100"
                     crossOrigin="anonymous"
@@ -333,7 +335,7 @@ export default function EditorPage() {
             {previewAssetId ? (
               <video
                 className="max-h-full max-w-full"
-                src={`${API_BASE}/api/media/${previewAssetId}/raw`}
+                src={mediaUrl(`/api/media/${previewAssetId}/raw`)}
                 controls
                 data-testid="video-preview"
               />
@@ -347,6 +349,7 @@ export default function EditorPage() {
               <TimelinePreview
                 clips={timeline.clips}
                 assets={assets}
+                mediaUrl={mediaUrl}
                 onClipClick={(id) => setSelectedClipId(id)}
               />
             )}
@@ -506,10 +509,12 @@ function Logo() {
 function TimelinePreview({
   clips,
   assets,
+  mediaUrl,
   onClipClick,
 }: {
   clips: Clip[];
   assets: AssetDTO[];
+  mediaUrl: (url: string) => string;
   onClipClick: (id: string) => void;
 }) {
   const videoClips = clips.filter((c) => c.track === "video");
@@ -537,7 +542,7 @@ function TimelinePreview({
             >
               {a && (
                 <img
-                  src={`${API_BASE}${a.thumbnailUrl}`}
+                  src={mediaUrl(a.thumbnailUrl)}
                   alt=""
                   className="absolute inset-0 w-full h-full object-cover opacity-70 group-hover:opacity-100"
                   crossOrigin="anonymous"

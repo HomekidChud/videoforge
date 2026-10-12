@@ -1,5 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
+// NOTE: intentionally NOT importing queryClient to avoid a circular import.
+// Sign-in / sign-out callers should clear the query cache explicitly.
+let onKeyChange: (() => void) | null = null;
+export function setKeyChangeNotifier(fn: (() => void) | null) {
+  onKeyChange = fn;
+}
+
 // ---------------------------------------------------------------------------
 // API key storage. Key is kept in localStorage and exposed via a React
 // context so all fetches can attach it as a Bearer token.
@@ -54,11 +61,13 @@ export function ApiKeyProvider({ children }: { children: React.ReactNode }) {
   const setApiKey = useCallback((key: string) => {
     storeKey(key);
     setApiKeyState(key);
+    onKeyChange?.();
   }, []);
 
   const clearApiKey = useCallback(() => {
     clearStoredKey();
     setApiKeyState(null);
+    onKeyChange?.();
   }, []);
 
   const value = useMemo(() => ({ apiKey, setApiKey, clearApiKey }), [apiKey, setApiKey, clearApiKey]);
