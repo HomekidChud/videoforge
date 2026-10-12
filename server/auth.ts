@@ -126,6 +126,10 @@ export function findKeyByHash(hash: string): ApiKey | undefined {
   return db.select().from(apiKeys).where(eq(apiKeys.keyHash, hash)).get();
 }
 
+export function findKeyById(id: string): ApiKey | undefined {
+  return db.select().from(apiKeys).where(eq(apiKeys.id, id)).get();
+}
+
 // ---------------------------------------------------------------------------
 // Short-lived signed tokens for media URLs. <img>/<video>/download links can
 // not send Bearer headers, so the server issues a scoped HMAC token valid for
@@ -146,31 +150,42 @@ function shortTokenSecret(): string {
 
 /**
  * Issue a read-only media token scoped to a single resource (asset id or
- * render-job id). Anyone holding the token can only fetch that resource.
+ * render-job id) AND bound to the issuing API key id. If that key is later
+ * revoked or deleted, the token immediately stops working.
  */
-export function issueMediaToken(resourceId: string): string {
+export function issueMediaToken(resourceId: string, issuingKeyId: string): string {
   const expiresAt = Date.now() + SHORT_TOKEN_TTL_MS;
-  const payload = `read:${resourceId}:${expiresAt}`;
+  const payload = `read:${resourceId}:${issuingKeyId}:${expiresAt}`;
   const sig = crypto
     .createHmac("sha256", shortTokenSecret())
     .update(payload)
     .digest("base64url");
-  return `${expiresAt}.${resourceId}.${sig}`;
+  return `${expiresAt}.${resourceId}.${issuingKeyId}.${sig}`;
 }
 
 /**
  * Verify a signed media token for a specific resource. Returns true only if
- * the token is well-formed, unexpired, bound to `resourceId`, and the
- * signature matches. Tokens are NOT valid for write routes or other resources.
+ * the token is well-formed, unexpired, bound to `resourceId`, the signature
+ * matches, AND the issuing API key still exists with read-or-better scope and
+ * is not revoked. Tokens are NOT valid for write routes or other resources.
  */
 export function verifyMediaToken(token: string, resourceId: string): boolean {
   const parts = token.split(".");
-  if (parts.length !== 3) return false;
-  const [expiresStr, boundResource, sig] = parts;
+  if (parts.length !== 4) return false;
+  const [expiresStr, boundResource, issuingKeyId, sig] = parts;
   if (boundResource !== resourceId) return false;
   const expiresAt = parseInt(expiresStr, 10);
   if (!isFinite(expiresAt) || expiresAt < Date.now()) return false;
-  const payload = `read:${boundResource}:${expiresAt}`;
+
+  // Check the issuing key is still valid (exists, not revoked, has read+).
+  const issuingKey = findKeyById(issuingKeyId);
+  if (!issuingKey) return false;
+  if (issuingKey.revoked) return false;
+  if (!(["read", "write", "admin"] as Scope[]).includes(issuingKey.scope as Scope)) {
+    return false;
+  }
+
+  const payload = `read:${boundResource}:${issuingKeyId}:${expiresAt}`;
   const expected = crypto
     .createHmac("sha256", shortTokenSecret())
     .update(payload)
@@ -292,7 +307,9 @@ export function registerKeyRoutes(app: Express) {
     if (!/^[a-f0-9]{4,64}$/i.test(resourceId)) {
       return res.status(400).json({ message: "invalid resourceId" });
     }
-    res.json({ token: issueMediaToken(resourceId), expiresAt: Date.now() + SHORT_TOKEN_TTL_MS });
+    // bind the token to the authenticated key so revoking the key kills the token
+    const issuingKeyId = String((req as any).apiKey?.id ?? "");
+    res.json({ token: issueMediaToken(resourceId, issuingKeyId), expiresAt: Date.now() + SHORT_TOKEN_TTL_MS });
   });
   // List all keys (admin only). Never returns the key itself, only metadata.
   app.get("/api/keys", requireAdmin, (_req, res) => {

@@ -47,7 +47,7 @@ type RenderJobDTO = {
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
 
 import { loadStoredKey } from "@/lib/apiKey";
-import { useAuthedMediaUrl } from "@/lib/mediaUrl";
+import { useAuthedMediaUrl, useMediaTokenLifecycle } from "@/lib/mediaUrl";
 
 async function api<T>(method: string, url: string, body?: any): Promise<T> {
   const key = loadStoredKey();
@@ -107,6 +107,9 @@ export default function EditorPage() {
   });
 
   const assets = assetsData?.assets ?? [];
+
+  // Token lifecycle for visible resources (thumbnails, preview, render download)
+  useMediaTokenLifecycle([...assets.map((a) => a.id), previewAssetId, renderJobId]);
 
   // -------------------------------------------------------------- mutations
 

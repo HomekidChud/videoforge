@@ -9,9 +9,13 @@ import EditorPage from "@/pages/editor";
 import ApiDocsPage from "@/pages/api-docs";
 import ApiKeyPage from "@/pages/api-key";
 import { useApiKey, ApiKeyProvider, setKeyChangeNotifier } from "@/lib/apiKey";
+import { invalidateMediaTokens } from "@/lib/mediaUrl";
 
-// Clear the query cache when the API key changes (sign-in / sign-out).
-setKeyChangeNotifier(() => queryClient.clear());
+// Clear the query cache + media tokens when the API key changes (sign-in / sign-out).
+setKeyChangeNotifier(() => {
+  invalidateMediaTokens();
+  queryClient.clear();
+});
 
 // ---------------------------------------------------------------------------
 // Route gate: the editor and api-docs pages require a stored API key.
