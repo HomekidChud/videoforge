@@ -5,12 +5,14 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
+import EditorPage from "@/pages/editor";
+import ApiDocsPage from "@/pages/api-docs";
 
 function AppRouter() {
   return (
     <Switch>
-      {/* Register a <Route path="..." component={...} /> for EVERY page linked in your sidebar/nav. Missing routes cause 404. */}
-      {/* <Route path="/" component={Home}/> */}
+      <Route path="/" component={EditorPage} />
+      <Route path="/api-docs" component={ApiDocsPage} />
       <Route component={NotFound} />
     </Switch>
   );

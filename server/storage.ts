@@ -1,8 +1,20 @@
-import { users } from '@shared/schema';
-import type { User, InsertUser } from '@shared/schema';
+import {
+  mediaAssets,
+  projects,
+  renderJobs,
+  type Asset,
+  type Project,
+  type RenderJob,
+  type InsertMediaAsset,
+  type InsertProject,
+  type InsertRenderJob,
+} from '@shared/schema';
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
+import { mkdirSync } from "node:fs";
+
+mkdirSync("data/media", { recursive: true });
 
 const sqlite = new Database("data.db");
 sqlite.pragma("journal_mode = WAL");
@@ -10,22 +22,72 @@ sqlite.pragma("journal_mode = WAL");
 export const db = drizzle(sqlite);
 
 export interface IStorage {
-  getUser(id: number): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  // assets
+  createAsset(a: InsertMediaAsset): Asset;
+  getAsset(id: string): Asset | undefined;
+  listAssets(): Asset[];
+  deleteAsset(id: string): boolean;
+  updateAssetThumb(id: string, thumbPath: string): Asset | undefined;
+  // projects
+  createProject(p: InsertProject): Project;
+  getProject(id: string): Project | undefined;
+  listProjects(): Project[];
+  updateProject(id: string, patch: Partial<InsertProject>): Project | undefined;
+  deleteProject(id: string): boolean;
+  // render jobs
+  createRenderJob(j: InsertRenderJob): RenderJob;
+  getRenderJob(id: string): RenderJob | undefined;
+  listRenderJobs(projectId?: string): RenderJob[];
+  updateRenderJob(id: string, patch: Partial<InsertRenderJob>): RenderJob | undefined;
 }
 
 export class DatabaseStorage implements IStorage {
-  async getUser(id: number): Promise<User | undefined> {
-    return db.select().from(users).where(eq(users.id, id)).get();
+  createAsset(a: InsertMediaAsset): Asset {
+    return db.insert(mediaAssets).values(a).returning().get();
+  }
+  getAsset(id: string): Asset | undefined {
+    return db.select().from(mediaAssets).where(eq(mediaAssets.id, id)).get();
+  }
+  listAssets(): Asset[] {
+    return db.select().from(mediaAssets).all();
+  }
+  deleteAsset(id: string): boolean {
+    return db.delete(mediaAssets).where(eq(mediaAssets.id, id)).run().changes > 0;
+  }
+  updateAssetThumb(id: string, thumbPath: string): Asset | undefined {
+    return db.update(mediaAssets).set({ thumbPath }).where(eq(mediaAssets.id, id)).returning().get();
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return db.select().from(users).where(eq(users.username, username)).get();
+  createProject(p: InsertProject): Project {
+    return db.insert(projects).values(p).returning().get();
+  }
+  getProject(id: string): Project | undefined {
+    return db.select().from(projects).where(eq(projects.id, id)).get();
+  }
+  listProjects(): Project[] {
+    return db.select().from(projects).all();
+  }
+  updateProject(id: string, patch: Partial<InsertProject>): Project | undefined {
+    return db.update(projects).set(patch).where(eq(projects.id, id)).returning().get();
+  }
+  deleteProject(id: string): boolean {
+    return db.delete(projects).where(eq(projects.id, id)).run().changes > 0;
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    return db.insert(users).values(insertUser).returning().get();
+  createRenderJob(j: InsertRenderJob): RenderJob {
+    return db.insert(renderJobs).values(j).returning().get();
+  }
+  getRenderJob(id: string): RenderJob | undefined {
+    return db.select().from(renderJobs).where(eq(renderJobs.id, id)).get();
+  }
+  listRenderJobs(projectId?: string): RenderJob[] {
+    if (projectId) {
+      return db.select().from(renderJobs).where(eq(renderJobs.projectId, projectId)).all();
+    }
+    return db.select().from(renderJobs).all();
+  }
+  updateRenderJob(id: string, patch: Partial<InsertRenderJob>): RenderJob | undefined {
+    return db.update(renderJobs).set(patch).where(eq(renderJobs.id, id)).returning().get();
   }
 }
 

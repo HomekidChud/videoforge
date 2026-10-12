@@ -14,13 +14,17 @@ declare module "http" {
   }
 }
 
-app.use(
-  express.json({
+// JSON body parsing (skip multipart so busboy can stream the raw body)
+app.use((req, _res, next) => {
+  if (req.headers["content-type"]?.includes("multipart/form-data")) {
+    return next();
+  }
+  return express.json({
     verify: (req, _res, buf) => {
-      req.rawBody = buf;
+      (req as any).rawBody = buf;
     },
-  }),
-);
+  })(req, _res, next);
+});
 
 app.use(express.urlencoded({ extended: false }));
 
