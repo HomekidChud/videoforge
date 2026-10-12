@@ -73,6 +73,19 @@ export const renderJobs = sqliteTable("render_jobs", {
 });
 
 // ---------------------------------------------------------------------------
+// API keys — used by external AI agents & scripts. Never store the plaintext
+// key, only sha256(key). `scope` is "read" | "write" | "admin".
+// ---------------------------------------------------------------------------
+export const apiKeys = sqliteTable("api_keys", {
+  id: text("id").primaryKey(),
+  label: text("label").notNull(),
+  scope: text("scope").notNull(), // read | write | admin
+  keyHash: text("key_hash").notNull(),
+  revoked: integer("revoked").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+});
+
+// ---------------------------------------------------------------------------
 // TypeScript timeline model (stored as JSON in projects.timelineJson)
 // ---------------------------------------------------------------------------
 
@@ -98,6 +111,7 @@ export type Timeline = {
 export type Asset = typeof mediaAssets.$inferSelect;
 export type Project = typeof projects.$inferSelect;
 export type RenderJob = typeof renderJobs.$inferSelect;
+export type ApiKey = typeof apiKeys.$inferSelect;
 
 export const insertMediaAssetSchema = createInsertSchema(mediaAssets).pick({
   id: true,

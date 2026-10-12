@@ -2,7 +2,8 @@
 
 A full-stack web app: a timeline-based video editor in the browser, backed by
 an Express + SQLite + FFmpeg server. The same HTTP API that powers the editor
-is exposed for AI agents to upload video, edit timelines, and trigger renders.
+is exposed for **AI agents** to upload video, edit timelines, and trigger renders,
+gated behind **API keys with permission scopes** (`read`, `write`, `admin`).
 
 ## Stack
 
@@ -17,6 +18,8 @@ is exposed for AI agents to upload video, edit timelines, and trigger renders.
 - Trim (in/out point), reorder, per-clip volume/mute, text captions burned into output
 - Render via FFmpeg → downloadable MP4, with job polling and progress
 - Full HTTP API (`/api/...`) for programmatic use by other AI agents or scripts
+- **API keys with scopes** (`read` / `write` / `admin`) so you can grant an AI agent
+  exactly the permissions it needs and revoke them later
 
 ## Run
 
@@ -31,6 +34,26 @@ Production:
 npm run build
 NODE_ENV=production node dist/index.cjs
 ```
+
+## API keys
+
+On first boot the server prints your **admin (owner) key** to the console and
+writes it to `data/OWNER_KEY.txt` (gitignored). Save it somewhere safe, then
+delete that file. With it you can mint scoped keys for other agents:
+
+```bash
+curl -X POST http://localhost:5000/api/keys \
+  -H "Authorization: Bearer vf_admin_..." \
+  -H "Content-Type: application/json" \
+  -d '{"label":"Claude agent","scope":"write"}'
+```
+
+- `read` — list/read/download only
+- `write` — read + upload media, edit projects, trigger renders
+- `admin` — everything, including creating & revoking other keys
+
+For the full reference (permissions table, every endpoint, scope matrix,
+deployment, security notes) see **[docs/API.md](docs/API.md)**.
 
 ## Agent API
 

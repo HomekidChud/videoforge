@@ -21,6 +21,50 @@ sqlite.pragma("journal_mode = WAL");
 
 export const db = drizzle(sqlite);
 
+// Ensure all tables exist (so a fresh clone works without `npm run db:push`).
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS media_assets (
+    id TEXT PRIMARY KEY,
+    filename TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    mime TEXT NOT NULL,
+    duration REAL NOT NULL DEFAULT 0,
+    has_audio INTEGER NOT NULL DEFAULT 0,
+    width INTEGER NOT NULL DEFAULT 0,
+    height INTEGER NOT NULL DEFAULT 0,
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    storage_path TEXT NOT NULL,
+    thumb_path TEXT,
+    created_at INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    timeline_json TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS render_jobs (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    progress REAL NOT NULL DEFAULT 0,
+    output_path TEXT,
+    error TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS api_keys (
+    id TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    key_hash TEXT NOT NULL,
+    revoked INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  );
+`);
+
+
 export interface IStorage {
   // assets
   createAsset(a: InsertMediaAsset): Asset;

@@ -9,6 +9,7 @@ import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import Busboy from "busboy";
 import type { Asset, Clip, Project, Timeline } from "@shared/schema";
+import { requireScope } from "./auth";
 
 const MEDIA_DIR = path.resolve("data/media");
 const OUTPUT_DIR = path.resolve("data/renders");
@@ -258,7 +259,7 @@ export async function registerRoutes(
   app.get("/api/health", (_req, res) => res.json({ ok: true, service: "videoforge-api", version: 1 }));
 
   // ---------- media upload (multipart) ----------
-  app.post("/api/media/upload", (req, res) => {
+  app.post("/api/media/upload", requireScope("write"), (req, res) => {
     if (!req.headers["content-type"]?.includes("multipart/form-data")) {
       return res.status(400).json({ message: "multipart/form-data required" });
     }
@@ -316,27 +317,27 @@ export async function registerRoutes(
   });
 
   // ---------- media list / detail ----------
-  app.get("/api/media", (_req, res) => {
+  app.get("/api/media", requireScope("read"), (_req, res) => {
     res.json({ assets: storage.listAssets().map(assetToJSON) });
   });
 
-  app.get("/api/media/:id", (req, res) => {
-    const a = storage.getAsset(req.params.id);
+  app.get("/api/media/:id", requireScope("read"), (req, res) => {
+    const a = storage.getAsset(String(req.params.id));
     if (!a) return res.status(404).json({ message: "asset not found" });
     res.json(assetToJSON(a));
   });
 
-  app.delete("/api/media/:id", (req, res) => {
-    const a = storage.getAsset(req.params.id);
+  app.delete("/api/media/:id", requireScope("write"), (req, res) => {
+    const a = storage.getAsset(String(req.params.id));
     if (!a) return res.status(404).json({ message: "asset not found" });
     try { fs.unlinkSync(a.storagePath); } catch { /* ignore */ }
-    storage.deleteAsset(req.params.id);
+    storage.deleteAsset(String(req.params.id));
     res.json({ deleted: true });
   });
 
   // raw binary streaming
-  app.get("/api/media/:id/raw", (req, res) => {
-    const a = storage.getAsset(req.params.id);
+  app.get("/api/media/:id/raw", requireScope("read"), (req, res) => {
+    const a = storage.getAsset(String(req.params.id));
     if (!a) return res.status(404).json({ message: "asset not found" });
     const stat = fs.statSync(a.storagePath);
     res.setHeader("Content-Type", a.mime);
@@ -346,8 +347,8 @@ export async function registerRoutes(
   });
 
   // thumbnail (frame at 1s, or full image)
-  app.get("/api/media/:id/thumb", async (req, res) => {
-    const a = storage.getAsset(req.params.id);
+  app.get("/api/media/:id/thumb", requireScope("read"), async (req, res) => {
+    const a = storage.getAsset(String(req.params.id));
     if (!a) return res.status(404).json({ message: "asset not found" });
     const thumb = path.join(MEDIA_DIR, `${a.id}_thumb.jpg`);
     if (!fs.existsSync(thumb)) {
@@ -375,7 +376,7 @@ export async function registerRoutes(
   });
 
   // ---------- projects ----------
-  app.get("/api/projects", (_req, res) => {
+  app.get("/api/projects", requireScope("read"), (_req, res) => {
     res.json({
       projects: storage.listProjects().map((p) => ({
         id: p.id,
@@ -387,8 +388,8 @@ export async function registerRoutes(
     });
   });
 
-  app.get("/api/projects/:id", (req, res) => {
-    const p = storage.getProject(req.params.id);
+  app.get("/api/projects/:id", requireScope("read"), (req, res) => {
+    const p = storage.getProject(String(req.params.id));
     if (!p) return res.status(404).json({ message: "project not found" });
     res.json({
       id: p.id,
@@ -399,7 +400,7 @@ export async function registerRoutes(
     });
   });
 
-  app.post("/api/projects", (req, res) => {
+  app.post("/api/projects", requireScope("write"), (req, res) => {
     try {
       const { name, timeline } = req.body || {};
       if (!name || typeof name !== "string") {
@@ -434,9 +435,9 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/projects/:id", (req, res) => {
+  app.put("/api/projects/:id", requireScope("write"), (req, res) => {
     try {
-      const p = storage.getProject(req.params.id);
+      const p = storage.getProject(String(req.params.id));
       if (!p) return res.status(404).json({ message: "project not found" });
       const { name, timeline } = req.body || {};
       const patch: any = { updatedAt: now() };
@@ -453,7 +454,7 @@ export async function registerRoutes(
         };
         patch.timelineJson = JSON.stringify(t);
       }
-      const updated = storage.updateProject(req.params.id, patch);
+      const updated = storage.updateProject(String(req.params.id), patch);
       res.json({
         id: updated!.id,
         name: updated!.name,
@@ -466,16 +467,16 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/projects/:id", (req, res) => {
-    const ok = storage.deleteProject(req.params.id);
+  app.delete("/api/projects/:id", requireScope("write"), (req, res) => {
+    const ok = storage.deleteProject(String(req.params.id));
     if (!ok) return res.status(404).json({ message: "project not found" });
     res.json({ deleted: true });
   });
 
   // ---------- timeline edit (agents) ----------
   // atomic ops that operate on a project's timeline in one call
-  app.post("/api/projects/:id/timeline/ops", (req, res) => {
-    const p = storage.getProject(req.params.id);
+  app.post("/api/projects/:id/timeline/ops", requireScope("write"), (req, res) => {
+    const p = storage.getProject(String(req.params.id));
     if (!p) return res.status(404).json({ message: "project not found" });
     const timeline = parseTimeline(p.timelineJson);
     const { op, args } = req.body || {};
@@ -561,7 +562,7 @@ export async function registerRoutes(
         default:
           return res.status(400).json({ message: `unknown op: ${op}` });
       }
-      const updated = storage.updateProject(req.params.id, {
+      const updated = storage.updateProject(String(req.params.id), {
         timelineJson: JSON.stringify(timeline),
         updatedAt: now(),
       });
@@ -578,7 +579,7 @@ export async function registerRoutes(
   });
 
   // ---------- render ----------
-  app.post("/api/renders", (req, res) => {
+  app.post("/api/renders", requireScope("write"), (req, res) => {
     const { projectId } = req.body || {};
     if (!projectId) return res.status(400).json({ message: "projectId required" });
     const p = storage.getProject(projectId);
@@ -599,26 +600,26 @@ export async function registerRoutes(
     res.status(201).json({ jobId, status: "queued", statusUrl: `/api/renders/${jobId}` });
   });
 
-  app.get("/api/renders", (req, res) => {
+  app.get("/api/renders", requireScope("read"), (req, res) => {
     const pid = req.query.projectId as string | undefined;
     res.json({ jobs: storage.listRenderJobs(pid) });
   });
 
-  app.get("/api/renders/:id", (req, res) => {
-    const j = storage.getRenderJob(req.params.id);
+  app.get("/api/renders/:id", requireScope("read"), (req, res) => {
+    const j = storage.getRenderJob(String(req.params.id));
     if (!j) return res.status(404).json({ message: "job not found" });
     res.json(j);
   });
 
-  app.get("/api/renders/:id/download", (req, res) => {
-    const j = storage.getRenderJob(req.params.id);
+  app.get("/api/renders/:id/download", requireScope("read"), (req, res) => {
+    const j = storage.getRenderJob(String(req.params.id));
     if (!j || j.status !== "done") return res.status(404).json({ message: "render not ready" });
-    const outPath = path.join(OUTPUT_DIR, `${req.params.id}.mp4`);
+    const outPath = path.join(OUTPUT_DIR, `${String(req.params.id)}.mp4`);
     if (!fs.existsSync(outPath)) return res.status(404).json({ message: "rendered file missing" });
     const stat = fs.statSync(outPath);
     res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Content-Length", stat.size);
-    res.setHeader("Content-Disposition", `attachment; filename="render_${req.params.id}.mp4"`);
+    res.setHeader("Content-Disposition", `attachment; filename="render_${String(req.params.id)}.mp4"`);
     fs.createReadStream(outPath).pipe(res);
   });
 
