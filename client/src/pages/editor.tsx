@@ -44,7 +44,7 @@ type RenderJobDTO = {
 // API_BASE resolution (dev vs deployed)
 // ---------------------------------------------------------------------------
 
-const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
+const API_BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
 
 async function api<T>(method: string, url: string, body?: any): Promise<T> {
   const res = await fetch(`${API_BASE}${url}`, {

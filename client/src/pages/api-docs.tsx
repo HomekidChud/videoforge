@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-const API_BASE = "__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__";
+const API_BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
 
 type Endpoint = {
   method: "GET" | "POST" | "PUT" | "DELETE";
