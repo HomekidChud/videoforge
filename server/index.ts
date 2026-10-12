@@ -40,15 +40,6 @@ export function log(message: string, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
-// Sets a cookie that marks the request as coming from the editor UI, so
-// the UI itself can call the API without a key (unless VIDEOFORGE_REQUIRE_UI_AUTH=1).
-app.use((req, res, next) => {
-  if (req.path.startsWith("/api") && !req.headers.cookie?.includes("vf_ui=1")) {
-    res.setHeader("Set-Cookie", "vf_ui=1; Path=/; Max-Age=86400; HttpOnly; SameSite=Lax");
-  }
-  next();
-});
-
 // CORS — allow the Pages origin (or any origin if CORS_ORIGIN unset in dev)
 const corsOrigin = process.env.CORS_ORIGIN ?? "*";
 app.use((req, res, next) => {

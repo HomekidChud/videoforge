@@ -46,10 +46,16 @@ type RenderJobDTO = {
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
 
+import { loadStoredKey } from "@/lib/apiKey";
+
 async function api<T>(method: string, url: string, body?: any): Promise<T> {
+  const key = loadStoredKey();
   const res = await fetch(`${API_BASE}${url}`, {
     method,
-    headers: body ? { "Content-Type": "application/json" } : {},
+    headers: {
+      ...(body ? { "Content-Type": "application/json" } : {}),
+      ...(key ? { Authorization: `Bearer ${key}` } : {}),
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
@@ -105,9 +111,11 @@ export default function EditorPage() {
     mutationFn: async (files: FileList) => {
       const fd = new FormData();
       Array.from(files).forEach((f) => fd.append("files", f));
+      const key = loadStoredKey();
       const res = await fetch(`${API_BASE}/api/media/upload`, {
         method: "POST",
         body: fd,
+        headers: key ? { Authorization: `Bearer ${key}` } : {},
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json() as Promise<{ assets: AssetDTO[] }>;
