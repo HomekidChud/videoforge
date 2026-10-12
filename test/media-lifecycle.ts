@@ -53,9 +53,10 @@ async function main() {
   (globalThis as any).fetch = async (url: string) => {
     await new Promise(r => setTimeout(r, 50));
     const m = String(url).match(/media-token\/(.+)$/);
+    const id = m ? m[1] : "unknown";
     return {
       ok: true,
-      json: async () => ({ token: `slow-${m[1]}`, expiresAt: Date.now() + 6 * 3600 * 1000 }),
+      json: async () => ({ token: `slow-${id}`, expiresAt: Date.now() + 6 * 3600 * 1000 }),
     };
   };
 
