@@ -22,7 +22,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { db, logKeyUsage, keyUsageStats, usageOverview } from "./storage";
+import { db, logKeyUsage, keyUsageStats, usageOverview, storage } from "./storage";
 import { apiKeys, type ApiKey, type Permission, PERMISSIONS, scopeToPermissions } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
@@ -52,14 +52,14 @@ function parsePermissions(s: string): Permission[] {
 }
 
 export function keyPermissions(k: ApiKey): Permission[] {
-  // ONLY fall back to legacy scope if the key predates the permissions
-  // column (i.e. has never had explicit permissions set). An explicitly
-  // empty permission list means the key has no permissions.
-  if (k.permissions && k.permissions !== "[]" && k.permissions.trim() !== "") {
-    return parsePermissions(k.permissions);
+  // A NULL permissions value means this key predates the permissions column
+  // (legacy key, never had explicit permissions set) — fall back to scope.
+  // An explicitly EMPTY permissions list ('[]') means the key has been locked
+  // out and has NO permissions. We never fall back to scope for '[]'.
+  if (k.permissions === null || k.permissions === undefined) {
+    return scopeToPermissions(k.scope as Scope);
   }
-  // legacy: derive from scope
-  return scopeToPermissions(k.scope as Scope);
+  return parsePermissions(k.permissions);
 }
 
 export function keyKind(k: ApiKey): "public" | "private" {
@@ -116,45 +116,29 @@ function matchCidr(ip: string, cidr: string): boolean {
 /**
  * Client-IP determination for allowlist checks.
  *
- * `X-Forwarded-For` is UNTRUSTED by default: any client can send it to
- * spoof an arbitrary IP. Only when the direct socket peer is a trusted
- * proxy (i.e. the deployment's reverse proxy / load balancer) do we read
- * the header. Trusted proxies are set via:
- *   - VIDEOFORGE_TRUSTED_PROXIES env var (comma-separated IPs or CIDRs)
- *   - defaults to an empty list (no XFF trust)
- *   - set to "*" to trust any direct peer (NOT recommended outside a
- *     closed network where the server is only reachable through a proxy)
+ * Express's `req.ip` is used when the app has `trust proxy` configured
+ * (see server/index.ts, which reads VIDEOFORGE_TRUST_PROXY). Express's trust
+ * proxy handling is well-documented and handles both:
+ *   - "true" / number of hops (rightmost XFF entries are trusted)
+ *   - specific IPs/CIDRs (only trust those exact peers)
  *
- * Express's own `req.ip` with `app.set("trust proxy", ...)` is used when
- * configured; otherwise we fall back to the socket address.
+ * If `trust proxy` is NOT set, Express returns the socket address and
+ * IGNORES X-Forwarded-For entirely (spoofed headers cannot satisfy an
+ * allowlist). This is the correct default for a directly-exposed server.
+ *
+ * For a deployment behind a proxy (Render, Fly, etc.), the operator MUST set
+ * VIDEOFORGE_TRUST_PROXY (e.g. "true", or the specific proxy IP/CIDR) for
+ * allowlists to work. Without it, all clients appear as the proxy IP.
  */
-const TRUSTED_PROXIES = (process.env.VIDEOFORGE_TRUSTED_PROXIES ?? "")
-  .split(",").map((s) => s.trim()).filter(Boolean);
-
 export function clientIp(req: Request): string {
-  // If Express's trust proxy is set (see server/index.ts), req.ip is correct
-  if ((req as any).app?.settings?.trustProxyFn && typeof (req as any).ip === "string" && (req as any).ip.length > 0) {
-    let ip = (req as any).ip;
-    if (ip.startsWith("::ffff:")) ip = ip.slice(7);
-    if (ip === "::1") ip = "127.0.0.1";
-    return ip;
-  }
-
-  let ip = req.socket.remoteAddress ?? "";
+  // Express's req.ip respects app.set("trust proxy", ...) if configured.
+  // If not configured, req.ip === socket address and XFF is ignored.
+  let ip: string =
+    typeof (req as any).ip === "string" && (req as any).ip.length > 0
+      ? (req as any).ip
+      : req.socket.remoteAddress ?? "";
   if (ip.startsWith("::ffff:")) ip = ip.slice(7);
   if (ip === "::1") ip = "127.0.0.1";
-
-  // If we're configured to trust the direct peer as a proxy, read XFF.
-  // Take the FIRST hop (original client) — that's what the proxy recorded.
-  const trustAll = TRUSTED_PROXIES.includes("*");
-  const peerTrusted = trustAll || TRUSTED_PROXIES.some((entry) => entry === ip || matchCidr(ip, entry));
-  if (peerTrusted) {
-    const xff = req.headers["x-forwarded-for"];
-    if (typeof xff === "string" && xff.length > 0) {
-      const first = xff.split(",")[0].trim();
-      if (first) return first;
-    }
-  }
   return ip;
 }
 
@@ -388,22 +372,20 @@ function resolveBearerKey(req: Request): { key: ApiKey; raw: string } | null {
  *
  * Rate limiting / quota / display counters are all incremented here at
  * admission time (BEFORE the response completes), so a single in-flight
- * request is counted against its own rate limit immediately — the log row
- * is written with status=0 ("in-flight") and the response-finish hook in
- * server/index.ts updates it to the real status code.
+ * request is counted against its own rate limit immediately.
  *
- * This means:
- *  - each request is logged exactly once (one row per request)
- *  - rate limit = N/hour actually blocks the (N+1)-th request
- *  - the log row shows the real response status (2xx/4xx/5xx) after
- *    the finish hook updates it
+ * The log row is written with status=0 ("in-flight") and its row ID is
+ * stored on the request (`req.vfUsageRowId`). The response-finish hook in
+ * server/index.ts updates ONLY that specific row to the real status code,
+ * so concurrent requests sharing a key/method/path never corrupt each
+ * other's statuses.
  */
 function recordUsage(req: Request, key: ApiKey) {
   // increment counter + lastUsedAt (for rate limit + quota + display)
   db.update(apiKeys).set({ requestsUsed: (key.requestsUsed ?? 0) + 1, lastUsedAt: Date.now() }).where(eq(apiKeys.id, key.id)).run();
-  // write a log row with status=0 ("in-flight"); the finish hook in
-  // server/index.ts will update this row to the actual response status.
-  logKeyUsage(key.id, req.method, req.path, 0);
+  // write a log row with status=0 ("in-flight") and remember its ID
+  const rowId = logKeyUsage(key.id, req.method, req.path, 0);
+  (req as any).vfUsageRowId = rowId;
 }
 
 function sendErr(res: Response, r: { status: number; message: string }, retryAfter = false) {
@@ -497,12 +479,8 @@ export function requireMediaAccess(kind: "asset" | "render") {
     }
     const resourceId = String(req.params.id);
     // verifyMediaToken now checks signature FIRST, then key restrictions + required permission
-    const tok = verifyMediaToken(st, resourceId, req);
-    // --- media token path: after verifyMediaToken succeeds, record usage ---
-  // (verifyMediaToken does NOT record usage itself — the caller does, once,
-  // so quota/rate-limit accounting is consistent between Bearer and token paths)
-  // recordUsage(req, tok.key) is called below in the `if (tok.ok)` branch
-  if (!tok.ok) {
+    const tok = verifyMediaToken(st, kind, resourceId, req);
+    if (!tok.ok) {
       return res.status(401).json({ message: `Unauthorized: ${tok.message}` });
     }
     recordUsage(req, tok.key); // only count after successful auth
@@ -527,18 +505,27 @@ function shortTokenSecret(): string {
  * Issue a read-only media token scoped to a single resource AND bound to the
  * issuing API key. The token's effective expiry is min(6h, key expiry).
  * Revoking the key immediately invalidates the token.
+ *
+ * `resourceType` ("asset" or "render") is bound INTO the signed payload so a
+ * token issued for an asset cannot be used on a render download URL, and vice
+ * versa. This prevents a key with only `media:read` from minting a token that
+ * grants access to a rendered MP4 (which requires `renders:download`).
  */
-export function issueMediaToken(resourceId: string, issuingKeyId: string): { token: string; expiresAt: number } {
+export function issueMediaToken(
+  resourceType: "asset" | "render",
+  resourceId: string,
+  issuingKeyId: string
+): { token: string; expiresAt: number } {
   const key = findKeyById(issuingKeyId);
   const keyExpiry = key ? keyRestrictions(key).expiresAt : 0;
   let expiresAt = Date.now() + SHORT_TOKEN_TTL_MS;
   if (keyExpiry > 0 && keyExpiry < expiresAt) expiresAt = keyExpiry;
-  const payload = `read:${resourceId}:${issuingKeyId}:${expiresAt}`;
+  const payload = `${resourceType}:${resourceId}:${issuingKeyId}:${expiresAt}`;
   const sig = crypto
     .createHmac("sha256", shortTokenSecret())
     .update(payload)
     .digest("base64url");
-  return { token: `${expiresAt}.${resourceId}.${issuingKeyId}.${sig}`, expiresAt };
+  return { token: `${expiresAt}.${resourceType}.${resourceId}.${issuingKeyId}.${sig}`, expiresAt };
 }
 
 /**
@@ -551,18 +538,23 @@ export function issueMediaToken(resourceId: string, issuingKeyId: string): { tok
  */
 export function verifyMediaToken(
   token: string,
+  resourceType: "asset" | "render",
   resourceId: string,
   req: Request
 ): { ok: true; key: ApiKey } | { ok: false; message: string } {
   const parts = token.split(".");
-  if (parts.length !== 4) return { ok: false, message: "malformed token" };
-  const [expiresStr, boundResource, issuingKeyId, sig] = parts;
+  // new format: expires.resourceType.resourceId.issuingKeyId.sig (5 parts)
+  // legacy format: expires.resourceId.issuingKeyId.sig (4 parts) — NOT bound
+  // to a resource type, so REJECT legacy tokens (they bypass the type check).
+  if (parts.length !== 5) return { ok: false, message: "malformed token (legacy format rejected)" };
+  const [expiresStr, boundType, boundResource, issuingKeyId, sig] = parts;
+  if (boundType !== resourceType) return { ok: false, message: "token is for a different resource type" };
   if (boundResource !== resourceId) return { ok: false, message: "token is not valid for this resource" };
   const expiresAt = parseInt(expiresStr, 10);
   if (!isFinite(expiresAt) || expiresAt < Date.now()) return { ok: false, message: "token expired" };
 
   // --- signature check (before any usage recording) ---
-  const payload = `read:${boundResource}:${issuingKeyId}:${expiresAt}`;
+  const payload = `${boundType}:${boundResource}:${issuingKeyId}:${expiresAt}`;
   const expected = crypto
     .createHmac("sha256", shortTokenSecret())
     .update(payload)
@@ -579,14 +571,11 @@ export function verifyMediaToken(
   if (issuingKey.revoked) return { ok: false, message: "issuing key revoked" };
   if (isExpired(issuingKey)) return { ok: false, message: "issuing key expired" };
 
-  // --- permission re-check ---
+  // --- permission re-check: enforce the EXACT permission for this type ---
   const perms = effectivePermissions(issuingKey);
-  // media tokens are read-only; require the relevant read permission
-  // (media:read for asset raw/thumb; renders:download for render output)
-  // Accept either the media or render read permission since the token may
-  // be used on both kinds of resources.
-  if (!perms.includes("media:read") && !perms.includes("renders:download")) {
-    return { ok: false, message: "issuing key no longer has read access" };
+  const requiredPerm: Permission = resourceType === "asset" ? "media:read" : "renders:download";
+  if (!perms.includes(requiredPerm)) {
+    return { ok: false, message: `issuing key no longer has '${requiredPerm}'` };
   }
 
   // --- restriction re-check (IP/origin, rate limit, quota) ---
@@ -654,13 +643,35 @@ export function registerKeyRoutes(app: Express) {
   });
 
   // Issue a short-lived (6h, capped at key expiry) read-only media token.
-  app.get("/api/auth/media-token/:resourceId", requirePermission("media:read"), (req, res) => {
+  // The token is bound to the resource TYPE ("asset" or "render") so a key with
+  // only media:read cannot mint a token for a render download URL.
+  app.get("/api/auth/media-token/:type/:resourceId", requirePermission("media:read"), (req, res) => {
+    const type = String(req.params.type);
+    if (type !== "asset" && type !== "render") {
+      return res.status(400).json({ message: "type must be 'asset' or 'render'" });
+    }
+    // Verify the caller has the permission required for this resource type.
+    if (type === "render") {
+      const key = (req as any).apiKey as ApiKey;
+      const perms = effectivePermissions(key);
+      if (!perms.includes("renders:download")) {
+        return res.status(403).json({ message: "Forbidden: this key does not have 'renders:download' so it cannot mint a render media token." });
+      }
+    }
     const resourceId = String(req.params.resourceId);
     if (!/^[a-f0-9]{4,64}$/i.test(resourceId)) {
       return res.status(400).json({ message: "invalid resourceId" });
     }
+    // verify the resource exists (prevents minting tokens for arbitrary ids)
+    if (type === "asset" && !storage.getAsset(resourceId)) {
+      return res.status(404).json({ message: "asset not found" });
+    }
+    if (type === "render") {
+      const j = storage.getRenderJob(resourceId);
+      if (!j) return res.status(404).json({ message: "render job not found" });
+    }
     const issuingKeyId = String((req as any).apiKey?.id ?? "");
-    const { token, expiresAt } = issueMediaToken(resourceId, issuingKeyId);
+    const { token, expiresAt } = issueMediaToken(type, resourceId, issuingKeyId);
     res.json({ token, expiresAt });
   });
 

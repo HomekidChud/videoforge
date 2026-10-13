@@ -78,7 +78,11 @@ function migrate() {
   );`);
 
   addColumnIfMissing("api_keys", "kind", "TEXT NOT NULL DEFAULT 'private'");
-  addColumnIfMissing("api_keys", "permissions", "TEXT NOT NULL DEFAULT '[]'");
+  // permissions defaults to NULL so the migration below can distinguish
+  // "legacy key, never had explicit permissions" (NULL) from "key that was
+  // explicitly set to no permissions" ('[]'). A NULL value is a one-time
+  // migration trigger; afterwards it is always set to a concrete array.
+  addColumnIfMissing("api_keys", "permissions", "TEXT");
   addColumnIfMissing("api_keys", "expires_at", "INTEGER NOT NULL DEFAULT 0");
   addColumnIfMissing("api_keys", "allowed_origins", "TEXT NOT NULL DEFAULT '[]'");
   addColumnIfMissing("api_keys", "allowed_ips", "TEXT NOT NULL DEFAULT '[]'");
@@ -87,12 +91,14 @@ function migrate() {
   addColumnIfMissing("api_keys", "requests_used", "INTEGER NOT NULL DEFAULT 0");
   addColumnIfMissing("api_keys", "last_used_at", "INTEGER NOT NULL DEFAULT 0");
 
-  // migrate legacy keys: derive permissions from legacy scope
+  // ONE-TIME migration: legacy keys (permissions IS NULL) get permissions
+  // derived from their legacy scope. After this runs, every row has a concrete
+  // permissions array, so an explicit '[]' (locked out) is never overwritten.
   sqlite.exec(`UPDATE api_keys SET permissions = CASE scope
     WHEN 'admin' THEN '[\"media:read\",\"media:upload\",\"media:delete\",\"projects:read\",\"projects:write\",\"timeline:edit\",\"renders:create\",\"renders:download\",\"keys:manage\"]'
     WHEN 'write'  THEN '[\"media:read\",\"media:upload\",\"media:delete\",\"projects:read\",\"projects:write\",\"timeline:edit\",\"renders:create\",\"renders:download\"]'
     ELSE '[\"media:read\",\"projects:read\",\"renders:download\"]'
-  END WHERE permissions = '[]'`);
+  END WHERE permissions IS NULL`);
 }
 migrate();
 
@@ -174,8 +180,20 @@ export const storage = new DatabaseStorage();
 // Key usage logging + stats
 // ---------------------------------------------------------------------------
 
-export function logKeyUsage(keyId: string, method: string, path: string, status: number) {
-  db.insert(keyUsage).values({ keyId, method, path: path.split("?")[0], status, createdAt: Date.now() }).run();
+/**
+ * Log a usage event for a key. Returns the inserted row ID so the
+ * response-finish hook can update ONLY that row's status code (prevents
+ * concurrent requests sharing a key/method/path from having their statuses
+ * corrupted together).
+ */
+export function logKeyUsage(keyId: string, method: string, path: string, status: number): number {
+  const r = db.insert(keyUsage).values({ keyId, method, path: path.split("?")[0], status, createdAt: Date.now() }).returning({ id: keyUsage.id }).get();
+  return r.id;
+}
+
+/** Update a specific usage row's status code (called from the finish hook). */
+export function updateKeyUsageStatus(rowId: number, status: number) {
+  db.update(keyUsage).set({ status }).where(eq(keyUsage.id, rowId)).run();
 }
 
 export function keyUsageStats(keyId: string) {

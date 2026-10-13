@@ -490,8 +490,8 @@ function CreateKeyDialog({
     setPerms((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
 
   const kindHelp = kind === "public"
-    ? "Public keys are safe to embed in a browser or app. They are always read-only and cannot manage other keys."
-    : "Private keys are server-side secrets. They can hold any permission including admin.";
+    ? "Public keys are read-only and cannot manage other keys — but they still expose ALL readable media/projects in your workspace. Treat them as sensitive: rotate immediately if leaked."
+    : "Private keys are server-side secrets. They can hold any permission including admin. Never embed in a browser.";
 
   const submit = () => {
     if (!label.trim()) return;
@@ -536,7 +536,7 @@ function CreateKeyDialog({
               }}
             >
               <div className="font-semibold">Public</div>
-              <div className="text-[11px] text-zinc-400 mt-0.5">vf_pub_… — embeddable, read-only</div>
+              <div className="text-[11px] text-zinc-400 mt-0.5">vf_pub_… — read-only, embeddable</div>
             </button>
             <button
               className={`text-xs p-3 rounded border text-left ${kind === "private" ? "border-violet-500 bg-violet-950/30" : "border-zinc-700"}`}

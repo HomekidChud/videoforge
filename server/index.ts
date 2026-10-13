@@ -5,11 +5,17 @@ import { registerRoutes } from "./routes";
 import { registerKeyRoutes, ensureOwnerKeyExists } from "./auth";
 import { serveStatic } from "./static";
 import { createServer } from "node:http";
-import { db } from "./storage";
-import { keyUsage } from "@shared/schema";
-import { and, eq } from "drizzle-orm";
 
 const app = express();
+// trust proxy configuration for IP allowlists (clientIp()).
+// VIDEOFORGE_TRUST_PROXY can be "true", a number of hops, or a specific
+// proxy IP/CIDR. If unset, Express ignores X-Forwarded-For entirely
+// (spoofed headers cannot satisfy an IP allowlist).
+if (process.env.VIDEOFORGE_TRUST_PROXY) {
+  const tp = process.env.VIDEOFORGE_TRUST_PROXY.trim();
+  if (/^\d+$/.test(tp)) app.set("trust proxy", parseInt(tp, 10));
+  else app.set("trust proxy", tp); // "true", IP, or CIDR
+}
 const httpServer = createServer(app);
 
 declare module "http" {
@@ -76,18 +82,14 @@ app.use((req, res, next) => {
       // with status=0) to the ACTUAL response status code so usage logs show
       // real 2xx/4xx/5xx, not a placeholder.
       const key = (req as any).apiKey;
-      if (key && typeof key === "object" && typeof key.id === "string" && !key.id.startsWith("st:")) {
+      const usageRowId = (req as any).vfUsageRowId;
+      if (key && typeof key === "object" && typeof key.id === "string" && !key.id.startsWith("st:") && typeof usageRowId === "number") {
         try {
-          // use drizzle's parameterized update (safe against injection)
-          db.update(keyUsage)
-            .set({ status: res.statusCode })
-            .where(and(
-              eq(keyUsage.keyId, key.id),
-              eq(keyUsage.method, req.method),
-              eq(keyUsage.path, path.split("?")[0]),
-              eq(keyUsage.status, 0)
-            ))
-            .run();
+          // update ONLY the specific row for this request (prevents concurrent
+          // requests sharing a key/method/path from having their statuses
+          // corrupted together)
+          const { updateKeyUsageStatus } = require("./storage");
+          updateKeyUsageStatus(usageRowId, res.statusCode);
         } catch (e) { console.error("[usage-status] update failed:", e); /* non-fatal */ }
       }
       // strip querystring so signed media tokens never appear in logs

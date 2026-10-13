@@ -115,12 +115,14 @@ function clipTimelineDur(c: Clip): number {
   return Math.max(0.1, src / speed);
 }
 
-/** Total timeline duration = max over clips of (start + duration). */
+/** Total timeline duration = max over clips of (start + duration). Uses the
+ * SAME rule as buildFilterGraph: an image (or any clip with an explicit
+ * `duration` > 0) lasts `duration` seconds; a video/audio clip lasts
+ * (outPoint - inPoint) / speed. */
 function timelineTotal(clips: Clip[]): number {
   let end = 0;
   for (const c of clips) {
-    const isImage = c.track === "video" && c.duration !== undefined && c.duration > 0 && c.outPoint - c.inPoint <= 0.01;
-    const d = isImage ? c.duration! : clipTimelineDur(c);
+    const d = c.duration !== undefined && c.duration > 0 ? c.duration : clipTimelineDur(c);
     end = Math.max(end, c.start + d);
   }
   return end;
@@ -190,7 +192,8 @@ function buildFilterGraph(project: Project, assets: Map<string, Asset>): { input
         if (b !== 1 || ct !== 1 || sa !== 1) {
           parts.push(`eq=brightness=${(b - 1).toFixed(3)}:contrast=${ct.toFixed(3)}:saturation=${sa.toFixed(3)}`);
         }
-        if (hu !== 0) parts.push(`hue=h=${(hu * Math.PI / 180).toFixed(4)}`);
+        // hue=h takes DEGREES (hue=H takes radians). Pass degrees directly.
+        if (hu !== 0) parts.push(`hue=h=${hu.toFixed(1)}`);
         if (parts.length > 0) {
           filters.push(`${v}${parts.join(",")}[vf${i}];`);
           v = `[vf${i}]`;

@@ -97,13 +97,17 @@ export const renderJobs = sqliteTable("render_jobs", {
 // API keys. Two kinds:
 //   - private  (vf_live_ / vf_admin_) — server-side secret, can hold any
 //               permission. Never persist the plaintext; store sha256 only.
-//   - public   (vf_pub_)   — safe to embed in a browser/app. Enforced
-//               read-only + only explicitly allow-listed resources. Cannot
-//               manage other keys or upload media.
+//   - public   (vf_pub_)   — read-only key intended for browser/app embedding.
+//               SECURITY NOTE: read-only does NOT mean safe to disclose.
+//               A public key grants read access to ALL media, projects, and
+//               renders covered by its permissions — there is currently NO
+//               per-resource allowlist. Treat a public key as a credential
+//               that exposes your entire workspace's readable content.
+//               Rotate it immediately if it leaks.
 // Fine-grained permissions replace the legacy coarse `scope`. The legacy
 // scope is kept for backwards compatibility and maps onto permissions.
 // Restrictions: expiry, allowed origins, allowed IPs/CIDRs, rate limit
-// (req/hour), quota (total requests), and per-resource allow lists.
+// (req/hour), quota (total requests).
 // ---------------------------------------------------------------------------
 
 export const apiKeys = sqliteTable("api_keys", {

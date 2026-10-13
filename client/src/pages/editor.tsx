@@ -108,8 +108,14 @@ export default function EditorPage() {
 
   const assets = assetsData?.assets ?? [];
 
-  // Token lifecycle for visible resources (thumbnails, preview, render download)
-  useMediaTokenLifecycle([...assets.map((a) => a.id), previewAssetId, renderJobId]);
+  // Token lifecycle for visible resources (thumbnails, preview, render download).
+  // Tokens are typed: assets use "asset", the render job uses "render" — a token
+  // minted for one type cannot be replayed on the other's URL.
+  useMediaTokenLifecycle([
+    ...assets.map((a) => ["asset", a.id] as const),
+    ...(previewAssetId ? [["asset", previewAssetId] as const] : []),
+    ...(renderJobId ? [["render", renderJobId] as const] : []),
+  ]);
 
   // -------------------------------------------------------------- mutations
 
