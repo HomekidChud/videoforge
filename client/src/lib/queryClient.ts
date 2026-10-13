@@ -1,7 +1,6 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import { loadStoredKey } from "@/lib/apiKey";
-
-const API_BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
+import { API_BASE } from "@/lib/client-env";
 
 // Attach Bearer token if we have a stored API key.
 function authHeaders(): Record<string, string> {

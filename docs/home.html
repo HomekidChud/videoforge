@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VideoForge — browser video editor for humans and AI</title>
+  <meta name="description" content="VideoForge is a browser-based video editor with an HTTP API, real-time collaboration, live streaming, and motion-graphics primitives designed for AI agents." />
+  <link rel="stylesheet" href="/docs/docs.css" />
+  <style>
+    /* Homepage-specific styles layered on top of docs.css tokens. */
+    .vf-hero {
+      text-align: center;
+      padding: 96px 24px 72px;
+    }
+    .vf-hero h1 {
+      font-size: clamp(40px, 6vw, 64px);
+      font-weight: 600;
+      color: var(--vf-heading);
+      margin: 0 0 20px;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+    }
+    .vf-hero p {
+      max-width: 620px;
+      margin: 0 auto 32px;
+      color: var(--vf-muted);
+      font-size: 19px;
+      line-height: 30px;
+    }
+    .vf-hero-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .vf-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 22px;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      text-decoration: none;
+      border: 1px solid transparent;
+      transition: border-color .15s, background .15s;
+    }
+    .vf-btn-primary { background: var(--vf-accent); color: #fff; }
+    .vf-btn-primary:hover { background: #2f40d6; text-decoration: none; }
+    .vf-btn-secondary { border-color: var(--vf-border); color: var(--vf-heading); }
+    .vf-btn-secondary:hover { border-color: var(--vf-accent); text-decoration: none; }
+
+    .vf-features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+      padding: 0 24px 64px;
+      max-width: 1080px;
+      margin: 0 auto;
+    }
+    .vf-feature {
+      border: 1px solid var(--vf-border);
+      border-radius: 12px;
+      padding: 24px;
+      background: var(--vf-card-bg);
+    }
+    .vf-feature h3 { margin: 0 0 8px; font-size: 18px; color: var(--vf-heading); }
+    .vf-feature p { margin: 0; font-size: 14px; line-height: 24px; color: var(--vf-muted); }
+    .vf-feature .vf-feature-icon {
+      width: 36px; height: 36px;
+      border-radius: 8px;
+      background: var(--vf-accent-soft);
+      color: var(--vf-accent);
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 16px;
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .vf-code-demo {
+      max-width: 780px;
+      margin: 0 auto 96px;
+      padding: 0 24px;
+    }
+    .vf-code-demo pre {
+      background: var(--vf-code-bg);
+      border: 1px solid var(--vf-border);
+      border-radius: 12px;
+      padding: 20px 24px;
+      overflow-x: auto;
+      font-size: 13px;
+      line-height: 22px;
+      color: var(--vf-fg);
+      font-family: "SF Mono", Menlo, Consolas, monospace;
+    }
+    .vf-code-demo .vf-code-title {
+      font-size: 13px;
+      color: var(--vf-muted);
+      margin: 0 0 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+  </style>
+</head>
+<body>
+  <header class="vf-topbar">
+    <a href="/" class="vf-logo"><span class="vf-logo-mark" aria-hidden="true"></span>VideoForge</a>
+    <nav class="vf-topbar-links">
+      <a href="/docs/">Docs</a>
+      <a href="/docs/api/">API</a>
+      <a href="/docs/guides/intro/">Get started</a>
+      <a href="https://github.com/HomekidChud/videoforge">GitHub</a>
+      <button class="vf-theme-btn" type="button" data-vf-theme aria-label="Switch to dark mode">◐</button>
+    </nav>
+  </header>
+
+  <main>
+    <section class="vf-hero">
+      <h1>Video editing your AI can actually drive.</h1>
+      <p>
+        VideoForge is a browser-based video editor with a strict HTTP API, real-time
+        collaboration, live streaming, and motion-graphics primitives that both
+        humans and LLM agents can work with.
+      </p>
+      <div class="vf-hero-actions">
+        <a href="/docs/guides/intro/" class="vf-btn vf-btn-primary">Read the docs</a>
+        <a href="/docs/api/" class="vf-btn vf-btn-secondary">API reference</a>
+      </div>
+    </section>
+
+    <section class="vf-features">
+      <div class="vf-feature">
+        <div class="vf-feature-icon" aria-hidden="true">◆</div>
+        <h3>Motion graphics</h3>
+        <p>Rectangles, ellipses, lines and progress bars with keyframable width, height and progress — composable into lower thirds, title cards and badges.</p>
+      </div>
+      <div class="vf-feature">
+        <div class="vf-feature-icon" aria-hidden="true">⚡</div>
+        <h3>Strict HTTP API</h3>
+        <p>Every timeline edit is a validated, revertible operation. No silent best-guess behaviour — invalid input throws.</p>
+      </div>
+      <div class="vf-feature">
+        <div class="vf-feature-icon" aria-hidden="true">👥</div>
+        <h3>Live collaboration</h3>
+        <p>Real-time cursors, presence, and shared timelines over WebSocket. See teammates move as you edit.</p>
+      </div>
+      <div class="vf-feature">
+        <div class="vf-feature-icon" aria-hidden="true">🎬</div>
+        <h3>Server-side render</h3>
+        <p>Export MP4 via FFmpeg with the same geometry the browser preview uses — preview and export agree by construction.</p>
+      </div>
+    </section>
+
+    <section class="vf-code-demo">
+      <p class="vf-code-title">Add a lower-third in one API call</p>
+      <pre>POST /api/v1/projects/:projectId/timeline
+{
+  "ops": [
+    { "op": "apply_graphic_preset",
+      "args": { "preset": "lower-third",
+                "id": "lt1", "start": 0, "duration": 4 } },
+    { "op": "add_text_clip",
+      "args": { "text": "Hello, world",
+                "start": 0.2, "duration": 3.6,
+                "x": 0.30, "y": 0.84 } }
+  ]
+}</pre>
+    </section>
+  </main>
+  <script>
+    (function () {
+      var btn = document.querySelector("[data-vf-theme]");
+      var root = document.documentElement;
+      var saved = null;
+      try { saved = localStorage.getItem("vf-theme"); } catch (e) {}
+      if (saved === "dark" || saved === "light") root.setAttribute("data-theme", saved);
+      function apply(t) {
+        root.setAttribute("data-theme", t);
+        try { localStorage.setItem("vf-theme", t); } catch (e) {}
+        if (btn) btn.setAttribute("aria-label", "Switch to " + (t === "dark" ? "light" : "dark") + " mode");
+      }
+      if (btn) btn.addEventListener("click", function () {
+        var cur = root.getAttribute("data-theme") || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+        apply(cur === "dark" ? "light" : "dark");
+      });
+    })();
+  </script>
+</body>
+</html>

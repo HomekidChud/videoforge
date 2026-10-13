@@ -10,6 +10,10 @@ export const ANIMATABLE = {
   brightness: { label: "Brightness", min: -.5, max: .5, step: .01, default: 0 },
   contrast: { label: "Contrast", min: .5, max: 2, step: .01, default: 1 },
   saturation: { label: "Saturation", min: 0, max: 2, step: .01, default: 1 },
+  // Motion-graphics shape properties (read from c.graphic, animated like any other).
+  width: { label: "Width", min: .01, max: 1, step: .01, default: .3 },
+  height: { label: "Height", min: .01, max: 1, step: .01, default: .08 },
+  progress: { label: "Progress", min: 0, max: 1, step: .01, default: 0 },
 } as const;
 export type AnimationProperty = keyof typeof ANIMATABLE;
 export type Bezier = [number, number, number, number];
@@ -47,6 +51,15 @@ export function normalizeKeyframes(raw: any, duration: number): Keyframes {
 export function baseValue(c: Clip, p: AnimationProperty): number {
   if (p === "scale") return c.scale ?? (c.assetId && c.track === "overlay" ? .35 : 1);
   if (p === "y") return c.y ?? (!c.assetId ? .82 : .5);
+  // Motion-graphics shape dimensions/progress live on c.graphic.
+  if (p === "width" || p === "height" || p === "progress") {
+    const g = c.graphic;
+    if (g) {
+      if (p === "width") return g.width;
+      if (p === "height") return g.height;
+      return g.progress ?? 0;
+    }
+  }
   return (c as any)[p] ?? ANIMATABLE[p].default;
 }
 export function easingCurve(e: Easing | undefined): Bezier { return Array.isArray(e) ? e : EASINGS[e === "hold" ? "linear" : e ?? "linear"]; }
@@ -71,7 +84,19 @@ export function animatedValues(c: Clip, timelineTime: number) {
   return out;
 }
 export function evaluateClip(c: Clip, timelineTime: number): Clip {
-  const evaluated = { ...c }; Object.keys(c.keyframes ?? {}).forEach(p => { if (isProperty(p)) (evaluated as any)[p] = valueAt(c, p, timelineTime - c.start); }); return evaluated;
+  const evaluated = { ...c, ...(c.graphic ? { graphic: { ...c.graphic } } : {}) };
+  Object.keys(c.keyframes ?? {}).forEach(p => { if (isProperty(p)) {
+    const v = valueAt(c, p, timelineTime - c.start);
+    // Motion-graphics shape properties live on c.graphic, not the clip.
+    if (p === "width" || p === "height") {
+      if (evaluated.graphic) (evaluated.graphic as any)[p] = v;
+    } else if (p === "progress") {
+      if (evaluated.graphic) (evaluated.graphic as any).progress = v;
+    } else {
+      (evaluated as any)[p] = v;
+    }
+  } });
+  return evaluated;
 }
 /** Clip animation slice. Sampled boundary segments preserve motion to 1/30s; original interior keys remain. */
 export function sliceKeyframes(c: Clip, from: number, to: number): Keyframes | undefined {

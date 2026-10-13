@@ -41,7 +41,7 @@ process.on("SIGINT", () => { killServer(); process.exit(1); });
 async function startServer(): Promise<void> {
   server = spawn("npx", ["tsx", "server/index.ts"], {
     cwd: ROOT,
-    env: { ...process.env, VIDEOFORGE_DB: DB, PORT: String(TEST_PORT), NODE_ENV: "development", VIDEOFORGE_REQUIRE_UI_AUTH: "1" },
+    env: { ...process.env, VIDEOFORGE_DB: DB, PORT: String(TEST_PORT), NODE_ENV: "development" },
     stdio: ["ignore", OUT, OUT],
     detached: true, // own process group, so the whole tsx → node tree is killed on exit
   });
@@ -312,15 +312,14 @@ async function main() {
     assert(String(r.body?.message).includes("revoked"), "message says revoked");
   }
 
-  // --- 15. UI cookie bypass works when VIDEOFORGE_REQUIRE_UI_AUTH != 1
-  console.log("15) UI cookie bypass");
+  // --- 15. UI cookie bypass is REMOVED (was removed in commit 81e744f).
+  // Any vf_ui=1 cookie must be rejected — Bearer only.
+  console.log("15) UI cookie bypass rejected");
   {
-    // note: the running server has REQUIRE_UI_AUTH=1, so this should be 401.
-    // We test the negative here and document the positive in the docs.
     const r = await fetch(`${H}/api/projects`, {
       headers: { "Cookie": "vf_ui=1" },
     });
-    assert(r.status === 401, "UI cookie blocked when REQUIRE_UI_AUTH=1");
+    assert(r.status === 401, "UI cookie blocked (auth is Bearer-only)");
   }
 
   // --- 16. Key restrictions, visibility, public sharing
