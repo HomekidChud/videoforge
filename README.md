@@ -23,6 +23,10 @@ gated behind **API keys with permission scopes** (`read`, `write`, `admin`).
 - **API keys with scopes** (`read` / `write` / `admin`) so you can grant an AI agent
   exactly the permissions it needs and revoke them later
 
+## Editing and animation
+
+The studio supports keyframes on position, scale, rotation, opacity, volume and colour, with a value graph and draggable bezier tween slopes, motion presets, on-canvas move and scale handles, markers, track mute and hide, title presets, copy and paste, and a background colour. Everything is exposed through the timeline ops API (batches, keyframes, frame previews, state evaluation and a capabilities endpoint). See [docs/API.md](docs/API.md).
+
 ## Run
 
 ```bash

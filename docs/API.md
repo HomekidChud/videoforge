@@ -391,8 +391,37 @@ Supported `op` values:
 | `add_text_clip` | `text`, `start`, `duration`, plus style fields (`x`, `y`, `textSize`, `textColor`, `textBg`, `fadeIn`, `fadeOut`, `opacity`) | Add a standalone title on the overlay track (no asset needed). |
 | `update_clip` | `clipId` plus any clip field to change | Patch speed, fades, `filter` (`none\|mono\|sepia\|vivid\|cool\|warm\|faded`), `brightness`, `contrast`, `saturation`, `opacity`, `x`, `y`, `scale`, text style, timing. Values equal to defaults reset the field. |
 | `split_clip` | `clipId`, `at` (timeline seconds) | Split a clip in two at least 0.1s from either edge. |
-| `set_project` | `fps`?, `resolution`? | Change project frame rate or canvas size. |
+| `set_project` | `fps`?, `resolution`?, `background`? | Change frame rate, canvas size or background colour (`#rrggbb`). |
+| `set_keyframes` | `clipId`, `property`, `keyframes: [{time, value, easing?}]` | Replace the animation curve of one property. `time` is seconds from the clip start. An empty list clears it. |
+| `upsert_keyframe` | `clipId`, `property`, `time`, `value`, `easing`? | Add or replace one keyframe. |
+| `remove_keyframe` | `clipId`, `property`, `time` | Delete the keyframe at that time. |
+| `apply_motion` | `clipId`, `preset` (`fade`, `slide-left`, `rise`, `zoom`, `pop`, `drift`) | Apply a ready-made animation. Only the properties the preset animates are replaced. |
+| `duplicate_clip` | `clipId`, `start`? | Copy a clip, including keyframes. |
+| `ripple_delete` | `clipId` | Remove a clip and close the gap on its track. |
+| `set_track` | `track`, `muted`?, `hidden`?, `locked`? | Mute or hide a whole track. |
+| `add_marker` / `remove_marker` | `time`, `label`?, `color`? / `markerId` | Timeline markers, useful as named cue points. |
 | `reorder` | `order: [clipId, clipId, ...]` | Reorder clips on the timeline. Must include every clip id exactly once. Video clips get re-spaced sequentially. |
+
+New clip fields: `rotation` (degrees), `blur` (px), `fit` (`contain\|cover`), `flipX`, `flipY`, `label`, and `keyframes`. Timeline fields: `background`, `markers`, `tracks`. Scale accepts 0.1 to 2.
+
+Batches: send `{ "ops": [ {"op": ..., "args": ...}, ... ] }` (maximum 100) to apply many edits atomically. If any op fails the whole batch is rejected with status 422 and a `failedIndex`.
+
+### Keyframes and easing
+
+Animatable properties: `x`, `y`, `scale`, `rotation`, `opacity`, `volume`, `brightness`, `contrast`, `saturation`. Keyframe `time` is clip-relative seconds. The `easing` on a keyframe shapes the segment leaving it: `linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out`, `back-out` (overshoot), `hold` (step), or a custom cubic bezier `[x1, y1, x2, y2]` where x is 0..1 and y may overshoot. Keyframes created through the API default to `linear`.
+
+```json
+{ "op": "set_keyframes",
+  "args": { "clipId": "c1", "property": "x",
+    "keyframes": [ {"time": 0, "value": 0.2, "easing": [0.34, 1.56, 0.64, 1]},
+                     {"time": 2, "value": 0.8} ] } }
+```
+
+### Inspecting results
+
+- `GET /api/capabilities` lists every op, property range, easing preset and motion preset, so an agent can discover the editor surface without reading docs.
+- `GET /api/projects/:id/state?t=1.5` returns each clip's evaluated values (position, scale, opacity and so on) at that time, with keyframes resolved.
+- `GET /api/projects/:id/frame?t=1.5&width=640` returns a PNG still of the composed frame at that time. Use it to check an edit visually before exporting.
 
 Example — append a clip:
 
