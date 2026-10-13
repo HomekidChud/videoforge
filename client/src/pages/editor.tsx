@@ -1,756 +1,265 @@
-import { useEffect, useRef, useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
-import type { Timeline, Clip } from "@shared/schema";
-
-// ---------------------------------------------------------------------------
-// Types returned by /api/media and /api/projects
-// ---------------------------------------------------------------------------
-
-type AssetDTO = {
-  id: string;
-  filename: string;
-  kind: "video" | "audio" | "image";
-  mime: string;
-  duration: number;
-  width: number;
-  height: number;
-  sizeBytes: number;
-  uploadUrl: string;
-  thumbnailUrl: string;
-  createdAt: number;
-};
-
-type ProjectDTO = {
-  id: string;
-  name: string;
-  timeline: Timeline;
-  createdAt: number;
-  updatedAt: number;
-};
-
-type RenderJobDTO = {
-  id: string;
-  projectId: string;
-  status: "queued" | "rendering" | "done" | "error";
-  progress: number;
-  outputPath: string | null;
-  error: string | null;
-  createdAt: number;
-  updatedAt: number;
-};
-
-// ---------------------------------------------------------------------------
-// API_BASE resolution (dev vs deployed)
-// ---------------------------------------------------------------------------
-
-const API_BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
-
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Play, Pause, SkipBack, SkipForward, Scissors, Undo2, Redo2, Magnet, Plus, Upload, Type, Film, Music2, Image as ImageIcon, Download, Check, AlertCircle, Loader2, FolderOpen, FilePlus2, Trash2, Share2, X, Lock, Globe } from "lucide-react";
+import { clipDuration, clipEnd, normalizeTimeline, timelineDuration, type Clip, type Timeline } from "@shared/timeline";
+import { api, API_BASE } from "@/lib/api";
 import { loadStoredKey } from "@/lib/apiKey";
 import { useAuthedMediaUrl, useMediaTokenLifecycle } from "@/lib/mediaUrl";
+import { EMPTY_TIMELINE, clampClipPatch, duplicateClip, newClip, rippleDelete, round, sameTimeline, snapshot, splitClip, timecode, uid, type AssetDTO, type ProjectDTO, type RenderDTO } from "@/lib/editor-model";
+import { ForgeNav } from "@/components/forge-shell";
+import ForgePreview from "@/components/forge-preview";
+import ForgeTimeline, { type TimelineGesture } from "@/components/forge-timeline";
+import { ClipInspector, ProjectInspector } from "@/components/forge-inspector";
 
-async function api<T>(method: string, url: string, body?: any): Promise<T> {
-  const key = loadStoredKey();
-  const res = await fetch(`${API_BASE}${url}`, {
-    method,
-    headers: {
-      ...(body ? { "Content-Type": "application/json" } : {}),
-      ...(key ? { Authorization: `Bearer ${key}` } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
+type SaveState = "empty" | "saved" | "dirty" | "saving" | "error" | "readonly";
+type Me = { id: string; scope: "read" | "write" | "admin" };
+
+function uploadWithProgress(files: File[], onProgress: (pct: number) => void): Promise<{ assets: AssetDTO[] }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest(), form = new FormData(), key = loadStoredKey();
+    files.forEach((f) => form.append("files", f));
+    xhr.open("POST", `${API_BASE}/api/media/upload`);
+    if (key) xhr.setRequestHeader("Authorization", `Bearer ${key}`);
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
+    xhr.onload = () => {
+      let body: any = {}; try { body = JSON.parse(xhr.responseText); } catch { /* non-json */ }
+      xhr.status >= 200 && xhr.status < 300 ? resolve(body) : reject(new Error(body.message || `Upload failed (${xhr.status})`));
+    };
+    xhr.onerror = () => reject(new Error("Network error during upload"));
+    xhr.send(form);
   });
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`${res.status}: ${t}`);
-  }
-  return res.json();
 }
-
-// ---------------------------------------------------------------------------
-// Editor state
-// ---------------------------------------------------------------------------
 
 export default function EditorPage() {
   const qc = useQueryClient();
-  const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
-  const [projectName, setProjectName] = useState("Untitled project");
-  const [timeline, setTimeline] = useState<Timeline>({
-    version: 1,
-    fps: 30,
-    resolution: { width: 1280, height: 720 },
-    clips: [],
-  });
-  const [projectId, setProjectId] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-  const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const [renderJobId, setRenderJobId] = useState<string | null>(null);
-
-  // Media URL builders scoped to specific resources (asset / render job).
   const mediaUrl = useAuthedMediaUrl();
+  const me = useQuery<Me>({ queryKey: ["/api/auth/me"] });
+  const readOnly = me.data?.scope === "read";
+  const canPublish = me.data?.scope === "admin";
 
-  // ---------------------------------------------------------------- queries
+  // ---------------------------------------------------------------- timeline state with history
+  const [timeline, setTimelineState] = useState<Timeline>(EMPTY_TIMELINE());
+  const tlRef = useRef(timeline);
+  const past = useRef<Timeline[]>([]), future = useRef<Timeline[]>([]);
+  const gestureBase = useRef<Timeline | null>(null);
+  const [revision, setRevision] = useState(0), [, bumpHistory] = useState(0);
+  const apply = useCallback((next: Timeline) => { tlRef.current = next; setTimelineState(next); setRevision((r) => r + 1); }, []);
+  const mutate = useCallback((fn: (t: Timeline) => Timeline) => {
+    const base = tlRef.current, next = fn(base);
+    if (sameTimeline(base, next)) return;
+    past.current = [...past.current.slice(-99), snapshot(base)]; future.current = []; bumpHistory((n) => n + 1); apply(next);
+  }, [apply]);
+  const undo = useCallback(() => { const p = past.current.pop(); if (!p) return; future.current.push(snapshot(tlRef.current)); bumpHistory((n) => n + 1); apply(p); }, [apply]);
+  const redo = useCallback(() => { const n = future.current.pop(); if (!n) return; past.current.push(snapshot(tlRef.current)); bumpHistory((x) => x + 1); apply(n); }, [apply]);
 
-  const { data: assetsData } = useQuery<{ assets: AssetDTO[] }>({
-    queryKey: ["/api/media"],
-  });
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [projectName, setProjectName] = useState("Untitled project");
+  const [visibility, setVisibility] = useState<"private" | "public">("private");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [time, setTime] = useState(0), [playing, setPlaying] = useState(false);
+  const [pps, setPps] = useState(64), [snapping, setSnapping] = useState(true);
+  const [panel, setPanel] = useState<"media" | "projects">("media");
+  const [notice, setNotice] = useState<{ text: string; tone: "info" | "error" } | null>(null);
+  const [upload, setUpload] = useState<{ pct: number } | null>(null);
+  const [saveState, setSaveState] = useState<SaveState>("empty"), [saveError, setSaveError] = useState("");
+  const [exportOpen, setExportOpen] = useState(false), [renderJobId, setRenderJobId] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const toast = useCallback((text: string, tone: "info" | "error" = "info") => { setNotice({ text, tone }); }, []);
+  useEffect(() => { if (!notice) return; const t = setTimeout(() => setNotice(null), notice.tone === "error" ? 7000 : 3000); return () => clearTimeout(t); }, [notice]);
 
-  const { data: projectsData } = useQuery<{ projects: ProjectDTO[] }>({
-    queryKey: ["/api/projects"],
-  });
+  const assetsQ = useQuery<{ assets: AssetDTO[] }>({ queryKey: ["/api/media"] });
+  const projectsQ = useQuery<{ projects: ProjectDTO[] }>({ queryKey: ["/api/projects"] });
+  const assets = assetsQ.data?.assets ?? [];
+  const byId = useMemo(() => new Map(assets.map((a) => [a.id, a])), [assets]);
+  const duration = timelineDuration(timeline);
+  const renderQ = useQuery<RenderDTO>({ queryKey: ["/api/renders", renderJobId], enabled: !!renderJobId, refetchInterval: (q) => (q.state.data && ["done", "error"].includes(q.state.data.status) ? false : 1200) });
+  useMediaTokenLifecycle([...assets.map((a) => a.id), renderJobId]);
 
-  const renderJobQ = useQuery<RenderJobDTO>({
-    queryKey: ["/api/renders", renderJobId],
-    enabled: !!renderJobId,
-    refetchInterval: (q) =>
-      q.state.data && (q.state.data.status === "done" || q.state.data.status === "error") ? false : 2000,
-  });
-
-  const assets = assetsData?.assets ?? [];
-
-  // Token lifecycle for visible resources (thumbnails, preview, render download)
-  useMediaTokenLifecycle([...assets.map((a) => a.id), previewAssetId, renderJobId]);
-
-  // -------------------------------------------------------------- mutations
-
-  const uploadFiles = useMutation({
-    mutationFn: async (files: FileList) => {
-      const fd = new FormData();
-      Array.from(files).forEach((f) => fd.append("files", f));
-      const key = loadStoredKey();
-      const res = await fetch(`${API_BASE}/api/media/upload`, {
-        method: "POST",
-        body: fd,
-        headers: key ? { Authorization: `Bearer ${key}` } : {},
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json() as Promise<{ assets: AssetDTO[] }>;
+  // ---------------------------------------------------------------- gestures
+  const gesture: TimelineGesture = useMemo(() => ({
+    begin: () => { if (!gestureBase.current) gestureBase.current = snapshot(tlRef.current); },
+    update: (id, patch) => {
+      const t = tlRef.current, c = t.clips.find((x) => x.id === id); if (!c) return;
+      try { apply({ ...t, clips: t.clips.map((x) => (x.id === id ? clampClipPatch(x, patch, byId.get(x.assetId)) : x)) }); } catch { /* invalid intermediate value */ }
     },
-    onMutate: () => setIsUploading(true),
-    onSuccess: (d) => {
-      qc.invalidateQueries({ queryKey: ["/api/media"] });
-      setToast(`Uploaded ${d.assets.length} file(s)`);
-      setIsUploading(false);
-    },
-    onError: (e) => {
-      setToast(`Upload failed: ${e.message}`);
-      setIsUploading(false);
-    },
-  });
+    end: () => { const base = gestureBase.current; gestureBase.current = null; if (base && !sameTimeline(base, tlRef.current)) { past.current = [...past.current.slice(-99), base]; future.current = []; bumpHistory((n) => n + 1); } },
+  }), [apply, byId]);
+  const patchClip = useCallback((id: string, p: Partial<Clip>, live = false) => { if (live && gestureBase.current) gesture.update(id, p); else { gesture.begin(); gesture.update(id, p); gesture.end(); } }, [gesture]);
 
-  const createProject = useMutation({
-    mutationFn: async () => {
-      const p = await api<{ id: string }>("POST", "/api/projects", {
-        name: projectName,
-        timeline,
-      });
-      return p;
-    },
-    onSuccess: (p) => {
-      setProjectId(p.id);
-      qc.invalidateQueries({ queryKey: ["/api/projects"] });
-      setToast("Project created");
-    },
-  });
-
-  const saveProject = useMutation({
-    mutationFn: async () => {
-      if (!projectId) throw new Error("no project");
-      return api<ProjectDTO>("PUT", `/api/projects/${projectId}`, {
-        name: projectName,
-        timeline,
-      });
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/projects"] });
-      setToast("Saved");
-    },
-  });
-
-  const submitRender = useMutation({
-    mutationFn: async () => {
-      if (!projectId) throw new Error("Create or load a project first");
-      return api<{ jobId: string }>("POST", "/api/renders", { projectId });
-    },
-    onSuccess: (r) => {
-      setRenderJobId(r.jobId);
-      setToast("Render queued");
-    },
-  });
-
-  // ------------------------------------------------------- render polling
-
-  // Download URL is derived from current token state, so it never goes stale.
-  const renderDone = renderJobQ.data?.status === "done";
-  const renderResultUrl = renderDone && renderJobId
-    ? mediaUrl(renderJobId, `/api/renders/${renderJobId}/download`)
-    : null;
-
-  // --------------------------------------------------------------- editing
-
-  function addClip(asset: AssetDTO) {
-    const clip: Clip = {
-      id: `${Date.now().toString(36)}${Math.floor(Math.random() * 1000)}`,
-      assetId: asset.id,
-      track: asset.kind === "audio" ? "audio" : "video",
-      start: totalDuration(),
-      inPoint: 0,
-      outPoint: asset.duration || 5,
-      volume: 1,
-      muted: false,
+  // ---------------------------------------------------------------- playback clock
+  const timeRef = useRef(0); timeRef.current = time;
+  useEffect(() => {
+    if (!playing) return;
+    let raf = 0, last = performance.now();
+    const tick = (now: number) => {
+      const t = timeRef.current + (now - last) / 1000; last = now;
+      if (t >= duration) { setTime(duration); setPlaying(false); return; }
+      setTime(t); raf = requestAnimationFrame(tick);
     };
-    setTimeline((t) => ({ ...t, clips: [...t.clips, clip] }));
-    setSelectedClipId(clip.id);
+    raf = requestAnimationFrame(tick); return () => cancelAnimationFrame(raf);
+  }, [playing, duration]);
+  const togglePlay = useCallback(() => { if (!duration) return; if (!playing && timeRef.current >= duration - 0.05) setTime(0); setPlaying((p) => !p); }, [duration, playing]);
+  const seek = useCallback((t: number) => setTime(Math.min(Math.max(0, t), Math.max(duration, 0))), [duration]);
+
+  // ---------------------------------------------------------------- persistence
+  const saving = useRef<Promise<void> | null>(null), savedRevision = useRef(0), idRef = useRef<string | null>(null), nameRef = useRef(projectName);
+  idRef.current = projectId; nameRef.current = projectName;
+  const saveNow = useCallback(async (): Promise<void> => {
+    if (readOnly) return;
+    while (saving.current) await saving.current;
+    const rev = revisionRef.current;
+    if (rev === savedRevision.current || (!idRef.current && !tlRef.current.clips.length)) { setSaveState(idRef.current ? "saved" : "empty"); return; }
+    const job = (async () => {
+      setSaveState("saving"); setSaveError("");
+      try {
+        const body = { name: nameRef.current, timeline: tlRef.current };
+        if (!idRef.current) { const p = await api<ProjectDTO>("POST", "/api/projects", body); idRef.current = p.id; setProjectId(p.id); setVisibility(p.visibility ?? "private"); }
+        else await api<ProjectDTO>("PUT", `/api/projects/${idRef.current}`, body);
+        savedRevision.current = rev; setSaveState(revisionRef.current === rev ? "saved" : "dirty");
+        qc.invalidateQueries({ queryKey: ["/api/projects"] });
+      } catch (e: any) { setSaveState("error"); setSaveError(e.message); }
+    })();
+    saving.current = job; try { await job; } finally { saving.current = null; }
+  }, [qc, readOnly]);
+  const revisionRef = useRef(0); revisionRef.current = revision;
+  useEffect(() => { if (readOnly) { setSaveState("readonly"); return; } if (!revision) return; setSaveState((s) => (s === "saving" ? s : "dirty")); const t = setTimeout(() => { saveNow(); }, 1400); return () => clearTimeout(t); }, [revision, readOnly, saveNow, projectName]);
+  useEffect(() => { const h = (e: BeforeUnloadEvent) => { if (saveState === "dirty" || saveState === "saving" || saveState === "error") { e.preventDefault(); e.returnValue = ""; } }; window.addEventListener("beforeunload", h); return () => window.removeEventListener("beforeunload", h); }, [saveState]);
+
+  // Replace the whole document (open / new project) and mark it as already saved.
+  function loadDocument(t: Timeline, id: string | null, name: string, vis: "private" | "public") {
+    past.current = []; future.current = []; gestureBase.current = null;
+    const nextRev = revisionRef.current + 1; savedRevision.current = nextRev;
+    tlRef.current = t; setTimelineState(t); setRevision(nextRev);
+    idRef.current = id; setProjectId(id); setProjectName(name); setVisibility(vis); setSelectedId(null); setTime(0); setPlaying(false); setRenderJobId(null); setExportOpen(false);
+    setSaveState(id ? "saved" : "empty"); setSaveError(""); bumpHistory((n) => n + 1);
   }
+  async function openProject(p: ProjectDTO) { await saveNow(); loadDocument(normalizeTimeline(p.timeline), p.id, p.name, p.visibility ?? "private"); setPanel("media"); }
+  async function newProject() { await saveNow(); loadDocument(EMPTY_TIMELINE(), null, "Untitled project", "private"); }
+  const deleteProject = useMutation({ mutationFn: (id: string) => api("DELETE", `/api/projects/${id}`), onSuccess: (_d, id) => { qc.invalidateQueries({ queryKey: ["/api/projects"] }); if (id === projectId) newProject(); toast("Project deleted"); }, onError: (e) => toast(e.message, "error") });
 
-  function totalDuration(): number {
-    return timeline.clips
-      .filter((c) => c.track === "video")
-      .reduce((s, c) => s + (c.outPoint - c.inPoint), 0);
+  // ---------------------------------------------------------------- editing commands
+  const endOfVideo = () => tlRef.current.clips.filter((c) => c.track === "video").reduce((m, c) => Math.max(m, clipEnd(c)), 0);
+  const addAsset = useCallback((asset: AssetDTO, track?: Clip["track"], start?: number) => {
+    if (readOnly) return toast("This key is read-only.", "error");
+    const clip = newClip(asset, start ?? (asset.kind === "audio" ? 0 : endOfVideo()), track); mutate((t) => ({ ...t, clips: [...t.clips, clip] })); setSelectedId(clip.id);
+  }, [mutate, readOnly, toast]);
+  const addTitle = () => {
+    if (readOnly) return;
+    const clip: Clip = { id: uid(), assetId: "", track: "overlay", start: round(time), inPoint: 0, outPoint: 3, volume: 1, muted: false, text: "Your title", textSize: 8 };
+    mutate((t) => ({ ...t, clips: [...t.clips, clip] })); setSelectedId(clip.id);
+  };
+  const selected = timeline.clips.find((c) => c.id === selectedId) ?? null;
+  const split = useCallback(() => {
+    const target = selected ?? [...tlRef.current.clips].filter((c) => timeRef.current > c.start + 0.1 && timeRef.current < clipEnd(c) - 0.1).sort((a, b) => (a.track === "video" ? -1 : 0) - (b.track === "video" ? -1 : 0))[0];
+    if (!target) return toast("Move the playhead over a clip to split it.");
+    const next = splitClip(tlRef.current, target.id, timeRef.current);
+    if (!next) return toast("Place the playhead inside the clip, at least 0.1s from its edges.");
+    mutate(() => next); setSelectedId(target.id);
+  }, [selected, mutate, toast]);
+  const remove = useCallback((ripple = false) => { if (!selected || readOnly) return; mutate((t) => ripple ? rippleDelete(t, selected.id) : { ...t, clips: t.clips.filter((c) => c.id !== selected.id) }); setSelectedId(null); }, [selected, mutate, readOnly]);
+  const duplicate = useCallback(() => { if (!selected || readOnly) return; const r = duplicateClip(tlRef.current, selected.id); if (r) { mutate(() => r.timeline); setSelectedId(r.id); } }, [selected, mutate, readOnly]);
+  const trimToPlayhead = (edge: "in" | "out") => {
+    if (!selected || readOnly) return; const rel = time - selected.start, speed = selected.assetId ? selected.speed ?? 1 : 1;
+    if (rel <= 0.1 || rel >= clipDuration(selected) - 0.1) return toast("Place the playhead inside the selected clip.");
+    patchClip(selected.id, edge === "in" ? { start: round(time), inPoint: round(selected.inPoint + rel * speed) } : { outPoint: round(selected.inPoint + rel * speed) });
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement, typing = ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) && (el as HTMLInputElement).type !== "range" && (el as HTMLInputElement).type !== "checkbox";
+      if (typing || el.isContentEditable) return;
+      const mod = e.metaKey || e.ctrlKey, key = e.key.toLowerCase();
+      if (key === " " && el.tagName !== "BUTTON") { e.preventDefault(); togglePlay(); }
+      else if (mod && key === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+      else if (mod && key === "y") { e.preventDefault(); redo(); }
+      else if (mod && key === "d") { e.preventDefault(); duplicate(); }
+      else if (mod && key === "s") { e.preventDefault(); saveNow(); }
+      else if (!mod && key === "s") split();
+      else if (e.key === "Delete" || e.key === "Backspace") { if (selected) { e.preventDefault(); remove(e.shiftKey); } }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); seek(time - (e.shiftKey ? 1 : 1 / timeline.fps)); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); seek(time + (e.shiftKey ? 1 : 1 / timeline.fps)); }
+      else if (e.key === "Home") { e.preventDefault(); seek(0); } else if (e.key === "End") { e.preventDefault(); seek(duration); }
+      else if (e.key === "[") trimToPlayhead("in"); else if (e.key === "]") trimToPlayhead("out");
+      else if (e.key === "+" || e.key === "=") setPps((p) => Math.min(260, Math.round(p * 1.25))); else if (e.key === "-") setPps((p) => Math.max(8, Math.round(p * 0.8)));
+    };
+    window.addEventListener("keydown", onKey); return () => window.removeEventListener("keydown", onKey);
+  });
+
+  // ---------------------------------------------------------------- upload / export
+  async function importFiles(list: FileList | File[]) {
+    const files = Array.from(list).filter((f) => /^(video|audio|image)\//.test(f.type) || /\.(mp4|mov|mkv|webm|mp3|wav|m4a|png|jpe?g|webp|gif)$/i.test(f.name));
+    if (!files.length) return toast("Choose video, audio or image files.", "error");
+    if (readOnly) return toast("This key is read-only.", "error");
+    setUpload({ pct: 0 });
+    try { const r = await uploadWithProgress(files, (pct) => setUpload({ pct })); await qc.invalidateQueries({ queryKey: ["/api/media"] }); toast(`Imported ${r.assets.length} file${r.assets.length > 1 ? "s" : ""}`); }
+    catch (e: any) { toast(e.message, "error"); } finally { setUpload(null); }
   }
+  const startRender = useMutation({
+    mutationFn: async () => { await saveNow(); if (!idRef.current) throw new Error("Add at least one clip before exporting."); return api<{ jobId: string }>("POST", "/api/renders", { projectId: idRef.current }); },
+    onSuccess: (r) => { setRenderJobId(r.jobId); setExportOpen(true); }, onError: (e) => { toast(e.message, "error"); },
+  });
+  const toggleVisibility = async () => {
+    if (!projectId) return; const next = visibility === "private" ? "public" : "private";
+    try { await api("PUT", `/api/projects/${projectId}`, { visibility: next }); setVisibility(next); qc.invalidateQueries({ queryKey: ["/api/projects"] }); toast(next === "public" ? "Project is now public. Render a video to share it." : "Project is private again."); }
+    catch (e: any) { toast(e.message, "error"); }
+  };
+  const copyPublicLink = async () => { try { await navigator.clipboard.writeText(`${location.href.split("#")[0]}#/share/${projectId}`); toast("Public link copied"); } catch { toast("Couldn’t access the clipboard.", "error"); } };
+  const setProjectSettings = (p: { fps?: number; resolution?: { width: number; height: number } }) => mutate((t) => ({ ...t, ...p }));
 
-  function updateClip(id: string, patch: Partial<Clip>) {
-    setTimeline((t) => ({
-      ...t,
-      clips: t.clips.map((c) => (c.id === id ? { ...c, ...patch } : c)),
-    }));
-  }
+  const render = renderQ.data, renderUrl = render?.status === "done" && renderJobId ? mediaUrl(renderJobId, `/api/renders/${renderJobId}/download`) : "";
+  const saveLabel = { empty: "Not saved yet", saved: "All changes saved", dirty: "Unsaved changes", saving: "Saving…", error: "Save failed", readonly: "Read-only key" }[saveState];
 
-  function removeClip(id: string) {
-    setTimeline((t) => ({ ...t, clips: t.clips.filter((c) => c.id !== id) }));
-    if (selectedClipId === id) setSelectedClipId(null);
-  }
+  return <div className="forge-app studio" onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragOver(true); } }} onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }} onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); setDragOver(false); importFiles(e.dataTransfer.files); } }}>
+    <ForgeNav active="editor" />
+    <div className="studio-bar">
+      <div className="project-title"><input aria-label="Project name" className="title-input" value={projectName} disabled={readOnly} maxLength={200} onChange={(e) => setProjectName(e.target.value)} data-testid="input-project-title" />
+        <span className={`save-state ${saveState}`} role="status" data-testid="text-save-state" title={saveError}>{saveState === "saving" ? <Loader2 size={13} className="spin" /> : saveState === "error" ? <AlertCircle size={13} /> : saveState === "saved" ? <Check size={13} /> : null}{saveLabel}</span>
+        {saveState === "error" && <button className="ghost-link" onClick={() => saveNow()}>Retry</button>}</div>
+      <div className="studio-actions">
+        <button className="icon-btn" onClick={undo} disabled={!past.current.length || readOnly} aria-label="Undo" title="Undo (Ctrl+Z)" data-testid="button-undo"><Undo2 size={17} /></button>
+        <button className="icon-btn" onClick={redo} disabled={!future.current.length || readOnly} aria-label="Redo" title="Redo (Ctrl+Shift+Z)"><Redo2 size={17} /></button>
+        <span className="divider" />
+        <button className={`icon-btn ${snapping ? "active accent" : ""}`} aria-pressed={snapping} onClick={() => setSnapping(!snapping)} aria-label="Toggle snapping" title="Snapping"><Magnet size={17} /></button>
+        <button className="secondary-btn hide-sm" onClick={addTitle} disabled={readOnly} data-testid="button-add-title"><Type size={15} />Add title</button>
+        <button className="secondary-btn hide-sm" onClick={() => setSelectedId(null)} title="Project settings and sharing"><Share2 size={15} />{visibility === "public" ? "Public" : "Share"}</button>
+        <button className="primary-btn" onClick={() => startRender.mutate()} disabled={!timeline.clips.length || startRender.isPending || (readOnly && false)} data-testid="button-export">{startRender.isPending ? <Loader2 size={15} className="spin" /> : <Download size={15} />}Export</button>
+      </div></div>
 
-  function moveClip(id: string, dir: -1 | 1) {
-    setTimeline((t) => {
-      const i = t.clips.findIndex((c) => c.id === id);
-      const j = i + dir;
-      if (i < 0 || j < 0 || j >= t.clips.length) return t;
-      const clips = [...t.clips];
-      [clips[i], clips[j]] = [clips[j], clips[i]];
-      return { ...t, clips };
-    });
-  }
+    <div className="studio-grid">
+      <aside className="library" aria-label="Library">
+        <div className="panel-tabs"><button className={panel === "media" ? "active" : ""} onClick={() => setPanel("media")}>Media</button><button className={panel === "projects" ? "active" : ""} onClick={() => setPanel("projects")}>Projects</button></div>
+        {panel === "media" ? <>
+          <label className={`dropzone ${readOnly ? "disabled" : ""}`} data-testid="button-upload">{upload ? <><Loader2 className="spin" size={18} /><span>Uploading {Math.round(upload.pct * 100)}%</span><i style={{ width: `${upload.pct * 100}%` }} /></> : <><Upload size={19} /><b>Import media</b><span>Video, audio or images — or drop files anywhere</span></>}
+            <input type="file" multiple accept="video/*,audio/*,image/*" disabled={readOnly || !!upload} onChange={(e) => { if (e.target.files?.length) importFiles(e.target.files); e.target.value = ""; }} /></label>
+          <div className="asset-list">
+            {assetsQ.isLoading && Array.from({ length: 3 }, (_, i) => <div key={i} className="asset-card skeleton" />)}
+            {assetsQ.error && <p className="error-box">{assetsQ.error.message}</p>}
+            {!assetsQ.isLoading && !assets.length && <div className="library-empty"><Film size={24} /><b>No media yet</b><p>Import footage to start building your timeline.</p></div>}
+            {assets.map((a) => <div key={a.id} className="asset-card" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/x-vf-asset", a.id); e.dataTransfer.effectAllowed = "copy"; }} data-testid={`card-asset-${a.id}`}>
+              <div className="asset-thumb">{a.kind === "audio" ? <Music2 size={22} /> : <img src={mediaUrl(a.id, `/api/media/${a.id}/thumb`) || undefined} crossOrigin="anonymous" alt="" onError={(e) => ((e.target as HTMLImageElement).style.visibility = "hidden")} />}<span className="kind-pill">{a.kind === "audio" ? <Music2 size={11} /> : a.kind === "image" ? <ImageIcon size={11} /> : <Film size={11} />}{a.kind === "image" ? "IMG" : timecode(a.duration, 30).slice(0, 5)}</span></div>
+              <div className="asset-meta"><span title={a.filename}>{a.filename}</span><button className="icon-btn" disabled={readOnly} aria-label={`Add ${a.filename} to timeline`} title="Add to timeline" onClick={() => addAsset(a)}><Plus size={16} /></button></div></div>)}
+          </div></> : <div className="asset-list">
+          <button className="secondary-btn full" onClick={newProject} disabled={readOnly}><FilePlus2 size={15} />New project</button>
+          {(projectsQ.data?.projects ?? []).map((p) => <div className={`project-card ${p.id === projectId ? "current" : ""}`} key={p.id}><button onClick={() => openProject(p)} data-testid={`button-load-project-${p.id}`}><FolderOpen size={16} /><span><b>{p.name}</b><small className="muted">{p.timeline.clips.length} clips · {p.visibility === "public" ? "Public" : "Private"}</small></span>{p.visibility === "public" ? <Globe size={14} /> : <Lock size={14} />}</button><button className="icon-btn danger" disabled={readOnly} aria-label={`Delete ${p.name}`} onClick={() => { if (confirm(`Delete “${p.name}”? This cannot be undone.`)) deleteProject.mutate(p.id); }}><Trash2 size={14} /></button></div>)}
+          {!projectsQ.isLoading && !projectsQ.data?.projects.length && <div className="library-empty"><FolderOpen size={24} /><b>No saved projects</b><p>Projects save automatically as you edit.</p></div>}</div>}
+      </aside>
 
-  const selectedClip = timeline.clips.find((c) => c.id === selectedClipId) ?? null;
-  const selectedAsset = selectedClip
-    ? assets.find((a) => a.id === selectedClip.assetId)
-    : undefined;
+      <main className="monitor"><ForgePreview timeline={timeline} assets={assets} time={time} playing={playing} mediaUrl={mediaUrl} onError={(m) => toast(m, "error")} />
+        <div className="transport"><button className="icon-btn" aria-label="Jump to start" onClick={() => seek(0)}><SkipBack size={17} /></button><button className="play-btn" onClick={togglePlay} disabled={!duration} aria-label={playing ? "Pause" : "Play"} data-testid="button-play">{playing ? <Pause size={20} /> : <Play size={20} />}</button><button className="icon-btn" aria-label="Jump to end" onClick={() => seek(duration)}><SkipForward size={17} /></button>
+          <span className="mono time-big">{timecode(time, timeline.fps)}</span><div className="flex-spacer" /><button className="secondary-btn" onClick={split} disabled={readOnly || !timeline.clips.length} title="Split at playhead (S)"><Scissors size={15} />Split</button></div></main>
 
-  // -------------------------------------------------------------- render
+      <aside className="inspector" aria-label="Inspector">{selected ? <ClipInspector key={selected.id} clip={selected} asset={byId.get(selected.assetId)} readOnly={readOnly} gesture={gesture} patch={(p, live) => patchClip(selected.id, p, live)} onSplit={split} onDuplicate={duplicate} onDelete={() => remove(false)} />
+        : <ProjectInspector name={projectName} onName={setProjectName} timeline={timeline} setProject={setProjectSettings} readOnly={readOnly} canPublish={canPublish} projectId={projectId} visibility={visibility} onVisibility={toggleVisibility} onCopyLink={copyPublicLink} />}</aside>
 
-  return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col">
-      {/* ------------------------------ top bar */}
-      <header className="border-b border-zinc-800 px-4 py-2 flex items-center gap-3 sticky top-0 z-20 bg-zinc-950">
-        <Logo />
-        <input
-          className="bg-transparent text-sm font-semibold border border-transparent hover:border-zinc-700 rounded px-2 py-1 w-56 focus:outline-none focus:border-zinc-600"
-          value={projectName}
-          onChange={(e) => setProjectName(e.target.value)}
-          data-testid="input-project-name"
-        />
-        <div className="flex-1" />
-        <a href="#/api-docs" className="text-xs text-zinc-400 hover:text-zinc-200 mr-2">
-          API docs
-        </a>
-        <button
-          className="text-xs px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700"
-          onClick={() => createProject.mutate()}
-          data-testid="button-create-project"
-        >
-          New project
-        </button>
-        <button
-          className="text-xs px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40"
-          disabled={!projectId || saveProject.isPending}
-          onClick={() => saveProject.mutate()}
-          data-testid="button-save-project"
-        >
-          Save
-        </button>
-        <button
-          className="text-xs px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-40"
-          disabled={!projectId || submitRender.isPending}
-          onClick={() => submitRender.mutate()}
-          data-testid="button-render"
-        >
-          Render
-        </button>
-      </header>
+      <section className="timeline-panel" aria-label="Timeline">
+        <ForgeTimeline timeline={timeline} assets={assets} selectedId={selectedId} time={time} playing={playing} pps={pps} snapping={snapping} readOnly={readOnly} mediaUrl={mediaUrl} onSelect={setSelectedId} onSeek={seek} onZoom={setPps} gesture={gesture} onDropAsset={(id, track, start) => { const a = byId.get(id); if (a) addAsset(a, track, start); }} />
+      </section></div>
 
-      {/* ------------------------------ main 3-column layout */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* media library */}
-        <aside className="w-56 border-r border-zinc-800 flex flex-col overflow-hidden">
-          <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-400 border-b border-zinc-800">
-            Media library
-          </div>
-          <label
-            className="m-3 border-2 border-dashed border-zinc-700 rounded-lg p-6 text-center cursor-pointer hover:border-blue-500 transition text-xs text-zinc-400"
-            data-testid="button-upload"
-          >
-            {isUploading ? "Uploading…" : "Click to upload video / audio / image"}
-            <input
-              type="file"
-              multiple
-              accept="video/*,audio/*,image/*"
-              className="hidden"
-              onChange={(e) => e.target.files?.length && uploadFiles.mutate(e.target.files)}
-            />
-          </label>
-          <div className="flex-1 overflow-y-auto px-2 space-y-2 pb-4">
-            {assets.length === 0 && (
-              <div className="text-xs text-zinc-600 px-2 py-4">No media yet. Upload files above.</div>
-            )}
-            {assets.map((a) => (
-              <div
-                key={a.id}
-                className="border border-zinc-800 rounded-lg overflow-hidden hover:border-zinc-600 cursor-pointer group"
-                onClick={() => addClip(a)}
-                data-testid={`card-asset-${a.id}`}
-                title="Click to add to timeline"
-              >
-                <div className="relative aspect-video bg-zinc-900 flex items-center justify-center overflow-hidden">
-                  <img
-                    src={mediaUrl(a.id, `/api/media/${a.id}/thumb`) || undefined}
-                    alt=""
-                    className="w-full h-full object-cover opacity-80 group-hover:opacity-100"
-                    crossOrigin="anonymous"
-                    onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
-                  />
-                  <span className="absolute bottom-1 right-1 bg-black/70 text-[10px] px-1 rounded">
-                    {a.kind === "audio" ? "🔊" : a.kind === "image" ? "🖼" : "🎬"}
-                  </span>
-                </div>
-                <div className="px-2 py-1 text-[11px] truncate" title={a.filename}>
-                  {a.filename}
-                </div>
-              </div>
-            ))}
-          </div>
-        </aside>
-
-        {/* timeline + preview */}
-        <main className="flex-1 flex flex-col overflow-hidden">
-          {/* preview */}
-          <div className="flex-1 flex items-center justify-center bg-black relative overflow-hidden">
-            {previewAssetId ? (
-              <video
-                className="max-h-full max-w-full"
-                src={mediaUrl(previewAssetId, `/api/media/${previewAssetId}/raw`) || undefined}
-                controls
-                data-testid="video-preview"
-              />
-            ) : renderResultUrl ? (
-              <video className="max-h-full max-w-full" src={renderResultUrl} controls data-testid="video-render-result" />
-            ) : (
-              <div className="text-zinc-600 text-sm">Select a clip to preview, or render to see output</div>
-            )}
-            {/* timeline preview scrubber */}
-            {timeline.clips.length > 0 && !previewAssetId && (
-              <TimelinePreview
-                clips={timeline.clips}
-                assets={assets}
-                mediaUrl={mediaUrl}
-                onClipClick={(id) => setSelectedClipId(id)}
-              />
-            )}
-          </div>
-
-          {/* timeline tracks */}
-          <div className="border-t border-zinc-800 flex flex-col h-64 overflow-hidden">
-            <div className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-400 border-b border-zinc-800 flex items-center">
-              Timeline
-              <span className="ml-2 text-[10px] normal-case text-zinc-500 font-normal">
-                {totalDuration().toFixed(1)}s total
-              </span>
-              <div className="flex-1" />
-              <span className="text-[10px] normal-case text-zinc-500 font-normal mr-2">
-                Click a media asset to append · drag a clip to reposition · use the inspector to trim
-              </span>
-            </div>
-            <div className="flex-1 overflow-y-auto p-3 space-y-2">
-              {timeline.clips.length === 0 && (
-                <div className="text-xs text-zinc-600 py-6 text-center">
-                  Timeline is empty. Click a media asset in the library to add a clip.
-                </div>
-              )}
-              {(["video", "audio", "overlay"] as const).map((track) => {
-                const trackClips = timeline.clips.filter((c) => c.track === track);
-                if (trackClips.length === 0 && track !== "video") return null;
-                return (
-                  <div key={track} className="flex items-center gap-2">
-                    <div className="w-16 text-[10px] uppercase text-zinc-500 shrink-0">
-                      {track}
-                    </div>
-                    <div
-                      className="flex-1 relative bg-zinc-900/50 rounded h-10 overflow-hidden"
-                      onDragOver={(e) => e.preventDefault()}
-                    >
-                      {trackClips.map((c) => (
-                        <TimelineClipView
-                          key={c.id}
-                          clip={c}
-                          asset={assets.find((a) => a.id === c.assetId)}
-                          selected={selectedClipId === c.id}
-                          onSelect={() => setSelectedClipId(c.id)}
-                          onRemove={() => removeClip(c.id)}
-                          onMove={(dir) => moveClip(c.id, dir)}
-                          onPreview={() => setPreviewAssetId(c.assetId)}
-                        />
-                      ))}
-                      {trackClips.length === 0 && track === "video" && (
-                        <div className="absolute inset-0 flex items-center justify-center text-[10px] text-zinc-700">
-                          drop clips here
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </main>
-
-        {/* inspector */}
-        <aside className="w-64 border-l border-zinc-800 overflow-y-auto">
-          <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-400 border-b border-zinc-800">
-            Inspector
-          </div>
-          {!selectedClip && (
-            <div className="px-3 py-6 text-xs text-zinc-600">
-              Select a clip on the timeline to edit it.
-            </div>
-          )}
-          {selectedClip && (
-            <ClipInspector
-              clip={selectedClip}
-              asset={selectedAsset}
-              onChange={(p) => updateClip(selectedClip.id, p)}
-              onRemove={() => removeClip(selectedClip.id)}
-            />
-          )}
-
-          {/* render status */}
-          {renderJobId && (
-            <div className="px-3 py-3 border-t border-zinc-800 text-xs space-y-1">
-              <div className="font-semibold">Render</div>
-              <div data-testid="text-render-status">
-                status: {renderJobQ.data?.status ?? "…"}
-                {renderJobQ.data?.progress ? ` (${Math.round(renderJobQ.data.progress * 100)}%)` : ""}
-              </div>
-              {renderJobQ.data?.error && (
-                <div className="text-red-400">error: {renderJobQ.data.error}</div>
-              )}
-              {renderResultUrl && (
-                <a
-                  href={renderResultUrl}
-                  download
-                  className="inline-block mt-1 px-2 py-1 rounded bg-blue-600 hover:bg-blue-500"
-                >
-                  Download MP4
-                </a>
-              )}
-            </div>
-          )}
-
-          {/* projects list */}
-          <div className="px-3 py-3 border-t border-zinc-800">
-            <div className="text-xs font-semibold mb-2">Projects</div>
-            {(projectsData?.projects ?? []).map((p) => (
-              <button
-                key={p.id}
-                className="block w-full text-left text-xs px-2 py-1.5 rounded hover:bg-zinc-800 mb-1 truncate"
-                onClick={() => {
-                  setProjectId(p.id);
-                  setProjectName(p.name);
-                  setTimeline(p.timeline);
-                  setSelectedClipId(null);
-                  setRenderJobId(null);
-                }}
-                data-testid={`button-load-project-${p.id}`}
-              >
-                {p.name}
-              </button>
-            ))}
-          </div>
-        </aside>
-      </div>
-
-      {toast && (
-        <div
-          className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-zinc-800 text-xs px-4 py-2 rounded shadow-lg z-50"
-          data-testid="toast"
-        >
-          {toast}
-          <button className="ml-3 text-zinc-500 hover:text-white" onClick={() => setToast(null)}>×</button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Subcomponents
-// ---------------------------------------------------------------------------
-
-function Logo() {
-  return (
-    <div className="flex items-center gap-2">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <rect x="2" y="6" width="13" height="12" rx="2" />
-        <path d="M15 10l6-3v10l-6-3" />
-        <path d="M5 3h7" />
-      </svg>
-      <span className="font-bold text-sm">VideoForge</span>
-    </div>
-  );
-}
-
-function TimelinePreview({
-  clips,
-  assets,
-  mediaUrl,
-  onClipClick,
-}: {
-  clips: Clip[];
-  assets: AssetDTO[];
-  mediaUrl: (resourceId: string, url: string) => string;
-  onClipClick: (id: string) => void;
-}) {
-  const videoClips = clips.filter((c) => c.track === "video");
-  const total = videoClips.reduce((s, c) => s + (c.outPoint - c.inPoint), 0);
-  if (total <= 0) return null;
-  return (
-    <div
-      className="absolute inset-0 pointer-events-none"
-      style={{
-        background:
-          "radial-gradient(circle at 50% 40%, rgba(59,130,246,0.06), transparent 60%)",
-      }}
-    >
-      <div className="absolute bottom-4 left-4 right-4 flex gap-1 pointer-events-auto">
-        {videoClips.map((c) => {
-          const w = ((c.outPoint - c.inPoint) / total) * 100;
-          const a = assets.find((x) => x.id === c.assetId);
-          return (
-            <button
-              key={c.id}
-              className="relative h-12 rounded overflow-hidden border border-zinc-700 group"
-              style={{ width: `${Math.max(4, w)}%` }}
-              onClick={() => onClipClick(c.id)}
-              title={a?.filename}
-            >
-              {a && (
-                <img
-                  src={mediaUrl(a.id, `/api/media/${a.id}/thumb`) || undefined}
-                  alt=""
-                  className="absolute inset-0 w-full h-full object-cover opacity-70 group-hover:opacity-100"
-                  crossOrigin="anonymous"
-                  onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
-                />
-              )}
-              <span className="absolute bottom-0 left-0 right-0 bg-black/60 text-[10px] px-1 truncate">
-                {(c.outPoint - c.inPoint).toFixed(1)}s
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function TimelineClipView({
-  clip,
-  asset,
-  selected,
-  onSelect,
-  onRemove,
-  onMove,
-  onPreview,
-}: {
-  clip: Clip;
-  asset: AssetDTO | undefined;
-  selected: boolean;
-  onSelect: () => void;
-  onRemove: () => void;
-  onMove: (dir: -1 | 1) => void;
-  onPreview: () => void;
-}) {
-  const dragRef = useRef<HTMLDivElement | null>(null);
-
-  function handleDragStart(e: React.DragEvent) {
-    e.dataTransfer.setData("text/plain", clip.id);
-    dragRef.current = e.currentTarget as HTMLDivElement;
-  }
-
-  return (
-    <div
-      className={`absolute top-1 bottom-1 rounded border-2 flex items-center px-2 cursor-pointer group overflow-hidden ${
-        selected ? "border-blue-500 bg-blue-950/40" : "border-zinc-700 bg-zinc-800 hover:border-zinc-500"
-      }`}
-      style={{
-        left: `${clip.start * 30}px`,
-        width: `${Math.max(30, (clip.outPoint - clip.inPoint) * 30)}px`,
-      }}
-      draggable
-      onDragStart={handleDragStart}
-      onClick={(e) => {
-        e.stopPropagation();
-        onSelect();
-      }}
-      data-testid={`clip-${clip.id}`}
-    >
-      <span className="text-[10px] truncate flex-1" title={asset?.filename}>
-        {clip.text ? `📝 ${clip.text.slice(0, 20)}` : asset?.filename ?? clip.assetId}
-      </span>
-      <div className="hidden group-hover:flex items-center gap-1">
-        <button
-          className="text-[10px] hover:text-white"
-          onClick={(e) => { e.stopPropagation(); onPreview(); }}
-          title="Preview"
-        >
-          ▶
-        </button>
-        <button
-          className="text-[10px] hover:text-white"
-          onClick={(e) => { e.stopPropagation(); onMove(-1); }}
-          title="Move left"
-        >
-          ←
-        </button>
-        <button
-          className="text-[10px] hover:text-white"
-          onClick={(e) => { e.stopPropagation(); onMove(1); }}
-          title="Move right"
-        >
-          →
-        </button>
-        <button
-          className="text-[10px] text-red-400 hover:text-red-300"
-          onClick={(e) => { e.stopPropagation(); onRemove(); }}
-          title="Remove"
-        >
-          ×
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ClipInspector({
-  clip,
-  asset,
-  onChange,
-  onRemove,
-}: {
-  clip: Clip;
-  asset: AssetDTO | undefined;
-  onChange: (patch: Partial<Clip>) => void;
-  onRemove: () => void;
-}) {
-  const [textDraft, setTextDraft] = useState(clip.text ?? "");
-  useEffect(() => setTextDraft(clip.text ?? ""), [clip.id]);
-
-  const dur = clip.outPoint - clip.inPoint;
-
-  return (
-    <div className="px-3 py-3 space-y-3 text-xs">
-      <div className="flex items-center justify-between">
-        <div className="font-semibold truncate" title={asset?.filename}>
-          {asset?.filename ?? clip.assetId}
-        </div>
-        <button className="text-red-400 hover:text-red-300" onClick={onRemove} data-testid="button-remove-clip">
-          Remove
-        </button>
-      </div>
-
-      {asset && (
-        <div className="text-[11px] text-zinc-500 space-y-0.5">
-          <div>kind: {asset.kind}</div>
-          <div>source duration: {asset.duration.toFixed(2)}s</div>
-          {asset.width > 0 && <div>resolution: {asset.width}×{asset.height}</div>}
-        </div>
-      )}
-
-      {/* trim */}
-      <div className="space-y-1">
-        <label className="block text-zinc-400">
-          in point: <span className="text-white">{clip.inPoint.toFixed(2)}s</span>
-        </label>
-        <input
-          type="range" min={0} max={Math.max(0.1, clip.outPoint - 0.1)} step={0.05}
-          value={clip.inPoint}
-          onChange={(e) => onChange({ inPoint: parseFloat(e.target.value) })}
-          className="w-full"
-          data-testid="input-trim-in"
-        />
-        <label className="block text-zinc-400">
-          out point: <span className="text-white">{clip.outPoint.toFixed(2)}s</span>
-        </label>
-        <input
-          type="range" min={clip.inPoint + 0.1} max={Math.max(clip.inPoint + 0.2, asset?.duration ?? 999)}
-          step={0.05} value={clip.outPoint}
-          onChange={(e) => onChange({ outPoint: parseFloat(e.target.value) })}
-          className="w-full"
-          data-testid="input-trim-out"
-        />
-        <div className="text-[11px] text-zinc-500">clip duration: {dur.toFixed(2)}s</div>
-      </div>
-
-      {/* timeline position */}
-      <div className="space-y-1">
-        <label className="block text-zinc-400">
-          timeline start: <span className="text-white">{clip.start.toFixed(2)}s</span>
-        </label>
-        <input
-          type="range" min={0} max={600} step={0.1}
-          value={clip.start}
-          onChange={(e) => onChange({ start: parseFloat(e.target.value) })}
-          className="w-full"
-          data-testid="input-start"
-        />
-      </div>
-
-      {/* audio */}
-      {clip.track !== "overlay" && (
-        <div className="space-y-1">
-          <label className="block text-zinc-400">
-            volume: <span className="text-white">{Math.round(clip.volume * 100)}%</span>
-          </label>
-          <input
-            type="range" min={0} max={1} step={0.05}
-            value={clip.volume}
-            onChange={(e) => onChange({ volume: parseFloat(e.target.value) })}
-            className="w-full"
-            data-testid="input-volume"
-          />
-          <label className="flex items-center gap-2 text-zinc-400">
-            <input
-              type="checkbox" checked={clip.muted}
-              onChange={(e) => onChange({ muted: e.target.checked })}
-              data-testid="input-muted"
-            />
-            muted
-          </label>
-        </div>
-      )}
-
-      {/* text overlay */}
-      <div className="space-y-1">
-        <label className="block text-zinc-400">text overlay</label>
-        <textarea
-          className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-500"
-          rows={2}
-          value={textDraft}
-          placeholder="Optional caption shown on this clip"
-          onChange={(e) => setTextDraft(e.target.value)}
-          onBlur={() => onChange({ text: textDraft || undefined })}
-          data-testid="input-text-overlay"
-        />
-      </div>
-    </div>
-  );
+    {exportOpen && <div className="export-panel" role="dialog" aria-label="Export">
+      <div className="modal-head"><h3>Export video</h3><button className="icon-btn" aria-label="Close export panel" onClick={() => setExportOpen(false)}><X size={16} /></button></div>
+      {render?.status === "error" ? <div className="error-box">Export failed: {render.error}</div> : render?.status === "done" ? <>{renderUrl ? <video src={renderUrl} controls crossOrigin="anonymous" className="export-video" data-testid="video-render-result" /> : <div className="muted">Preparing preview…</div>}<div className="modal-actions"><a className="primary-btn" href={renderUrl || undefined} download aria-disabled={!renderUrl}><Download size={15} />Download MP4</a></div></> : <div><div className="progress" role="progressbar" aria-valuenow={Math.round((render?.progress ?? 0) * 100)} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${Math.max(4, (render?.progress ?? 0) * 100)}%` }} /></div><p className="muted" data-testid="text-render-status">{render?.status === "rendering" ? `Rendering ${Math.round(render.progress * 100)}%` : "Queued…"}</p></div>}
+    </div>}
+    {dragOver && <div className="drop-overlay"><Upload size={36} /><h2>Drop to import</h2><p>Video, audio and images are added to your media library.</p></div>}
+    {notice && <div className={`forge-toast ${notice.tone}`} role={notice.tone === "error" ? "alert" : "status"} data-testid="toast">{notice.tone === "error" ? <AlertCircle size={15} /> : <Check size={15} />}{notice.text}<button className="icon-btn" aria-label="Dismiss" onClick={() => setNotice(null)}><X size={14} /></button></div>}
+  </div>;
 }

@@ -1,0 +1,132 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Type, Music2, Film, Image as ImageIcon } from "lucide-react";
+import { clipDuration, clipEnd, timelineDuration, type Clip, type Timeline } from "@shared/timeline";
+import { api } from "@/lib/api";
+import { clampClipPatch, round, timecode, type AssetDTO } from "@/lib/editor-model";
+
+export type TimelineGesture = { begin: () => void; update: (id: string, patch: Partial<Clip>) => void; end: () => void };
+type Props = {
+  timeline: Timeline; assets: AssetDTO[]; selectedId: string | null; time: number; playing: boolean; pps: number; snapping: boolean; readOnly: boolean;
+  mediaUrl: (id: string, url: string) => string;
+  onSelect: (id: string | null) => void; onSeek: (t: number) => void; onDropAsset: (assetId: string, track: Clip["track"], start: number) => void; gesture: TimelineGesture; onZoom: (pps: number) => void;
+};
+const LANES: { id: Clip["track"]; label: string; hint: string }[] = [
+  { id: "overlay", label: "Titles & overlays", hint: "Add titles or drop picture-in-picture clips" },
+  { id: "video", label: "Video", hint: "Drop video or images here" },
+  { id: "audio", label: "Audio", hint: "Drop music or voice-over here" },
+];
+const STEPS = [0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
+type Drag = { id: string; mode: "move" | "trimL" | "trimR"; x: number; orig: Clip; asset?: AssetDTO; moved: boolean };
+
+function Waveform({ asset, clip, width }: { asset: AssetDTO; clip: Clip; width: number }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const q = useQuery<{ perSecond: number; peaks: number[] }>({ queryKey: ["wave", asset.id], queryFn: () => api("GET", `/api/media/${asset.id}/waveform`), staleTime: Infinity, retry: false });
+  useEffect(() => {
+    const canvas = ref.current, data = q.data;
+    if (!canvas || !data?.peaks?.length) return;
+    const w = Math.min(4000, Math.max(1, Math.round(width))), h = canvas.height;
+    canvas.width = w;
+    const ctx = canvas.getContext("2d")!; ctx.clearRect(0, 0, w, h); ctx.fillStyle = "rgba(220,255,226,.78)";
+    const from = Math.floor(clip.inPoint * data.perSecond), to = Math.ceil(clip.outPoint * data.perSecond);
+    for (let x = 0; x < w; x += 2) {
+      const i = from + Math.floor((x / w) * (to - from)), p = data.peaks[Math.min(data.peaks.length - 1, i)] ?? 0;
+      const bar = Math.max(1, p * h * 0.9); ctx.fillRect(x, (h - bar) / 2, 1.4, bar);
+    }
+  }, [q.data, clip.inPoint, clip.outPoint, width]);
+  return <canvas ref={ref} className="wave-canvas" height={34} aria-hidden="true" />;
+}
+
+export default function ForgeTimeline({ timeline, assets, selectedId, time, playing, pps, snapping, readOnly, mediaUrl, onSelect, onSeek, onDropAsset, gesture, onZoom }: Props) {
+  const scroller = useRef<HTMLDivElement>(null), lanes = useRef(new Map<string, HTMLDivElement>()), drag = useRef<Drag | null>(null);
+  const [width, setWidth] = useState(900);
+  const duration = timelineDuration(timeline);
+  const total = Math.max(duration + Math.max(8, 400 / pps), width / pps);
+  const gridStep = STEPS.find((s) => s * pps >= 76) ?? 600;
+  const ticks = useMemo(() => Array.from({ length: Math.ceil(total / gridStep) + 1 }, (_, i) => round(i * gridStep)), [total, gridStep]);
+  const byId = useMemo(() => new Map(assets.map((a) => [a.id, a])), [assets]);
+
+  useEffect(() => { const el = scroller.current; if (!el) return; const ro = new ResizeObserver(() => setWidth(el.clientWidth)); ro.observe(el); setWidth(el.clientWidth); return () => ro.disconnect(); }, []);
+  // keep the playhead in view while playing
+  useEffect(() => {
+    const el = scroller.current; if (!el || !playing) return;
+    const x = time * pps, left = el.scrollLeft + 150, right = el.scrollLeft + el.clientWidth - 90;
+    if (x > right || x < left) el.scrollLeft = Math.max(0, x - 180);
+  }, [time, playing, pps]);
+
+  const pointTime = (clientX: number) => {
+    const el = scroller.current!, r = el.getBoundingClientRect();
+    return Math.max(0, (clientX - r.left + el.scrollLeft - 132) / pps);
+  };
+  const seekFrom = (e: React.PointerEvent) => { onSeek(round(Math.max(0, Math.round(pointTime(e.clientX) * timeline.fps) / timeline.fps))); };
+  const targets = (exclude: string) => [0, time, ...timeline.clips.filter((c) => c.id !== exclude).flatMap((c) => [c.start, clipEnd(c)])];
+  const laneAt = (y: number): Clip["track"] | null => { let found: Clip["track"] | null = null; lanes.current.forEach((el, id) => { const r = el.getBoundingClientRect(); if (y >= r.top && y <= r.bottom) found = id as Clip["track"]; }); return found; };
+  const allowed = (clip: Clip, asset: AssetDTO | undefined, lane: Clip["track"]) => !asset ? lane === "overlay" : asset.kind === "audio" ? lane === "audio" : lane !== "audio";
+
+  function down(e: React.PointerEvent, c: Clip, mode: Drag["mode"]) {
+    e.stopPropagation(); onSelect(c.id);
+    if (readOnly || e.button !== 0) return;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    drag.current = { id: c.id, mode, x: e.clientX, orig: c, asset: byId.get(c.assetId), moved: false };
+    gesture.begin();
+  }
+  function move(e: React.PointerEvent) {
+    const d = drag.current; if (!d) return;
+    const dx = (e.clientX - d.x) / pps; if (Math.abs(e.clientX - d.x) > 2) d.moved = true; if (!d.moved) return;
+    const o = d.orig, speed = o.speed ?? 1, threshold = snapping ? 9 / pps : 0, tg = targets(o.id), media = !!o.assetId && d.asset?.kind !== "image";
+    const snap = (t: number) => { if (!threshold) return round(Math.max(0, t)); let best = Math.round(t * timeline.fps) / timeline.fps, near = threshold; for (const x of tg) if (Math.abs(x - t) < near) { best = x; near = Math.abs(x - t); } return round(Math.max(0, best)); };
+    if (d.mode === "move") {
+      const dur = clipDuration(o), s1 = snap(o.start + dx), e1 = snap(o.start + dx + dur) - dur;
+      const startErr = Math.abs(s1 - (o.start + dx)), endErr = Math.abs(e1 - (o.start + dx));
+      let start = Math.max(0, threshold && endErr < startErr && e1 >= 0 ? e1 : s1);
+      const lane = laneAt(e.clientY); const patch: Partial<Clip> = { start: round(start) };
+      if (lane && lane !== o.track && allowed(o, d.asset, lane)) patch.track = lane;
+      gesture.update(o.id, patch);
+    } else if (d.mode === "trimL") {
+      const end = o.start + clipDuration(o), start = Math.min(end - 0.1, snap(o.start + dx));
+      const delta = start - o.start;
+      if (media) { const inPoint = o.inPoint + delta * speed; gesture.update(o.id, inPoint < 0 ? { inPoint: 0, start: round(o.start - o.inPoint / speed) } : { inPoint: round(inPoint), start: round(start) }); }
+      else gesture.update(o.id, { start: round(Math.max(0, start)), outPoint: round(Math.max(o.inPoint + 0.1, o.outPoint - delta)) });
+    } else {
+      const end = Math.max(o.start + 0.1, snap(o.start + clipDuration(o) + dx)), out = o.inPoint + (end - o.start) * (media ? speed : 1);
+      gesture.update(o.id, { outPoint: round(out) });
+    }
+  }
+  function up() { if (drag.current) { drag.current = null; gesture.end(); } }
+  function dropOn(e: React.DragEvent, lane: Clip["track"]) {
+    e.preventDefault(); const id = e.dataTransfer.getData("application/x-vf-asset"); if (!id || readOnly) return;
+    const a = byId.get(id); if (!a || !allowed({} as Clip, a, lane)) return;
+    onDropAsset(id, lane, round(Math.max(0, pointTime(e.clientX))));
+  }
+
+  return <div className="timeline-shell">
+    <div className="timeline-toolbar"><span className="mono time-readout" data-testid="text-timecode">{timecode(time, timeline.fps)}</span><span className="muted mono"> / {timecode(duration, timeline.fps)}</span><div className="flex-spacer"/>
+      <label className="zoom-control">Zoom<input type="range" aria-label="Timeline zoom" min={8} max={260} value={pps} onChange={(e) => onZoom(Number(e.target.value))} /></label></div>
+    <div className="timeline-scroll" ref={scroller} onWheel={(e) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); onZoom(Math.min(260, Math.max(8, Math.round(pps * (e.deltaY < 0 ? 1.15 : 0.87))))); } }} data-testid="timeline">
+      <div className="timeline-inner" style={{ width: 132 + total * pps }}>
+        <div className="ruler-row"><div className="lane-label sticky-corner"/>
+          <div className="ruler" onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); seekFrom(e); }} onPointerMove={(e) => { if (e.buttons) seekFrom(e); }} data-testid="ruler">
+            {ticks.map((t) => <div key={t} className="tick" style={{ left: t * pps }}><span className="mono">{t >= 60 ? `${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, "0")}` : `${t}s`}</span></div>)}
+          </div></div>
+        {LANES.map((lane) => {
+          const clips = timeline.clips.filter((c) => c.track === lane.id);
+          return <div className="lane-row" key={lane.id}><div className="lane-label"><b>{lane.id === "overlay" ? "T" : lane.id === "video" ? "V" : "A"}</b><span>{lane.label}</span></div>
+            <div className={`lane lane-${lane.id}`} ref={(el) => { if (el) lanes.current.set(lane.id, el); }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => dropOn(e, lane.id)} onPointerDown={(e) => { if (e.target === e.currentTarget) { onSelect(null); seekFrom(e); } }} data-testid={`lane-${lane.id}`}>
+              {!clips.length && <div className="lane-hint">{lane.hint}</div>}
+              {clips.map((c) => {
+                const a = byId.get(c.assetId), w = Math.max(18, clipDuration(c) * pps), isText = !c.assetId;
+                const thumb = a && a.kind !== "audio" ? mediaUrl(a.id, `/api/media/${a.id}/thumb`) : "";
+                return <div key={c.id} role="button" tabIndex={0} aria-label={`${isText ? "Title" : a?.filename ?? "Clip"}, ${clipDuration(c).toFixed(1)} seconds`} aria-pressed={selectedId === c.id}
+                  className={`clip clip-${isText ? "text" : lane.id} ${selectedId === c.id ? "selected" : ""} ${readOnly ? "locked" : ""}`} style={{ left: c.start * pps, width: w, backgroundImage: thumb ? `linear-gradient(90deg,rgba(17,17,18,.2),rgba(17,17,18,.65)),url(${thumb})` : undefined }}
+                  onPointerDown={(e) => down(e, c, "move")} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(c.id); } }} data-testid={`clip-${c.id}`}>
+                  {a?.kind === "audio" && <Waveform asset={a} clip={c} width={w} />}
+                  <span className="trim-handle left" onPointerDown={(e) => down(e, c, "trimL")} onPointerMove={move} onPointerUp={up} aria-hidden="true" />
+                  <span className="clip-label">{isText ? <Type size={13} /> : a?.kind === "audio" ? <Music2 size={13} /> : a?.kind === "image" ? <ImageIcon size={13} /> : <Film size={13} />}<span>{isText ? c.text : a?.filename ?? "Missing media"}</span></span>
+                  {((c.speed ?? 1) !== 1 || c.filter) && <span className="clip-badges">{(c.speed ?? 1) !== 1 && <i>{c.speed}×</i>}{c.filter && <i>{c.filter}</i>}</span>}
+                  <span className="trim-handle right" onPointerDown={(e) => down(e, c, "trimR")} onPointerMove={move} onPointerUp={up} aria-hidden="true" />
+                </div>;
+            })}</div></div>;
+        })}
+        <div className="playhead" style={{ left: 132 + time * pps }} aria-hidden="true"><span className="playhead-cap" onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); }} onPointerMove={(e) => { if (e.buttons) seekFrom(e); }}/></div>
+      </div></div></div>;
+}
