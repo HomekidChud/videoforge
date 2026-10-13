@@ -38,6 +38,17 @@ async function buildAll() {
   console.log("building client...");
   await viteBuild();
 
+  console.log("building docs (SSG)...");
+  // Static site for /docs and /home — real URLs, no JS required.
+  await new Promise<void>((resolve, reject) => {
+    const p = spawn("npx", ["tsx", "script/build-docs.ts"], {
+      cwd: path.resolve(import.meta.dirname ?? ".", ".."),
+      stdio: "inherit",
+    });
+    p.on("exit", (c) => (c === 0 ? resolve() : reject(new Error(`build-docs failed (exit ${c})`))));
+    p.on("error", reject);
+  });
+
   console.log("checking client bundle for secrets...");
   // Post-build secret check on the produced bundle.
   await new Promise<void>((resolve, reject) => {

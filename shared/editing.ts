@@ -2,6 +2,7 @@ import { setTransition } from "./transitions";
 import { normalizeClip, normalizeTimeline, clipDuration, clipEnd, TRACKS, type Clip, type Timeline, type TrackName } from "./timeline";
 import { normalizeKeyframes, isProperty, sliceKeyframes, type AnimationProperty } from "./animation";
 import { motionPreset } from "./presets";
+import { normalizeGraphic, GRAPHIC_PRESETS } from "./graphics";
 const uid = () => Math.random().toString(36).slice(2,14);
 export type TimelineOp = { op: string; args?: any };
 export function splitKeyframes(c:Clip, at:number) { return [sliceKeyframes(c,0,at),sliceKeyframes(c,at,clipDuration(c))]; }
@@ -188,6 +189,51 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
           const m = (timeline.markers ?? []).find((x) => x.id === args?.id); if (!m) throw new Error(`marker ${args?.id} not found`);
           if (typeof args.time === "number") m.time = Math.max(0, args.time); if (typeof args.label === "string") m.label = args.label.slice(0, 80); if (typeof args.color === "string") m.color = args.color;
           timeline.markers = [...(timeline.markers ?? [])].sort((a, b) => a.time - b.time); break;
+        }
+        case "add_shape": {
+          // Add a motion-graphics shape clip. Caller can pass their own `id` so
+          // agents can reference the new layer predictably.
+          const { id, start, duration, track, ...graphicArgs } = args || {};
+          const graphic = normalizeGraphic(graphicArgs);
+          const c = normalizeClip({
+            id: typeof id === "string" && id ? id.slice(0, 64) : uid(),
+            assetId: "", track: track === "video" ? "video" : "overlay",
+            start: Math.max(0, start ?? 0), inPoint: 0,
+            outPoint: duration ?? 3,
+            graphic,
+            ...(typeof graphicArgs.x === "number" ? { x: graphicArgs.x } : {}),
+            ...(typeof graphicArgs.y === "number" ? { y: graphicArgs.y } : {}),
+            ...(typeof graphicArgs.scale === "number" ? { scale: graphicArgs.scale } : {}),
+            ...(typeof graphicArgs.rotation === "number" ? { rotation: graphicArgs.rotation } : {}),
+            ...(typeof graphicArgs.opacity === "number" ? { opacity: graphicArgs.opacity } : {}),
+          });
+          if (clips.some((x) => x.id === c.id)) throw new Error(`clip id ${c.id} already exists`);
+          clips.push(c);
+          break;
+        }
+        case "update_shape": {
+          const { clipId, ...graphicArgs } = args || {};
+          const c = find(clipId);
+          if (!c.graphic) throw new Error(`clip ${clipId} is not a shape (no graphic)`);
+          const next = normalizeGraphic({ ...c.graphic, ...graphicArgs });
+          c.graphic = next;
+          break;
+        }
+        case "apply_graphic_preset": {
+          // Compose a named preset (lower-third, title-card, badge, progress-bar, line).
+          const preset = GRAPHIC_PRESETS.find((p) => p.id === args?.preset);
+          if (!preset) throw new Error(`unknown graphic preset: ${args?.preset} (available: ${GRAPHIC_PRESETS.map(p => p.id).join(", ")})`);
+          const graphic = normalizeGraphic({ ...preset.graphic, ...(args?.overrides || {}) });
+          const c = normalizeClip({
+            id: typeof args?.id === "string" && args.id ? args.id.slice(0, 64) : uid(),
+            assetId: "", track: preset.placement.track ?? "overlay",
+            x: preset.placement.x, y: preset.placement.y,
+            start: Math.max(0, args?.start ?? 0), inPoint: 0, outPoint: args?.duration ?? 3,
+            graphic,
+          });
+          if (clips.some((x) => x.id === c.id)) throw new Error(`clip id ${c.id} already exists`);
+          clips.push(c);
+          break;
         }
         case "set_transition": return setTransition(timeline,args.clipId,args.type,args.duration,args.join!==false);
         case "remove_clips": { if(!Array.isArray(args.clipIds)) throw new Error("clipIds required"); timeline.clips=clips.filter(c=>!args.clipIds.includes(c.id)); break; }

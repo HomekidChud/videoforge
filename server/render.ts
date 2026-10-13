@@ -5,8 +5,10 @@ import { spawn } from "node:child_process";
 import type { Asset } from "@shared/schema";
 import { clipDuration, clipScale, clipSpeed, clipX, clipY, normalizeTimeline, timelineDuration, type Clip, type Timeline } from "@shared/timeline";
 
-import { animationExpression, baseValue, type AnimationProperty } from "@shared/animation";
+import { animationExpression, baseValue, evaluateClip, valueAt, type AnimationProperty } from "@shared/animation";
 import { getEnv } from "./env";
+import { rasterizeShape } from "./shape-raster";
+import type { Graphic } from "@shared/graphics";
 
 const f = (n: number) => Number(n.toFixed(3));
 
@@ -134,6 +136,52 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     current = next;
     layer++;
   }
+
+  // ---------------------------------------------------------------------------
+  // Motion-graphics shapes.
+  //
+  // Each shape is rasterised into a transparent PNG by Node (using the same
+  // `traceShape` the browser preview uses), then overlaid with animated x/y.
+  // Per-frame width/height/progress/rotation are baked by sampling the clip's
+  // keyframes — the animation expressions can't drive drawbox reliably, and
+  // a pre-rendered layer guarantees preview ≡ export.
+  //
+  // For static shapes this is one PNG per clip. For animated shapes we render
+  // a short sequence of PNGs (at fps) and let ffmpeg's framerate filter pick
+  // the right frame — same as a sprite sheet.
+  // ---------------------------------------------------------------------------
+  const shapes = tl.clips.filter((c) => c.graphic && !c.assetId && c.track !== "audio" && !tl.tracks?.[c.track]?.hidden);
+  shapes.forEach((c, i) => {
+    const g = c.graphic!;
+    const dur = clipDuration(c);
+    const shapeLabel = `sg${i}`;
+    // Number of frames to bake: 1 if nothing is animated, else fps*dur.
+    const animated = !!(c.keyframes && Object.keys(c.keyframes).length);
+    const frames = animated ? Math.max(1, Math.min(240, Math.round(dur * fps))) : 1;
+    for (let fi = 0; fi < frames; fi++) {
+      const at = animated ? c.start + (fi * dur) / frames : c.start;
+      const ev = evaluateClip(c, at);
+      const file = path.join(tmpDir, `${jobId}_g${i}_${fi}.png`);
+      tempFiles.push(file);
+      // Rasterise with pure Node (no canvas dep) using a simple PNG encoder.
+      rasterizeShape(ev, ev.graphic ?? g, W, H, file);
+    }
+    if (frames === 1) {
+      inputs.push("-loop", "1", "-framerate", String(fps), "-t", String(f(dur)), "-i", path.join(tmpDir, `${jobId}_g${i}_0.png`));
+    } else {
+      inputs.push("-framerate", String(frames / dur), "-i", path.join(tmpDir, `${jobId}_g${i}_%d.png`));
+    }
+    const idx = inputCount++;
+    // Reuse the existing transform/overlay machinery for x/y.
+    const chain = ["format=yuva420p", "setpts=PTS+" + f(c.start) + "/TB"];
+    filters.push(`[${idx}:v]${chain.join(",")}[${shapeLabel}]`);
+    const x = `main_w*(${animationExpression(c, "x", `(t-${f(c.start)})`)})-overlay_w/2`;
+    const y = `main_h*(${animationExpression(c, "y", `(t-${f(c.start)})`)})-overlay_h/2`;
+    const next = `g${layer + 1}`;
+    filters.push(`[${current}][${shapeLabel}]overlay=x='${x}':y='${y}':eof_action=pass:enable='between(t,${f(c.start)},${f(c.start + dur)})':format=auto[${next}]`);
+    current = next;
+    layer++;
+  });
 
   // text clips (and captions attached to asset clips) via textfile=, so user text never needs filter escaping
   const texts = tl.clips.filter((c) => c.text && c.text.trim() && !tl.tracks?.[c.track]?.hidden);

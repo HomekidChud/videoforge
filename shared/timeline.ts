@@ -1,4 +1,5 @@
 import { normalizeKeyframes, type Keyframes } from "./animation";
+import { normalizeGraphic, isGraphicClip, type Graphic } from "./graphics";
 // Timeline model shared by the editor, the HTTP API and the FFmpeg renderer.
 // Everything coming from a client is passed through normalizeTimeline() so the
 // renderer only ever sees bounded, well-typed values.
@@ -38,6 +39,10 @@ export type Clip = {
   blur?: number; // 0..20 pixels
   label?: string;
   textBg?: boolean; // translucent box behind text
+  /** Motion-graphics shape (asset-less overlay clip). */
+  graphic?: Graphic;
+  /** Marker for graphic clips so preview/render can dispatch on it. */
+  graphicId?: string;
 };
 
 export type Timeline = {
@@ -84,7 +89,8 @@ export function normalizeClip(raw: any): Clip {
   const track: TrackName = ["video", "overlay", "audio"].includes(raw.track) ? raw.track : "video";
   const assetId = typeof raw.assetId === "string" ? raw.assetId.slice(0, 64) : "";
   const text = typeof raw.text === "string" && raw.text.trim() ? raw.text.slice(0, 500) : undefined;
-  if (!assetId && !text) throw new Error("clip needs an assetId or text");
+  const graphic = raw.graphic !== undefined ? normalizeGraphic(raw.graphic) : undefined;
+  if (!assetId && !text && !graphic) throw new Error("clip needs an assetId, text, or graphic");
   const inPoint = round(num(raw.inPoint, 0, 86400, 0));
   const outPoint = round(Math.max(inPoint + MIN_CLIP, num(raw.outPoint, 0, 86400, inPoint + 5)));
   const clip: Clip = {
@@ -96,6 +102,7 @@ export function normalizeClip(raw: any): Clip {
     muted: !!raw.muted,
   };
   if (text) clip.text = text;
+  if (graphic) clip.graphic = graphic;
   if(raw.transitionIn && ["dissolve","wipe-left","wipe-right"].includes(raw.transitionIn.type) && typeof raw.transitionIn.fromClipId === "string") clip.transitionIn = { fromClipId: raw.transitionIn.fromClipId.slice(0,64), type: raw.transitionIn.type, duration: round(num(raw.transitionIn.duration,.05,3,.6)) };
   const opt = (k: keyof Clip, v: unknown, lo: number, hi: number, def: number) => {
     if (v === undefined || v === null) return;
@@ -149,4 +156,6 @@ export function normalizeTimeline(raw: any): Timeline {
 export const clipX = (c: Clip) => c.x ?? 0.5;
 export const clipY = (c: Clip) => c.y ?? (!c.assetId ? 0.82 : 0.5);
 export const clipScale = (c: Clip) => c.scale ?? (c.track === "overlay" ? 0.35 : 1);
-export const isTextClip = (c: Clip) => !c.assetId;
+export const isTextClip = (c: Clip) => !c.assetId && !!c.text;
+export { isGraphicClip };
+export type { Graphic };
