@@ -22,16 +22,18 @@ function notifyKeyChange() {
 // ---------------------------------------------------------------------------
 
 const STORAGE_KEY = "vf_api_key";
+let sessionKey: string | null = null;
 
 export function loadStoredKey(): string | null {
   try {
-    return window.localStorage.getItem(STORAGE_KEY);
+    return sessionKey ?? window.localStorage.getItem(STORAGE_KEY);
   } catch {
-    return null;
+    return sessionKey;
   }
 }
 
 export function storeKey(key: string): void {
+  sessionKey = key;
   try {
     window.localStorage.setItem(STORAGE_KEY, key);
   } catch {
@@ -40,6 +42,7 @@ export function storeKey(key: string): void {
 }
 
 export function clearStoredKey(): void {
+  sessionKey = null;
   try {
     window.localStorage.removeItem(STORAGE_KEY);
   } catch {
@@ -62,6 +65,7 @@ export function ApiKeyProvider({ children }: { children: React.ReactNode }) {
     // keep listeners in sync if the key changes elsewhere (e.g. another tab)
     const onStorage = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY) {
+        sessionKey = e.newValue;
         setApiKeyState(loadStoredKey());
         notifyKeyChange();
       }

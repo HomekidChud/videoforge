@@ -5,6 +5,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
+import PlatformPage from "@/pages/platform";
+import SharePage from "@/pages/share";
 import EditorPage from "@/pages/editor";
 import ApiDocsPage from "@/pages/api-docs";
 import ApiKeyPage from "@/pages/api-key";
@@ -31,6 +33,8 @@ function RequireApiKey({ children }: { children: React.ReactNode }) {
 function AppRouter() {
   return (
     <Switch>
+      <Route path="/share/:id" component={SharePage} />
+      <Route path="/platform">{() => <RequireApiKey><PlatformPage /></RequireApiKey>}</Route>
       <Route path="/api-key" component={ApiKeyPage} />
       <Route path="/api-docs" component={ApiDocsPage} />
       <Route path="/">

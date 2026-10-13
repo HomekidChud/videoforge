@@ -12,7 +12,9 @@ function authHeaders(): Record<string, string> {
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    let message = text;
+    try { message = JSON.parse(text).message || text; } catch { /* plain text body */ }
+    throw new Error(message);
   }
 }
 
@@ -35,6 +37,8 @@ export async function apiRequest(
 }
 
 type UnauthorizedBehavior = "returnNull" | "throw";
+export const API_BASE_URL = API_BASE;
+
 export const getQueryFn: <T>(options: {
   on401: UnauthorizedBehavior;
 }) => QueryFunction<T> =
