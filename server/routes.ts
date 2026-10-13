@@ -14,7 +14,8 @@ import { applyTimelineOp } from "@shared/editing";
 import { animatedValues } from "@shared/animation";
 import { capabilities } from "@shared/capabilities";
 import { buildRenderPlan, runFfmpeg } from "./render";
-import { requireScope, requireMediaAccess, projectAllowed, assetAllowed } from "./auth";
+import { requireScope, requireMediaAccess, projectAllowed, assetAllowed, keyRestrictions } from "./auth";
+import { actorOf, syncTimeline, logEvent, renameLive, dropLive, registerLiveRoutes } from "./live";
 
 const MEDIA_DIR = path.resolve("data/media");
 const OUTPUT_DIR = path.resolve("data/renders");
@@ -106,6 +107,7 @@ function parseTimeline(json: string): Timeline {
 const TMP_DIR = path.resolve("data/tmp");
 fs.mkdirSync(TMP_DIR, { recursive: true });
 
+const SYSTEM = { id: "system", label: "VideoForge", scope: "admin" };
 async function runRender(jobId: string, projectId: string) {
   const project = storage.getProject(projectId);
   if (!project) {
@@ -130,9 +132,11 @@ async function runRender(jobId: string, projectId: string) {
       console.error(`[render ${jobId}] ffmpeg exit ${code}\n${stderrTail}`);
       const reason = stderrTail.split("\n").filter((l) => l.trim()).slice(-2).join(" ").slice(0, 300);
       storage.updateRenderJob(jobId, { status: "error", error: `ffmpeg failed (exit ${code}): ${reason}`, updatedAt: now() });
+      logEvent(projectId, SYSTEM, "render", "Export failed");
       return;
     }
     storage.updateRenderJob(jobId, { status: "done", progress: 1, outputPath: `/api/renders/${jobId}/download`, updatedAt: now() });
+    logEvent(projectId, SYSTEM, "render", "Export finished");
   } catch (e: any) {
     storage.updateRenderJob(jobId, { status: "error", error: String(e?.message || e), updatedAt: now() });
   } finally {
@@ -388,6 +392,7 @@ export async function registerRoutes(
         patch.timelineJson = JSON.stringify(t);
       }
       const updated = storage.updateProject(String(req.params.id), patch);
+      if (updated) { if (patch.name) renameLive(updated.id, patch.name); if (patch.timelineJson) syncTimeline(updated.id, actorOf(req), parseTimeline(patch.timelineJson), "save"); }
       res.json({
         id: updated!.id,
         name: updated!.name,
@@ -402,7 +407,7 @@ export async function registerRoutes(
   });
 
   app.delete("/api/projects/:id", requireScope("write"), (req, res) => {
-    const ok = storage.deleteProject(String(req.params.id));
+    const ok = storage.deleteProject(String(req.params.id)); if (ok) dropLive(String(req.params.id));
     if (!ok) return res.status(404).json({ message: "project not found" });
     res.json({ deleted: true });
   });
@@ -425,6 +430,7 @@ export async function registerRoutes(
       }
     }
     const updated = storage.updateProject(id, { timelineJson: JSON.stringify(timeline), updatedAt: now() })!;
+    syncTimeline(id, actorOf(req), timeline, "api", `API ${list.length > 1 ? `batch of ${list.length} ops` : "op"}: ${Array.from(new Set(list.map((o: any) => o?.op))).slice(0, 6).join(", ")}`);
     res.json({ id: updated.id, name: updated.name, visibility: updated.visibility, timeline, applied: list.length, createdAt: updated.createdAt, updatedAt: updated.updatedAt });
   });
 
@@ -455,6 +461,39 @@ export async function registerRoutes(
     finally { temp.forEach((f) => fs.promises.unlink(f).catch(() => {})); }
   });
 
+  registerLiveRoutes(app);
+
+  app.post("/api/projects/:id/duplicate", requireScope("write"), (req, res) => {
+    const p = storage.getProject(String(req.params.id));
+    if (!p || !projectAllowed((req as any).apiKey, p.id)) return res.status(404).json({ message: "project not found" });
+    if (keyRestrictions((req as any).apiKey).projectIds !== null) return res.status(403).json({ message: "Project-restricted keys cannot create projects." });
+    const copy = storage.createProject({ id: uid(), name: `${p.name} copy`.slice(0, 200), timelineJson: p.timelineJson, createdAt: now(), updatedAt: now() });
+    res.status(201).json({ id: copy.id, name: copy.name, visibility: copy.visibility, timeline: parseTimeline(copy.timelineJson), createdAt: copy.createdAt, updatedAt: copy.updatedAt });
+  });
+
+  // A contact sheet of evenly spaced frames: one image tells an agent what the whole edit looks like.
+  app.get("/api/projects/:id/storyboard", requireScope("read"), async (req, res) => {
+    const p = storage.getProject(String(req.params.id));
+    if (!p || !projectAllowed((req as any).apiKey, p.id)) return res.status(404).json({ message: "project not found" });
+    const timeline = parseTimeline(p.timelineJson), total = timelineDuration(timeline);
+    if (total <= 0) return res.status(422).json({ message: "project is empty" });
+    const count = Math.min(12, Math.max(2, Math.round(Number(req.query.count ?? 6) || 6))), width = Math.min(640, Math.max(160, Math.round(Number(req.query.width ?? 320) || 320)));
+    const files: string[] = [], temp: string[] = [], assets = new Map(storage.listAssets().map((a) => [a.id, a]));
+    try {
+      const times = Array.from({ length: count }, (_, i) => Math.min(Math.max(0, total - 0.04), (total * (i + 0.5)) / count));
+      for (let i = 0; i < times.length; i += 3) await Promise.all(times.slice(i, i + 3).map(async (at, j) => {
+        const out = path.join(TMP_DIR, `board_${uid()}_${i + j}.png`); files[i + j] = out;
+        const plan = buildRenderPlan(timeline, assets, MEDIA_DIR, TMP_DIR, `board${uid()}`, out, { frameAt: at, width }); temp.push(...plan.tempFiles);
+        const r = await runFfmpeg(plan.args, 1, () => {}); if (r.code !== 0) throw new Error("frame render failed");
+      }));
+      const cols = Math.min(4, count), rows = Math.ceil(count / cols), sheet = path.join(TMP_DIR, `sheet_${uid()}.png`);
+      const args = ["-y", ...files.flatMap((f) => ["-i", f]), "-filter_complex", `${files.map((_, i) => `[${i}:v]`).join("")}xstack=inputs=${count}:layout=${files.map((_, i) => `${(i % cols)}*w0_${Math.floor(i / cols)}*h0`).join("|")}:fill=black[o]`, "-map", "[o]", "-frames:v", "1", sheet];
+      const done = await runFfmpeg(args, 1, () => {}); if (done.code !== 0 || !fs.existsSync(sheet)) throw new Error("storyboard failed");
+      temp.push(sheet); res.setHeader("Content-Type", "image/png"); res.setHeader("X-Storyboard", JSON.stringify({ cols, rows, times: times.map((t) => Math.round(t * 100) / 100) }));
+      res.setHeader("Access-Control-Expose-Headers", "X-Storyboard"); res.send(fs.readFileSync(sheet));
+    } catch (e: any) { res.status(422).json({ message: e.message || "storyboard failed" }); }
+    finally { [...files, ...temp].forEach((f) => f && fs.promises.unlink(f).catch(() => {})); }
+  });
   app.get("/api/capabilities", requireScope("read"), (_req, res) => res.json(capabilities()));
 
   // ---------- render ----------
@@ -474,6 +513,7 @@ export async function registerRoutes(
       createdAt: now(),
       updatedAt: now(),
     });
+    logEvent(projectId, actorOf(req), "render", "Started an export");
     // fire-and-forget; job status is pollable
     setImmediate(() => runRender(jobId, projectId));
     res.status(201).json({ jobId, status: "queued", statusUrl: `/api/renders/${jobId}` });

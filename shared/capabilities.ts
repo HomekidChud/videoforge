@@ -37,11 +37,20 @@ export function capabilities() {
       add_marker: "time, label?, color?", remove_marker: "id",
       set_project: "fps?, resolution?: {width,height}, background?: #rrggbb",
       reorder: "order: [clipId...] re-spaces video clips sequentially",
+      shift_clips: "delta (seconds, may be negative), from? (only clips starting at or after), track?, clipIds?",
+      close_gaps: "track? (default video) packs the track's clips end to end in their current order",
+      update_clips: "patch: {any clip field}, plus clipIds? or track? (omit both to hit every clip)",
+      copy_style: "fromClipId, toClipIds: copies transform, color, fades, text style and keyframes (scaled to the target length)",
+      set_marker: "id, time?, label?, color?",
     },
     endpoints: {
       "GET /api/projects/:id/frame?t=SECONDS&width=960": "PNG of the composed frame",
       "GET /api/projects/:id/state?t=SECONDS": "evaluated animated values for clips active at t",
       "POST /api/projects/:id/timeline/ops": "{op,args} or {ops:[...]}",
+      "GET /api/projects/:id/storyboard?count=6&width=320": "one PNG contact sheet of evenly spaced frames; the X-Storyboard header lists cols, rows and times",
+      "GET /api/projects/:id/activity?since=SEQ": "recent edits, who made them and when",
+      "POST /api/projects/:id/duplicate": "copy a project",
+      "GET /api/live and GET /api/live/:id": "admin keys only. View-only live sessions, refreshed by polling every 100 ms",
     },
   };
 }

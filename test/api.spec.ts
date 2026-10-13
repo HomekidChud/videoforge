@@ -463,6 +463,56 @@ async function main() {
     assert(status === "done", `animated render finished: ${status} ${err}`);
   }
 
+  // --- 19. Live sessions (view-only admin watching), new ops, storyboard
+  console.log("19) Live watch and extra ops");
+  {
+    const mk = async (label: string, scope: string) => ({ Authorization: `Bearer ${(await jsonFetch("/api/keys", { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ label, scope }) })).body.key}` }) as any;
+    const AUTH_WRITE = await mk("live editor", "write"), AUTH_READ = await mk("live reader", "read");
+    const proj = await jsonFetch("/api/projects", { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ name: "live one", timeline: { resolution: { width: 640, height: 360 }, clips: [] } }) });
+    const pid = proj.body.id, ops = `/api/projects/${pid}/timeline/ops`;
+    assert((await jsonFetch("/api/live", { headers: AUTH_WRITE })).status === 403, "write keys cannot list live sessions");
+    assert((await jsonFetch(`/api/live/${pid}`, { headers: AUTH_READ })).status === 403, "read keys cannot watch");
+    const list = await jsonFetch("/api/live", { headers: AUTH_ADMIN });
+    assert(list.status === 200 && list.body.refreshMs === 100 && list.body.sessions.some((x: any) => x.projectId === pid), "admin lists every project as a session");
+    const first = await jsonFetch(`/api/live/${pid}`, { headers: AUTH_ADMIN });
+    const rev = first.body.rev;
+    assert(first.body.changed && first.body.timeline, "first watch poll returns the timeline");
+    const idle = await jsonFetch(`/api/live/${pid}?since=${rev}&tsince=${first.body.timelineRev}`, { headers: AUTH_ADMIN });
+    assert(idle.body.changed === false && !idle.body.timeline, "unchanged polls are tiny");
+    // an editor publishes unsaved work: clip, playhead, selection
+    const pub = await jsonFetch(`/api/live/${pid}/publish`, { method: "POST", headers: AUTH_WRITE, body: JSON.stringify({ time: 1.234, selectedId: "t1", playing: true, name: "live one", timeline: { resolution: { width: 640, height: 360 }, clips: [{ id: "t1", assetId: "", track: "overlay", start: 0, inPoint: 0, outPoint: 2, text: "Hello" }] } }) });
+    assert(pub.status === 200 && pub.body.watchers >= 1, `publish reports watchers, got ${pub.status} ${pub.body.message || ""}`);
+    const seen = await jsonFetch(`/api/live/${pid}?since=${rev}&tsince=${first.body.timelineRev}`, { headers: AUTH_ADMIN });
+    assert(seen.body.changed && seen.body.live && seen.body.time === 1.23 && seen.body.selectedId === "t1" && seen.body.playing && seen.body.timeline.clips.length === 1, "watcher sees unsaved edit, playhead and selection");
+    assert(seen.body.activity.some((a: any) => /Added title/.test(a.summary)), "activity records the new clip");
+    const stored = await jsonFetch(`/api/projects/${pid}`, { headers: AUTH_ADMIN });
+    assert(stored.body.timeline.clips.length === 0, "publishing never writes to the saved project");
+    // watching cannot write
+    const poke = await jsonFetch(`/api/live/${pid}`, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ timeline: { clips: [] } }) });
+    assert(!poke.body?.timeline && (await jsonFetch(`/api/live/${pid}`, { headers: AUTH_ADMIN })).body.timeline.clips.length === 1, "watch endpoint has no write verbs");
+    // API ops show up in the feed
+    const batch = await jsonFetch(ops, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ ops: [
+      { op: "add_text_clip", args: { text: "A", start: 0, duration: 2, id: "x" } }, { op: "add_text_clip", args: { text: "B", start: 5, duration: 2 } },
+      { op: "shift_clips", args: { delta: 1 } }, { op: "close_gaps", args: { track: "overlay" } }, { op: "update_clips", args: { track: "overlay", patch: { textSize: 9 } } },
+    ] }) });
+    assert(batch.status === 200, `new ops apply, got ${batch.status} ${batch.body.message || ""}`);
+    const starts = batch.body.timeline.clips.map((c: any) => c.start).sort((a: number, b: number) => a - b);
+    assert(starts[0] === 0 && starts[1] === 2 && batch.body.timeline.clips.every((c: any) => c.textSize === 9), "close_gaps packs and update_clips patches a track");
+    const feed = await jsonFetch(`/api/projects/${pid}/activity`, { headers: AUTH_READ });
+    assert(feed.body.activity.some((a: any) => /API batch of 5/.test(a.summary)), "read keys can read the activity feed");
+    const ids = batch.body.timeline.clips.map((c: any) => c.id);
+    const style = await jsonFetch(ops, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ ops: [
+      { op: "set_keyframes", args: { clipId: ids[0], property: "scale", keyframes: [{ time: 0, value: 1 }, { time: 2, value: 1.5 }] } },
+      { op: "copy_style", args: { fromClipId: ids[0], toClipIds: [ids[1]] } }, { op: "add_marker", args: { id: "m1", time: 3 } }, { op: "set_marker", args: { id: "m1", time: 4, label: "Beat" } },
+    ] }) });
+    const copied = style.body.timeline?.clips.find((c: any) => c.id === ids[1]);
+    assert(style.status === 200 && copied.keyframes.scale[1].value === 1.5 && style.body.timeline.markers[0].time === 4, `copy_style and set_marker work, got ${style.status} ${style.body.message || ""}`);
+    const dup = await jsonFetch(`/api/projects/${pid}/duplicate`, { method: "POST", headers: AUTH_ADMIN, body: "{}" });
+    assert(dup.status === 201 && dup.body.timeline.clips.length === ids.length, "projects can be duplicated");
+    const caps = await jsonFetch("/api/capabilities", { headers: AUTH_ADMIN });
+    assert(caps.body.ops.shift_clips && caps.body.ops.copy_style, "capabilities list the new ops");
+  }
+
   console.log(`\n${passed} passed, ${failed} failed`);
   killServer();
   if (failed > 0) process.exit(1);

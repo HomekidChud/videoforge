@@ -240,7 +240,7 @@ function enforcePolicy(key: ApiKey, req: Request, res: Response): boolean {
   if (req.method === "POST" && req.path === "/api/renders" && !p.allowRender) return deny("Rendering is disabled for this API key.");
   if (p.projectIds !== null) {
     if ((req.path === "/api/projects" && req.method === "POST") || req.path === "/api/media/upload" || (req.path.startsWith("/api/media/") && req.method === "DELETE")) return deny("Project-restricted keys cannot create projects, upload, or delete shared media.");
-    const projectMatch = req.path.match(/^\/api\/projects\/([^/]+)/);
+    const projectMatch = req.path.match(/^\/api\/(?:projects|live)\/([^/]+)/);
     const mediaMatch = req.path.match(/^\/api\/media\/([^/]+)/);
     const renderMatch = req.path.match(/^\/api\/renders\/([^/]+)/);
     if (projectMatch && !projectAllowed(key, projectMatch[1])) return deny("Project is outside this API key's restrictions.");
@@ -255,7 +255,8 @@ function enforcePolicy(key: ApiKey, req: Request, res: Response): boolean {
     if (Array.isArray(req.body?.ops)) req.body.ops.forEach((o: any) => { if (o?.args?.assetId) refs.push(o.args.assetId); });
     if (refs.some((id: string) => !assetAllowed(key, id))) return deny("Timeline contains media outside this API key's restrictions.");
   }
-  if (p.requestsPerMinute) {
+  // Editors publish live state about ten times a second; that heartbeat is not metered.
+  if (p.requestsPerMinute && !/^\/api\/live\/[^/]+\/publish$/.test(req.path)) {
     const now = Date.now();
     let w = rateWindows.get(key.id);
     if (!w || now - w.start >= 60000) {

@@ -17,6 +17,12 @@ export function patchWithAnimation(c:Clip, patch:Partial<Clip>):Clip {
   }
   return normalizeClip(next);
 }
+/** Stretch a clip's keyframe times so a copied animation fits a clip of a different length. */
+function scaleKeys(keys: Record<string, { time: number; value: number; easing?: unknown }[]>, from: number, to: number) {
+  const k = from > 0 ? to / from : 1; const out: any = {};
+  for (const p of Object.keys(keys)) out[p] = keys[p].map((f) => ({ ...f, time: Math.round(f.time * k * 1000) / 1000 }));
+  return out;
+}
 export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:(id:string)=>{kind:string;duration:number}|undefined):Timeline {
   const timeline=normalizeTimeline(JSON.parse(JSON.stringify(raw)));
   const clips=timeline.clips;
@@ -147,6 +153,41 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
         case "set_track": { if(!TRACKS.includes(args?.track)) throw new Error("unknown track"); timeline.tracks={...timeline.tracks,[args.track]:{...timeline.tracks?.[args.track as TrackName],...args.settings}}; break; }
         case "add_marker": { timeline.markers=[...(timeline.markers??[]),{id:args.id??uid(),time:args.time,label:args.label??"Marker",color:args.color}]; break; }
         case "remove_marker": { timeline.markers=(timeline.markers??[]).filter(m=>m.id!==args?.id); break; }
+        case "shift_clips": {
+          const { delta, from = 0, track, clipIds } = args || {};
+          if (typeof delta !== "number" || !Number.isFinite(delta)) throw new Error("delta (seconds) required");
+          for (const c of clips) if ((!track || c.track === track) && (!Array.isArray(clipIds) || clipIds.includes(c.id)) && c.start >= from - 0.0005) c.start = Math.max(0, Math.round((c.start + delta) * 1000) / 1000);
+          break;
+        }
+        case "close_gaps": {
+          const track = (args?.track ?? "video") as TrackName; if (!TRACKS.includes(track)) throw new Error("unknown track");
+          let t = 0; for (const c of clips.filter((x) => x.track === track).sort((a, b) => a.start - b.start)) { c.start = Math.round(t * 1000) / 1000; t += clipDuration(c); }
+          break;
+        }
+        case "update_clips": {
+          const { clipIds, track, patch } = args || {}; if (!patch || typeof patch !== "object") throw new Error("patch object required");
+          const { id: _i, assetId: _a, ...safe } = patch; let n = 0;
+          clips.forEach((c, i) => { if ((Array.isArray(clipIds) && clipIds.includes(c.id)) || (!Array.isArray(clipIds) && (!track || c.track === track))) { clips[i] = patchWithAnimation(c, safe); n++; } });
+          if (!n) throw new Error("no clips matched");
+          break;
+        }
+        case "copy_style": {
+          const from = find(args?.fromClipId), ids: string[] = Array.isArray(args?.toClipIds) ? args.toClipIds : [];
+          const fields = ["x", "y", "scale", "rotation", "opacity", "blur", "fit", "flipX", "flipY", "filter", "brightness", "contrast", "saturation", "fadeIn", "fadeOut", "textSize", "textColor", "textBg"] as const;
+          for (const id of ids) {
+            const target = find(id), next: any = { ...target };
+            for (const f of fields) next[f] = (from as any)[f];
+            const d = clipDuration(target);
+            next.keyframes = from.keyframes ? normalizeKeyframes(scaleKeys(JSON.parse(JSON.stringify(from.keyframes)), clipDuration(from), d), d) : undefined;
+            clips[clips.indexOf(target)] = normalizeClip(next);
+          }
+          break;
+        }
+        case "set_marker": {
+          const m = (timeline.markers ?? []).find((x) => x.id === args?.id); if (!m) throw new Error(`marker ${args?.id} not found`);
+          if (typeof args.time === "number") m.time = Math.max(0, args.time); if (typeof args.label === "string") m.label = args.label.slice(0, 80); if (typeof args.color === "string") m.color = args.color;
+          timeline.markers = [...(timeline.markers ?? [])].sort((a, b) => a.time - b.time); break;
+        }
         case "apply_motion": { const c=find(args?.clipId); Object.assign(c, motionPreset(c,args.preset)); break; }
         default:
           throw new Error(`unknown op: ${op}`);
