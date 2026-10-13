@@ -13,6 +13,10 @@ gated behind **API keys with permission scopes** (`read`, `write`, `admin`).
 
 ## Features
 
+- **Public homepage** (`#/`) with a working composition playground and links to Studio and docs
+- **Searchable documentation** (`#/docs/introduction`) with guides, endpoint reference, keyboard search, section navigation, previous/next links, light/dark themes and mobile navigation. `#/api-docs` remains the legacy HTTP reference route
+- **Motion graphics**: asset-free rectangles, ellipses and lines with fill, stroke and corners; lower-third, title-card, callout, kinetic-type and countdown templates. Generated layers remain editable clips
+- **Safer agent editing**: `dryRun`, `expectedUpdatedAt` revision guards, `createdClipIds`, timeline validation, shape JSON Schema, template discovery and stagger operations
 - **Studio editor:** live compositing preview, three-lane timeline (titles and overlays, video, audio) with drag-to-move across lanes, trim handles, snapping, zoom, audio waveforms, split, duplicate, ripple delete, undo/redo, autosave and keyboard shortcuts
 - Per-clip speed, fades, colour filters, brightness/contrast/saturation, opacity, position and scale, picture-in-picture, standalone titles with size, colour and background box
 - Upload video / audio / image via drag-and-drop or file picker (streamed, up to 2 GB by default)
@@ -26,6 +30,28 @@ gated behind **API keys with permission scopes** (`read`, `write`, `admin`).
 ## Editing and animation
 
 The studio supports keyframes on position, scale, rotation, opacity, volume and colour, with a value graph and draggable bezier tween slopes, motion presets, on-canvas move and scale handles, markers, track mute and hide, title presets, copy and paste, and a background colour. Everything is exposed through the timeline ops API (batches, keyframes, frame previews, state evaluation and a capabilities endpoint). See [docs/API.md](docs/API.md).
+
+## Motion graphics
+
+The Studio now lives at `#/editor`. Its Graphics library adds templates or shapes at the playhead with headline, subtitle, accent and duration controls. Select a shape to edit dimensions, fill, stroke and corners; use the Motion inspector to animate transforms. Browser API keys are held in memory only, so reloading requires signing in again.
+
+```json
+{
+  "op": "add_motion_template",
+  "args": {
+    "template": "lower-third",
+    "title": "Ada Lovelace",
+    "subtitle": "Pioneer of computing",
+    "color": "#f6a447",
+    "start": 0,
+    "duration": 4
+  }
+}
+```
+
+Send this to `POST /api/projects/:id/timeline/ops` with a write-capable Bearer key. The response includes editable layer IDs in `createdClipIds`. Discover options via `GET /api/capabilities`, `GET /api/motion/templates` and `GET /api/graphics/schema`.
+
+Shape dimensions are composition fractions; stroke and radius use output pixels. Layer families are media, shapes, then text. There is no arbitrary SVG, Lottie, expressions, 3D or nested scene graph. Browser and FFmpeg output can differ slightly in font metrics and cubic easing approximation.
 
 ## Cursors, Follow, multi-select and transitions
 
@@ -117,3 +143,13 @@ See the in-app `#/api-docs` page for the complete reference.
 
 - Node 20+
 - `ffmpeg` and `ffprobe` on PATH
+
+## Tests
+
+```bash
+npm run check
+npm test
+npm run build
+```
+
+`test/graphics.spec.ts` covers normalization, templates, staggered sequencing and actual FFmpeg output (pixel checks, rounded/outlined shapes, animated positions, every template and MP4 export). `test/api.spec.ts` covers authentication, restrictions, safe batches, discovery and validation. FFmpeg and ffprobe are required for rendering tests.

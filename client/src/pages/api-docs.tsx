@@ -1,151 +1,43 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, ArrowRight, ArrowUpRight, Menu, Search, X } from "lucide-react";
+import { useLocation } from "wouter";
+import { PublicSite, PublicHeader, CodeBlock, usePageTitle } from "@/components/forge-public";
+import { DOC_PAGES } from "@/lib/docs-content";
+import MotionDemo from "@/components/motion-demo";
 
-const API_BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
-
-type Endpoint = {
-  method: "GET" | "POST" | "PUT" | "DELETE";
-  path: string;
-  desc: string;
-  body?: string;
-  example?: string;
-};
-
-const endpoints: Endpoint[] = [
-  { method: "GET", path: "/api/health", desc: "Health check. Returns service name and version." },
-  { method: "POST", path: "/api/media/upload", desc: "Upload one or more media files (video, audio, image). Accepts multipart/form-data with a `files` field. Returns the created asset(s) with duration, resolution, uploadUrl, thumbnailUrl.", body: "multipart/form-data: files[]=a.mp4, files[]=b.mp3" },
-  { method: "GET", path: "/api/media", desc: "List all uploaded media assets." },
-  { method: "GET", path: "/api/media/:id", desc: "Get one asset's metadata." },
-  { method: "DELETE", path: "/api/media/:id", desc: "Delete an asset and its file." },
-  { method: "GET", path: "/api/media/:id/raw", desc: "Stream the raw media file (use for downloads or playing back)." },
-  { method: "GET", path: "/api/media/:id/thumb", desc: "Get a JPEG thumbnail for the asset (first video frame, or scaled image)." },
-  { method: "POST", path: "/api/projects", desc: "Create a project with an initial timeline.", body: `{\n  "name": "My edit",\n  "timeline": {\n    "fps": 30,\n    "resolution": {"width": 1280, "height": 720},\n    "clips": []\n  }\n}` },
-  { method: "GET", path: "/api/projects", desc: "List all projects with their timelines." },
-  { method: "GET", path: "/api/projects/:id", desc: "Get one project with its timeline." },
-  { method: "PUT", path: "/api/projects/:id", desc: "Replace a project's timeline (full overwrite) or rename it.", body: `{\n  "name": "Renamed",\n  "timeline": { "fps": 30, "resolution": {"width":1280,"height":720}, "clips": [...] }\n}` },
-  { method: "DELETE", path: "/api/projects/:id", desc: "Delete a project." },
-  { method: "POST", path: "/api/projects/:id/timeline/ops", desc: "Apply one edit, or an atomic batch with {ops: [...]} (up to 100). Ops include set_transition (dissolve, wipe-left, wipe-right), remove_clips, add_clip, add_text_clip, trim_clip, move_clip, split_clip, update_clip, set_keyframes, upsert_keyframe, apply_motion, shift_clips, close_gaps, update_clips, copy_style, add_marker and more. GET /api/capabilities lists them all.", body: `{\n  "op": "add_clip",\n  "args": {\n    "assetId": "abc123",\n    "track": "video",\n    "start": 0,\n    "inPoint": 0,\n    "outPoint": 5.2,\n    "volume": 1,\n    "muted": false,\n    "text": "Hello world"\n  }\n}` },
-  { method: "GET", path: "/api/capabilities", desc: "Machine-readable list of every op, animatable property, easing, filter and preset. Start here when driving the editor from an agent." },
-  { method: "GET", path: "/api/projects/:id/state?t=1.5", desc: "Evaluated animated values (position, scale, opacity and so on) of every clip active at that time." },
-  { method: "GET", path: "/api/projects/:id/frame?t=1.5&width=640", desc: "PNG still of the composed frame at that time." },
-  { method: "GET", path: "/api/projects/:id/storyboard?count=6", desc: "One PNG contact sheet of evenly spaced frames, so an agent can see the whole edit in one request." },
-  { method: "POST", path: "/api/projects/:id/presence", desc: "Announce yourself with {cid, time, playing, selectedIds, cursor} and receive every other participant with their cursor, playhead and selection. Call about every 150 ms; entries expire after 4 seconds." },
-  { method: "GET", path: "/api/projects/:id/activity", desc: "Recent edits and who made them." },
-  { method: "POST", path: "/api/projects/:id/duplicate", desc: "Copy a project." },
-  { method: "GET", path: "/api/live", desc: "Admin keys only. Every project with live status. View only; refreshed by polling every 100 ms." },
-  { method: "GET", path: "/api/live/:id?since=REV&tsince=TREV", desc: "Admin keys only. The editor's unsaved timeline, playhead, selection and activity feed. Unchanged polls return a few bytes." },
-  { method: "POST", path: "/api/renders", desc: "Queue a render for a project. Returns a jobId you poll.", body: `{ "projectId": "xyz" }` },
-  { method: "GET", path: "/api/renders", desc: "List render jobs, optionally filtered by ?projectId=" },
-  { method: "GET", path: "/api/renders/:id", desc: "Get one render job's status (queued, rendering, done, error) and progress." },
-  { method: "GET", path: "/api/renders/:id/download", desc: "Download the finished MP4 when the job is done." },
-];
-
-function MethodBadge({ m }: { m: Endpoint["method"] }) {
-  const colors: Record<string, string> = {
-    GET: "bg-emerald-600",
-    POST: "bg-blue-600",
-    PUT: "bg-amber-600",
-    DELETE: "bg-red-600",
-  };
-  return (
-    <span className={`${colors[m]} text-white text-[10px] font-bold px-1.5 py-0.5 rounded`}>
-      {m}
-    </span>
-  );
-}
-
-export default function ApiDocsPage() {
-  const [open, setOpen] = useState<number | null>(0);
-
-  return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 p-8 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold mb-2">VideoForge Agent API</h1>
-      <p className="text-sm text-zinc-400 mb-6">
-        This is the same HTTP API that powers the editor UI. Any AI agent (or any
-        script) can upload video, build a timeline, edit clips, and request a render.
-        Base URL: <code className="bg-zinc-800 px-1 rounded">{API_BASE || "(same origin)"}</code>
-      </p>
-
-      <h2 className="text-lg font-semibold mb-3">Timeline model</h2>
-      <pre className="bg-zinc-900 border border-zinc-800 rounded p-4 text-xs overflow-x-auto mb-6">{`{
-  "fps": 30,
-  "resolution": { "width": 1280, "height": 720 },
-  "clips": [
-    {
-      "id": "unique-per-project",
-      "assetId": "<from /api/media>",
-      "track": "video" | "audio" | "overlay",
-      "start": 0,       // timeline start (seconds)
-      "inPoint": 0,     // trim start within source (seconds)
-      "outPoint": 5.2,  // trim end within source (seconds)
-      "volume": 1,      // 0..1
-      "muted": false,
-      "text": "optional caption"  // burned into output
-    }
-  ]
-}`}</pre>
-
-      <h2 className="text-lg font-semibold mb-3">Endpoints</h2>
-      <div className="space-y-2">
-        {endpoints.map((e, i) => (
-          <div key={e.path + e.method} className="border border-zinc-800 rounded-lg overflow-hidden">
-            <button
-              className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-zinc-900"
-              onClick={() => setOpen(open === i ? null : i)}
-            >
-              <MethodBadge m={e.method} />
-              <code className="text-xs">{e.path}</code>
-              <span className="text-xs text-zinc-500 flex-1 truncate">{e.desc}</span>
-            </button>
-            {open === i && (
-              <div className="px-4 pb-4 space-y-3">
-                <p className="text-xs text-zinc-400">{e.desc}</p>
-                {e.body && (
-                  <div>
-                    <div className="text-[11px] uppercase text-zinc-500 mb-1">Request body</div>
-                    <pre className="bg-zinc-900 rounded p-3 text-[11px] overflow-x-auto">{e.body}</pre>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      <h2 className="text-lg font-semibold mt-8 mb-3">Agent workflow example</h2>
-      <pre className="bg-zinc-900 border border-zinc-800 rounded p-4 text-xs overflow-x-auto">{`# 1. Upload a video
-curl -F "files=@clip.mp4" $BASE/api/media/upload
-# → { "assets": [{ "id": "abc", ... }] }
-
-# 2. Create a project
-curl -X POST $BASE/api/projects \\
-  -H 'Content-Type: application/json' \\
-  -d '{"name":"Agent edit","timeline":{"clips":[]}}'
-# → { "id": "prj", ... }
-
-# 3. Add a clip from that asset
-curl -X POST $BASE/api/projects/prj/timeline/ops \\
-  -H 'Content-Type: application/json' \\
-  -d '{"op":"add_clip","args":{"assetId":"abc","outPoint":5}}'
-
-# 4. Trim / caption / reorder via ops
-curl -X POST $BASE/api/projects/prj/timeline/ops \\
-  -H 'Content-Type: application/json' \\
-  -d '{"op":"trim_clip","args":{"clipId":"<clip>","inPoint":1,"outPoint":4}}'
-curl -X POST $BASE/api/projects/prj/timeline/ops \\
-  -H 'Content-Type: application/json' \\
-  -d '{"op":"add_text","args":{"clipId":"<clip>","text":"Hi"}}'
-
-# 5. Render
-curl -X POST $BASE/api/renders -H 'Content-Type: application/json' -d '{"projectId":"prj"}'
-# → { "jobId": "j1" }
-
-# 6. Poll and download
-curl $BASE/api/renders/j1
-curl -o out.mp4 $BASE/api/renders/j1/download`}</pre>
-
-      <div className="mt-8">
-        <a href="#/" className="text-blue-400 hover:underline text-sm">← Back to editor</a>
-      </div>
+const sectionId=(s:string)=>s.toLowerCase().replace(/[^a-z0-9]+/g,"-");
+export default function ApiDocsPage({params}:{params?:{slug:string}}) {
+  const slug=params?.slug??"api-reference",current=DOC_PAGES.find(p=>p.slug===slug);
+  const [searchOpen,setSearchOpen]=useState(false),[query,setQuery]=useState(""),[menu,setMenu]=useState(false);
+  const [,navigate]=useLocation(),searchRef=useRef<HTMLInputElement>(null),searchButton=useRef<HTMLButtonElement>(null);
+  usePageTitle(current?`${current.title} · Docs`:"Page not found · Docs");
+  useEffect(()=>{const h=(e:KeyboardEvent)=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="k"){e.preventDefault();setSearchOpen(o=>!o);}if(e.key==="Escape"){setSearchOpen(false);setMenu(false);searchButton.current?.focus();}};window.addEventListener("keydown",h);return()=>window.removeEventListener("keydown",h);},[]);
+  useEffect(()=>{if(searchOpen)searchRef.current?.focus();},[searchOpen]);
+  useEffect(()=>{setMenu(false);window.scrollTo(0,0);},[slug]);
+  const filtered=DOC_PAGES.filter(p=>`${p.title} ${p.description} ${p.sections.map(s=>s.title+" "+s.text+" "+s.code+" "+s.rows?.flat().join(" ")).join(" ")}`.toLowerCase().includes(query.toLowerCase()));
+  const index=DOC_PAGES.findIndex(p=>p.slug===slug),previous=DOC_PAGES[index-1],next=DOC_PAGES[index+1];
+  const choose=(s:string)=>{navigate(`/docs/${s}`);setSearchOpen(false);setQuery("");};
+  return <PublicSite><a className="public-skip" href="#/" onClick={e=>{e.preventDefault();document.getElementById("docs-content")?.focus();}}>Skip to content</a>
+    <PublicHeader docs><button className="docs-search" ref={searchButton} onClick={()=>setSearchOpen(true)} data-testid="docs-search"><Search size={17}/><span>Search documentation</span><kbd>Ctrl K</kbd></button></PublicHeader>
+    <div className="docs-mobile-bar"><button onClick={()=>setMenu(o=>!o)} aria-expanded={menu} data-testid="docs-menu"><Menu size={17}/> Documentation</button><span>{current?.title??"Not found"}</span></div>
+    <div className="docs-layout">
+      <aside className={`docs-sidebar ${menu?"open":""}`}><nav aria-label="Documentation">{Array.from(new Set(DOC_PAGES.map(p=>p.group))).map(group=><details open key={group}><summary>{group}</summary><div>{DOC_PAGES.filter(p=>p.group===group).map(p=><a key={p.slug} href={`#/docs/${p.slug}`} aria-current={p.slug===slug?"page":undefined} className={p.slug===slug?"selected":""} data-testid={`docs-link-${p.slug}`}>{p.title}</a>)}</div></details>)}</nav><a className="sidebar-repo" href="https://github.com/HomekidChud/videoforge/blob/main/docs/API.md">Repository reference <ArrowUpRight size={14}/></a></aside>
+      <main className="docs-article" id="docs-content" tabIndex={-1}>{current?<>
+        <div className="docs-breadcrumb">Documentation <span>/</span> {current.group}</div><h1>{current.title}</h1><p className="doc-lede">{current.description}</p>
+        {current.sections.map(s=><section key={s.title} id={sectionId(s.title)}><h2>{s.title}<button aria-label={`Link to ${s.title}`} onClick={()=>document.getElementById(sectionId(s.title))?.scrollIntoView({behavior:"smooth"})}>#</button></h2><p>{s.text}</p>
+          {s.code&&<CodeBlock code={s.code} label={s.language??"JSON"}/>}
+          {s.rows&&<div className="doc-table-wrap"><table><thead><tr>{s.rows[0].map(c=><th key={c}>{c}</th>)}</tr></thead><tbody>{s.rows.slice(1).map((row,i)=><tr key={i}>{row.map((c,j)=><td key={j}>{j===0?<code>{c}</code>:c}</td>)}</tr>)}</tbody></table></div>}
+          {s.links&&<div className="doc-link-cards">{s.links.map(l=><a key={l.slug} href={`#/docs/${l.slug}`}>{l.label}<ArrowRight size={17}/></a>)}</div>}
+        </section>)}
+        {slug==="motion-graphics"&&<section id="playground"><h2>Try the motion playground</h2><p>Switch templates, change the headline, pause playback or scrub through the composition. This is a local preview; it does not create a project or send requests to your server.</p><MotionDemo compact/></section>}
+        <div className="doc-edit-row"><a href="https://github.com/HomekidChud/videoforge" target="_blank" rel="noreferrer">Contribute on GitHub <ArrowUpRight size={14}/></a><span>Timeline schema v4</span></div>
+        <nav className="docs-pagination" aria-label="Guide navigation">{previous?<a href={`#/docs/${previous.slug}`}><ArrowLeft size={17}/><div><small>Previous</small><b>{previous.title}</b></div></a>:<span/>}{next?<a href={`#/docs/${next.slug}`}><div><small>Next</small><b>{next.title}</b></div><ArrowRight size={17}/></a>:<a href="#/editor"><div><small>Start creating</small><b>Open Studio</b></div><ArrowUpRight size={17}/></a>}</nav>
+      </>:<><h1>That guide doesn’t exist.</h1><p>Choose a topic from the sidebar, or return to the introduction.</p><a className="public-button" href="#/docs/introduction">Read the introduction</a></>}</main>
+      <aside className="docs-toc"><nav aria-label="On this page"><b>On this page</b>{current?.sections.map(s=><button key={s.title} onClick={()=>document.getElementById(sectionId(s.title))?.scrollIntoView({behavior:"smooth"})}>{s.title}</button>)}{slug==="motion-graphics"&&<button onClick={()=>document.getElementById("playground")?.scrollIntoView({behavior:"smooth"})}>Motion playground</button>}</nav><div className="toc-callout"><span>CREATE WITH CODE</span><p>Your agent’s next composition starts with one request.</p><a href="#/docs/quickstart">Read the quickstart <ArrowRight size={14}/></a></div></aside>
     </div>
-  );
+    {searchOpen&&<div className="search-backdrop" onClick={()=>{setSearchOpen(false);searchButton.current?.focus();}}><div className="search-dialog" role="dialog" aria-modal="true" aria-label="Search documentation" onClick={e=>e.stopPropagation()} onKeyDown={e=>{if(e.key==="Tab"){const items=Array.from(e.currentTarget.querySelectorAll<HTMLElement>("input,button"));const first=items[0],last=items[items.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}}}>
+      <div className="search-input-row"><Search size={20}/><input ref={searchRef} aria-label="Search documentation" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search guides, operations, endpoints..." onKeyDown={e=>{if(e.key==="Enter"&&filtered[0])choose(filtered[0].slug);}} data-testid="docs-search-input"/><button className="public-icon" aria-label="Close search" onClick={()=>{setSearchOpen(false);searchButton.current?.focus();}}><X size={18}/></button></div>
+      <div className="search-results">{filtered.length?filtered.map(p=><button key={p.slug} onClick={()=>choose(p.slug)}><span>{p.group}</span><b>{p.title}</b><p>{p.description}</p><ArrowRight size={17}/></button>):<p className="search-empty">No matches. Try “shape”, “keyframes” or “render”.</p>}</div><div className="search-footer">Enter to open first result · Escape to close</div>
+    </div></div>}
+  </PublicSite>;
 }

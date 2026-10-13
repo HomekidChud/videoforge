@@ -2,7 +2,7 @@ import { patchWithAnimation, splitKeyframes } from "@shared/editing";
 import { clipDuration, clipEnd, normalizeClip, type Clip, type Timeline } from "@shared/timeline";
 
 export const uid = () => crypto.randomUUID().replace(/-/g, "").slice(0, 12);
-export const EMPTY_TIMELINE = (): Timeline => ({ version:2, fps:30, resolution:{width:1280,height:720}, clips:[] });
+export const EMPTY_TIMELINE = (): Timeline => ({ version:4, fps:30, resolution:{width:1280,height:720}, clips:[] });
 export type AssetDTO = { id:string; filename:string; kind:"video"|"audio"|"image"; mime:string; duration:number; width:number; height:number; sizeBytes:number; uploadUrl:string; thumbnailUrl:string; hasAudio?:boolean; createdAt:number };
 export type ProjectDTO = { id:string; name:string; timeline:Timeline; visibility:"private"|"public"; createdAt:number; updatedAt:number };
 export type RenderDTO = { id:string; projectId:string; status:"queued"|"rendering"|"done"|"error"; progress:number; outputPath:string|null; error:string|null };

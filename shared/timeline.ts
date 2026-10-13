@@ -1,4 +1,5 @@
 import { normalizeKeyframes, type Keyframes } from "./animation";
+import { normalizeShape, type Shape } from "./graphics";
 // Timeline model shared by the editor, the HTTP API and the FFmpeg renderer.
 // Everything coming from a client is passed through normalizeTimeline() so the
 // renderer only ever sees bounded, well-typed values.
@@ -7,9 +8,10 @@ export type TrackName = "video" | "overlay" | "audio";
 export type ClipFilter = "none" | "mono" | "sepia" | "vivid" | "cool" | "warm" | "faded";
 
 export type Clip = {
+  shape?: Shape;
   transitionIn?: import("./transitions").Transition;
   id: string;
-  assetId: string; // "" for pure text clips
+  assetId: string; // "" for asset-free text or shape clips
   track: TrackName;
   start: number; // timeline seconds
   inPoint: number; // source seconds
@@ -84,7 +86,9 @@ export function normalizeClip(raw: any): Clip {
   const track: TrackName = ["video", "overlay", "audio"].includes(raw.track) ? raw.track : "video";
   const assetId = typeof raw.assetId === "string" ? raw.assetId.slice(0, 64) : "";
   const text = typeof raw.text === "string" && raw.text.trim() ? raw.text.slice(0, 500) : undefined;
-  if (!assetId && !text) throw new Error("clip needs an assetId or text");
+  const shape = normalizeShape(raw.shape);
+  if (!assetId && !text && !shape) throw new Error("clip needs an assetId, text, or shape");
+  if (shape && (assetId || text || track === "audio")) throw new Error("shape clips must be visual and cannot also contain media or text");
   const inPoint = round(num(raw.inPoint, 0, 86400, 0));
   const outPoint = round(Math.max(inPoint + MIN_CLIP, num(raw.outPoint, 0, 86400, inPoint + 5)));
   const clip: Clip = {
@@ -96,6 +100,7 @@ export function normalizeClip(raw: any): Clip {
     muted: !!raw.muted,
   };
   if (text) clip.text = text;
+  if (shape) clip.shape = shape;
   if(raw.transitionIn && ["dissolve","wipe-left","wipe-right"].includes(raw.transitionIn.type) && typeof raw.transitionIn.fromClipId === "string") clip.transitionIn = { fromClipId: raw.transitionIn.fromClipId.slice(0,64), type: raw.transitionIn.type, duration: round(num(raw.transitionIn.duration,.05,3,.6)) };
   const opt = (k: keyof Clip, v: unknown, lo: number, hi: number, def: number) => {
     if (v === undefined || v === null) return;
@@ -110,7 +115,7 @@ export function normalizeClip(raw: any): Clip {
   opt("saturation", raw.saturation, 0, 2, 1);
   opt("opacity", raw.opacity, 0, 1, 1);
   opt("x", raw.x, 0, 1, 0.5);
-  opt("y", raw.y, 0, 1, track === "overlay" && !assetId ? 0.82 : 0.5);
+  opt("y", raw.y, 0, 1, track === "overlay" && !assetId && !shape ? 0.82 : 0.5);
   opt("scale", raw.scale, 0.1, 2, assetId && track === "overlay" ? 0.35 : 1);
   opt("rotation", raw.rotation, -360, 360, 0);
   opt("blur", raw.blur, 0, 20, 0);
@@ -142,11 +147,11 @@ export function normalizeTimeline(raw: any): Timeline {
   const tracks: Timeline["tracks"] = {};
   for(const name of TRACKS) { const t = raw.tracks?.[name]; if(t) tracks[name] = { muted: !!t.muted, hidden: !!t.hidden, locked: !!t.locked }; }
   const markers = (Array.isArray(raw.markers) ? raw.markers : []).slice(0,100).map((m:any,i:number)=>({ id: typeof m.id === "string" ? m.id.slice(0,64) : `marker${i}`, time: round(num(m.time,0,86400,0)), label: String(m.label??"Marker").slice(0,120), color: /^#[0-9a-fA-F]{6}$/.test(m.color) ? m.color : "#f6a447" })).sort((a:any,b:any)=>a.time-b.time);
-  return { version: 3, background: /^#[0-9a-fA-F]{6}$/.test(raw.background) ? raw.background : "#000000", markers, tracks, fps: Math.round(num(raw.fps, 1, 60, 30)), resolution: { width: w, height: h }, clips };
+  return { version: 4, background: /^#[0-9a-fA-F]{6}$/.test(raw.background) ? raw.background : "#000000", markers, tracks, fps: Math.round(num(raw.fps, 1, 60, 30)), resolution: { width: w, height: h }, clips };
 }
 
 // Effective values with defaults applied (normalizeClip omits defaults).
 export const clipX = (c: Clip) => c.x ?? 0.5;
-export const clipY = (c: Clip) => c.y ?? (!c.assetId ? 0.82 : 0.5);
-export const clipScale = (c: Clip) => c.scale ?? (c.track === "overlay" ? 0.35 : 1);
-export const isTextClip = (c: Clip) => !c.assetId;
+export const clipY = (c: Clip) => c.y ?? (!c.assetId && !c.shape ? 0.82 : 0.5);
+export const clipScale = (c: Clip) => c.scale ?? (c.assetId && c.track === "overlay" ? 0.35 : 1);
+export const isTextClip = (c: Clip) => !c.assetId && !c.shape;

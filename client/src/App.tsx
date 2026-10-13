@@ -9,6 +9,8 @@ import PlatformPage from "@/pages/platform";
 import SharePage from "@/pages/share";
 import EditorPage from "@/pages/editor";
 import ApiDocsPage from "@/pages/api-docs";
+import HomePage from "@/pages/home";
+import { PublicThemeProvider } from "@/components/forge-public";
 import ApiKeyPage from "@/pages/api-key";
 import { LiveListPage, LiveWatchPage } from "@/pages/live";
 import { useApiKey, ApiKeyProvider, setKeyChangeNotifier } from "@/lib/apiKey";
@@ -21,8 +23,8 @@ setKeyChangeNotifier(() => {
 });
 
 // ---------------------------------------------------------------------------
-// Route gate: the editor and api-docs pages require a stored API key.
-// The api-key page itself is exempt.
+// Studio and administrative pages require a session API key.
+// The homepage, docs, share pages and sign-in remain public.
 // ---------------------------------------------------------------------------
 
 function RequireApiKey({ children }: { children: React.ReactNode }) {
@@ -39,8 +41,10 @@ function AppRouter() {
       <Route path="/live/:id">{(params) => <RequireApiKey><LiveWatchPage params={params as { id: string }} /></RequireApiKey>}</Route>
       <Route path="/live">{() => <RequireApiKey><LiveListPage /></RequireApiKey>}</Route>
       <Route path="/api-key" component={ApiKeyPage} />
-      <Route path="/api-docs" component={ApiDocsPage} />
-      <Route path="/">
+      <Route path="/api-docs">{()=> <ApiDocsPage/>}</Route>
+      <Route path="/docs/:slug">{params=><ApiDocsPage params={params as {slug:string}}/>}</Route>
+      <Route path="/" component={HomePage} />
+      <Route path="/editor">
         {() => (
           <RequireApiKey>
             <EditorPage />
@@ -59,7 +63,7 @@ function App() {
         <ApiKeyProvider>
           <Toaster />
           <Router hook={useHashLocation}>
-            <AppRouter />
+            <PublicThemeProvider><AppRouter /></PublicThemeProvider>
           </Router>
         </ApiKeyProvider>
       </TooltipProvider>

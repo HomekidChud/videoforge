@@ -562,6 +562,43 @@ async function main() {
     assert(caps.body.ops.set_transition && caps.body.ops.remove_clips && JSON.stringify(caps.body).includes("/presence"), "capabilities list transitions and presence");
   }
 
+  console.log("Motion graphics, discovery and safe batches");
+  {
+    const created=await jsonFetch("/api/projects",{method:"POST",headers:AUTH_ADMIN,body:JSON.stringify({name:"Motion QA",timeline:{clips:[]}})});
+    const pid=created.body.id;
+    const post=(body:any)=>jsonFetch(`/api/projects/${pid}/timeline/ops`,{method:"POST",headers:AUTH_ADMIN,body:JSON.stringify(body)});
+    const shape={op:"add_shape_clip",args:{id:"badge",duration:2,shape:{type:"ellipse",width:.2,height:.3,fill:"#f6a447"}}};
+    const dry=await post({dryRun:true,ops:[shape]});
+    assert(dry.status===200&&dry.body.dryRun&&dry.body.createdClipIds[0]==="badge","dry run returns generated clips");
+    const before=await jsonFetch(`/api/projects/${pid}`,{headers:AUTH_ADMIN});
+    assert(before.body.timeline.clips.length===0&&before.body.updatedAt===created.body.updatedAt,"dry run has no persistence side effects");
+    const conflict=await post({expectedUpdatedAt:0,ops:[shape]});
+    assert(conflict.status===409&&conflict.body.code==="REVISION_CONFLICT","stale writes fail with 409");
+    const commit=await post({expectedUpdatedAt:before.body.updatedAt,ops:[shape]});
+    assert(commit.status===200&&commit.body.createdClipIds[0]==="badge"&&commit.body.timeline.clips[0].shape.type==="ellipse","shape committed");
+    assert((await post({expectedUpdatedAt:before.body.updatedAt,ops:[shape]})).status===409,"guard rejects reused stale revision");
+    const failed=await post({ops:[{op:"update_clip",args:{clipId:"badge",x:.8}},{op:"add_shape_clip",args:{shape:{type:"ellipse",width:2}}}]});
+    assert(failed.status===422&&failed.body.failedIndex===1,"invalid shape reports batch failure");
+    const after=await jsonFetch(`/api/projects/${pid}`,{headers:AUTH_ADMIN});
+    assert(after.body.timeline.clips[0].x===undefined,"failed graphics batch is atomic");
+    const template=await post({op:"add_motion_template",args:{template:"lower-third",title:"VideoForge",duration:2}});
+    assert(template.status===200&&template.body.createdClipIds.length===3,"template creates editable layers");
+    const schema=await jsonFetch("/api/graphics/schema",{headers:AUTH_ADMIN});
+    assert(schema.status===200&&schema.body.properties.type.enum.includes("ellipse"),"shape schema discoverable");
+    const catalog=await jsonFetch("/api/motion/templates",{headers:AUTH_ADMIN});
+    assert(catalog.status===200&&catalog.body.templates.length===5,"template catalog discoverable");
+    assert((await jsonFetch("/api/motion/templates")).status===401,"catalog requires authentication");
+    const validate=await jsonFetch(`/api/projects/${pid}/timeline/validate`,{method:"POST",headers:AUTH_ADMIN,body:JSON.stringify({timeline:template.body.timeline})});
+    assert(validate.status===200&&validate.body.valid&&validate.body.clipCount===4,"timeline validation succeeds");
+    const missing=await jsonFetch(`/api/projects/${pid}/timeline/validate`,{method:"POST",headers:AUTH_ADMIN,body:JSON.stringify({timeline:{clips:[{assetId:"missing",outPoint:1}]}})});
+    assert(missing.status===422&&missing.body.missingAssetIds[0]==="missing","validation detects missing media");
+    const invalid=await jsonFetch(`/api/projects/${pid}/timeline/validate`,{method:"POST",headers:AUTH_ADMIN,body:JSON.stringify({timeline:{clips:[{shape:{type:"bogus"}}]}})});
+    assert(invalid.status===422&&!invalid.body.valid,"validation catches invalid shape type");
+    const malformed=await jsonFetch(`/api/projects/${pid}/timeline/validate`,{method:"POST",headers:AUTH_ADMIN,body:JSON.stringify({timeline:{clips:{}}})});
+    assert(malformed.status===422,"malformed clips fail validation instead of crashing auth middleware");
+    const readValidation=await jsonFetch(`/api/projects/${pid}/timeline/validate`,{method:"POST",headers:{"Authorization":`Bearer ${readKey}`},body:JSON.stringify({timeline:template.body.timeline})});
+    assert(readValidation.status===200,"read keys can validate without changing projects");
+  }
   console.log(`\n${passed} passed, ${failed} failed`);
   killServer();
   if (failed > 0) process.exit(1);

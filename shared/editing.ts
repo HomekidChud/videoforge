@@ -2,6 +2,7 @@ import { setTransition } from "./transitions";
 import { normalizeClip, normalizeTimeline, clipDuration, clipEnd, TRACKS, type Clip, type Timeline, type TrackName } from "./timeline";
 import { normalizeKeyframes, isProperty, sliceKeyframes, type AnimationProperty } from "./animation";
 import { motionPreset } from "./presets";
+import { templateClips } from "./graphics";
 const uid = () => Math.random().toString(36).slice(2,14);
 export type TimelineOp = { op: string; args?: any };
 export function splitKeyframes(c:Clip, at:number) { return [sliceKeyframes(c,0,at),sliceKeyframes(c,at,clipDuration(c))]; }
@@ -29,11 +30,31 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
   const clips=timeline.clips;
   const find=(id:unknown)=> { const c=clips.find(x=>x.id===id); if(!c) throw new Error(`clip ${id} not found`); return c; };
       switch (op) {
+        case "add_shape_clip": {
+          const { duration = 3, shape, ...style } = args;
+          if (!shape) throw new Error("shape required");
+          if (!Number.isFinite(duration) || duration < .1 || duration > 3600) throw new Error("shape duration must be 0.1..3600");
+          if (style.id && clips.some(c=>c.id===style.id)) throw new Error(`clip ${style.id} already exists`);
+          clips.push(normalizeClip({ ...style, id: style.id ?? uid(), assetId: "", text: undefined, track: "overlay", inPoint: 0, outPoint: duration, shape }));
+          break;
+        }
+        case "add_motion_template": {
+          clips.push(...templateClips(args, uid, timeline.resolution.width/timeline.resolution.height).map(normalizeClip));
+          break;
+        }
+        case "stagger_clips": {
+          if (!Array.isArray(args.clipIds) || !args.clipIds.length || new Set(args.clipIds).size !== args.clipIds.length) throw new Error("unique clipIds required");
+          if (!Number.isFinite(args.delay) || args.delay < 0 || args.delay > 60) throw new Error("delay must be 0..60 seconds");
+          const start = args.start ?? Math.min(...args.clipIds.map((id: string) => find(id).start));
+          if (!Number.isFinite(start) || start < 0) throw new Error("start must be nonnegative");
+          args.clipIds.forEach((id: string, i: number) => { find(id).start = Math.round((start + i * args.delay) * 1000) / 1000; });
+          break;
+        }
         case "add_clip": {
           const c = (args || {}) as Partial<Clip>;
           const asset = c.assetId ? getAsset(c.assetId) : undefined;
           if (c.assetId && !asset) throw new Error(`asset ${c.assetId} not found`);
-          if (!c.assetId && !c.text) throw new Error("assetId or text required");
+          if (!c.assetId && !c.text && !c.shape) throw new Error("assetId, text, or shape required");
           const inPoint = Math.max(0, c.inPoint ?? 0);
           const maxOut = asset && asset.kind !== "image" && asset.duration ? asset.duration : Infinity;
           const outPoint = Math.min(maxOut, c.outPoint ?? inPoint + (asset?.kind === "video" || asset?.kind === "audio" ? Math.min(asset.duration || 5, 5) : 5));

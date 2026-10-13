@@ -4,6 +4,116 @@ VideoForge is a browser video editor with a first-class REST API for **AI agents
 
 This document explains **how to get an API key, what each permission (scope) does, and how to use every endpoint**.
 
+## Motion graphics and safer agent batches (timeline v4)
+
+The public homepage is `#/`, Studio is `#/editor`, and the new searchable guide site is `#/docs/introduction`. The existing `#/api-docs` link still opens the HTTP endpoint reference. Docs and the homepage do not require authentication. Browser sign-in now holds keys only in memory; refreshing requires signing in again.
+
+### Discover the toolkit
+
+All three endpoints require a read-capable Bearer key:
+
+| Endpoint | Response |
+| --- | --- |
+| `GET /api/capabilities` | Version 4 catalog, shapes, templates, all ops, properties, limits and batch options |
+| `GET /api/motion/templates` | `{templates:[{id,label,description}]}` |
+| `GET /api/graphics/schema` | JSON Schema (2020-12) for the `shape` object |
+
+### Create asset-free shapes
+
+Send `add_shape_clip` to `POST /api/projects/:id/timeline/ops`:
+
+```json
+{
+  "op": "add_shape_clip",
+  "args": {
+    "id": "badge",
+    "start": 0,
+    "duration": 4,
+    "x": 0.5,
+    "y": 0.5,
+    "shape": {
+      "type": "rectangle",
+      "width": 0.35,
+      "height": 0.2,
+      "fill": "#f6a447",
+      "stroke": "#ffffff",
+      "strokeWidth": 2,
+      "radius": 24
+    },
+    "keyframes": {
+      "rotation": [
+        {"time": 0, "value": -12, "easing": "ease-out"},
+        {"time": 1, "value": 0}
+      ]
+    }
+  }
+}
+```
+
+No upload or assetId is needed. Shapes become overlay clips with an empty assetId and cannot also contain text or media. Each uses the existing transform/fade/keyframe engine in browser preview and FFmpeg exports. Shape clips default to center position `(0.5, 0.5)`.
+
+| Field | Values / default |
+| --- | --- |
+| `type` | `rectangle`, `ellipse`, `line` (required) |
+| `width` | 0.01..1 canvas fraction; default 0.35 |
+| `height` | 0.002..1 canvas fraction; default 0.2 (line: 0.01) |
+| `fill` | `#rrggbb` or `transparent`; default `#f6a447` |
+| `stroke` | `#rrggbb` or `transparent`; default `transparent` |
+| `strokeWidth` | 0..40 output pixels; default 0 |
+| `radius` | 0..200 output pixels; default 0; rectangle corners |
+
+Stroke/radius scale proportionally for smaller frame previews. A line is a thin rectangle; rotate it to change direction. `update_clip` replaces the entire shape object, so retain the fields you want. Shapes have static dimensions/colors in this version; animate x, y, scale, rotation and opacity.
+
+### Compile editable motion templates
+
+```json
+{
+  "op": "add_motion_template",
+  "args": {
+    "template": "lower-third",
+    "title": "Ada Lovelace",
+    "subtitle": "Pioneer of computing",
+    "color": "#f6a447",
+    "start": 0,
+    "duration": 4
+  }
+}
+```
+
+Templates: `lower-third`, `title-card`, `callout`, `kinetic-type`, `countdown`. Options are `title` (up to 120 characters), `subtitle`, `color`, `start` (0..86400) and `duration` (0.5..60 seconds). Kinetic type accepts at most eight words. Font sizes use an aspect-ratio-aware fit estimate; inspect long text, especially unusual fonts or wide glyphs. Templates compile to regular shape/text clips with entrance and exit motion. Returned `createdClipIds` identify every layer; edit each with existing operations. No arbitrary JavaScript, SVG paths, shaders or agent expressions are executed.
+
+`stagger_clips` accepts `{clipIds:[...], delay, start?}`. IDs must be unique and exist; delay is 0..60 seconds. Clips start at `start + index * delay` in the provided order without changing their clip-local keyframes.
+
+### Dry runs and guarded writes
+
+```json
+{
+  "expectedUpdatedAt": 1790000000000,
+  "dryRun": true,
+  "ops": [
+    {
+      "op": "add_shape_clip",
+      "args": {"id":"accent","duration":4,"shape":{"type":"ellipse"}}
+    },
+    {
+      "op": "apply_motion",
+      "args": {"clipId":"accent","preset":"fade"}
+    }
+  ]
+}
+```
+
+- `dryRun:true` validates all ops and returns the proposed timeline without persisting it, advancing its revision or publishing live activity. Write scope is still required.
+- `expectedUpdatedAt` optionally compares the timestamp returned by GET project. A stale write returns HTTP 409 with `{message,code:"REVISION_CONFLICT",updatedAt}`. Fetch again and re-plan. This guard applies to the ops route, not full-timeline PUT.
+- Successful ops responses add `createdClipIds` in creation order, including the generated layers of templates. Dry-run generated IDs are provisional; use the committed response for final IDs. Explicit shape IDs allow stable same-batch references and duplicates are rejected.
+- A failed op returns HTTP 422 with zero-based `failedIndex`; no operations in the batch are saved. Maximum 100 ops and 200 clips still apply.
+
+### Validate and inspect
+
+`POST /api/projects/:id/timeline/validate` accepts `{timeline}` with read scope or higher. It checks structure, keyframes, shape bounds and missing asset references without writing. Success: `{valid:true,timeline,duration,clipCount}`. Failure: HTTP 422 with `{valid:false,message,missingAssetIds?}`. The timeline is normalized; legacy fields may be clamped, but shape fields are strictly validated.
+
+Inspect via `GET /api/projects/:id/state`, `GET /api/projects/:id/frame?t=1`, or a storyboard before queueing an MP4. Composition families draw media first, shapes next, text last; there is no general z-index or nested scene graph. Preview and export can differ slightly in font metrics, edge antialiasing and cubic easing approximation. SVG/Lottie import, arbitrary paths, 3D, motion blur, nested compositions and expressions are not implemented.
+
 ---
 
 ## Table of contents

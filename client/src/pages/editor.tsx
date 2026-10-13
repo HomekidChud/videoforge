@@ -15,6 +15,9 @@ import { ClipInspector, MultiInspector, ProjectInspector } from "@/components/fo
 import { setTransition, incomingTransition, TRANSITIONS } from "@shared/transitions";
 import { type Peer } from "@/components/forge-presence";
 import ForgeEffects, { type Effect } from "@/components/forge-effects";
+import ForgeGraphics, { applyGraphics } from "@/components/forge-graphics";
+import ForgeComposition from "@/components/forge-composition";
+import { applyTimelineOp } from "@shared/editing";
 
 type SaveState = "empty" | "saved" | "dirty" | "saving" | "error" | "readonly";
 type Me = { id: string; scope: "read" | "write" | "admin" };
@@ -66,12 +69,13 @@ export default function EditorPage() {
   const setSelectedId = useCallback((id: string | null) => { setSel(id ? [id] : []); }, []);
   const [time, setTime] = useState(0), [playing, setPlaying] = useState(false);
   const [pps, setPps] = useState(64), [snapping, setSnapping] = useState(true);
-  const [panel, setPanel] = useState<"media" | "effects" | "projects">("media");
+  const [panel, setPanel] = useState<"media" | "effects" | "graphics" | "projects">("media");
   const [notice, setNotice] = useState<{ text: string; tone: "info" | "error" } | null>(null);
   const [upload, setUpload] = useState<{ pct: number } | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("empty"), [saveError, setSaveError] = useState("");
   const [exportOpen, setExportOpen] = useState(false), [renderJobId, setRenderJobId] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [compositionOpen,setCompositionOpen]=useState(false);
   const toast = useCallback((text: string, tone: "info" | "error" = "info") => { setNotice({ text, tone }); }, []);
   useEffect(() => { if (!notice) return; const t = setTimeout(() => setNotice(null), notice.tone === "error" ? 7000 : 3000); return () => clearTimeout(t); }, [notice]);
 
@@ -373,6 +377,8 @@ export default function EditorPage() {
           {followed && <span className="follow-chip" style={{ borderColor: followed.color }} data-testid="follow-chip">Following {followed.name}<button className="ghost-link" onClick={stopFollow}>Stop</button></span>}</div>}
         {watchers > 0 && <span className="watch-badge" title="A master admin is watching this project live. They cannot edit it."><Eye size={13} />{watchers} watching</span>}</div>
       <div className="studio-actions">
+        <button className="secondary-btn hide-sm" onClick={()=>setCompositionOpen(true)} data-testid="button-composition">JSON</button>
+        {selectedIds.length>1&&<button className="secondary-btn hide-sm" disabled={readOnly} onClick={()=>{try{const next=applyTimelineOp(tlRef.current,{op:"stagger_clips",args:{clipIds:selectedIds,delay:.15,start:timeRef.current}},id=>byId.get(id));mutate(()=>next);toast("Selection staggered by 0.15s");}catch(e:any){toast(e.message,"error");}}} data-testid="button-stagger">Stagger</button>}
         <button className="icon-btn" onClick={undo} disabled={!past.current.length || readOnly} aria-label="Undo" title="Undo (Ctrl+Z)" data-testid="button-undo"><Undo2 size={17} /></button>
         <button className="icon-btn" onClick={redo} disabled={!future.current.length || readOnly} aria-label="Redo" title="Redo (Ctrl+Shift+Z)"><Redo2 size={17} /></button>
         <span className="divider" />
@@ -384,8 +390,8 @@ export default function EditorPage() {
 
     <div className="studio-grid">
       <aside className="library" aria-label="Library">
-        <div className="panel-tabs"><button className={panel === "media" ? "active" : ""} onClick={() => setPanel("media")}>Media</button><button className={panel === "effects" ? "active" : ""} onClick={() => setPanel("effects")} data-testid="tab-effects">Effects</button><button className={panel === "projects" ? "active" : ""} onClick={() => setPanel("projects")}>Projects</button></div>
-        {panel === "effects" ? <ForgeEffects disabled={readOnly} onApply={(e) => applyEffect(e)} /> : panel === "media" ? <>
+        <div className="panel-tabs"><button className={panel === "media" ? "active" : ""} onClick={() => setPanel("media")}>Media</button><button className={panel === "effects" ? "active" : ""} onClick={() => setPanel("effects")} data-testid="tab-effects">Effects</button><button className={panel === "graphics" ? "active" : ""} onClick={() => setPanel("graphics")} data-testid="tab-graphics">Graphics</button><button className={panel === "projects" ? "active" : ""} onClick={() => setPanel("projects")}>Projects</button></div>
+        {panel === "graphics" ? <ForgeGraphics disabled={readOnly} onApply={op=>{if(readOnly)return;try{const t=tlRef.current,next=applyGraphics(t,op,timeRef.current),ids=next.clips.filter(c=>!t.clips.some(o=>o.id===c.id)).map(c=>c.id);mutate(()=>next);setSel(ids);toast(`Added ${ids.length} editable graphics clip${ids.length===1?"":"s"}`);}catch(e:any){toast(e.message,"error");}}}/> : panel === "effects" ? <ForgeEffects disabled={readOnly} onApply={(e) => applyEffect(e)} /> : panel === "media" ? <>
           <label className={`dropzone ${readOnly ? "disabled" : ""}`} data-testid="button-upload">{upload ? <><Loader2 className="spin" size={18} /><span>Uploading {Math.round(upload.pct * 100)}%</span><i style={{ width: `${upload.pct * 100}%` }} /></> : <><Upload size={19} /><b>Import media</b><span>Video, audio or images — or drop files anywhere</span></>}
             <input type="file" multiple accept="video/*,audio/*,image/*" disabled={readOnly || !!upload} onChange={(e) => { if (e.target.files?.length) importFiles(e.target.files); e.target.value = ""; }} /></label>
           <div className="asset-list">
@@ -413,6 +419,7 @@ export default function EditorPage() {
         <ForgeTimeline timeline={timeline} assets={assets} selectedId={selectedId} selectedIds={selectedIds} peers={peers} follow={!!followId} onSelectMany={onSelectMany} onCursor={onCursor} time={time} playing={playing} pps={pps} snapping={snapping} readOnly={readOnly} mediaUrl={mediaUrl} onTrack={setTrack} onFit={fitTimeline} onAddMarker={addMarker} onSelect={onSelect} onSeek={seek} onZoom={setPps} gesture={gesture} onDropAsset={(id, track, start) => { const a = byId.get(id); if (a) addAsset(a, track, start); }} onDropEffect={(effect, target) => applyEffect(effect, target)} onDropFiles={(files, track, start) => importFiles(files, { track, start })} onMoveMarker={moveMarker} />
       </section></div>
 
+    {compositionOpen&&<ForgeComposition timeline={timeline} disabled={readOnly} assetIds={new Set(assets.map(a=>a.id))} onClose={()=>setCompositionOpen(false)} onApply={t=>{mutate(()=>t);setSel([]);seek(0);toast("Composition imported");}}/>}
     {exportOpen && <div className="export-panel" role="dialog" aria-label="Export">
       <div className="modal-head"><h3>Export video</h3><button className="icon-btn" aria-label="Close export panel" onClick={() => setExportOpen(false)}><X size={16} /></button></div>
       {render?.status === "error" ? <div className="error-box">Export failed: {render.error}</div> : render?.status === "done" ? <>{renderUrl ? <video src={renderUrl} controls crossOrigin="anonymous" className="export-video" data-testid="video-render-result" /> : <div className="muted">Preparing preview…</div>}<div className="modal-actions"><a className="primary-btn" href={renderUrl || undefined} download aria-disabled={!renderUrl}><Download size={15} />Download MP4</a></div></> : <div><div className="progress" role="progressbar" aria-valuenow={Math.round((render?.progress ?? 0) * 100)} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${Math.max(4, (render?.progress ?? 0) * 100)}%` }} /></div><p className="muted" data-testid="text-render-status">{render?.status === "rendering" ? `Rendering ${Math.round(render.progress * 100)}%` : "Queued…"}</p></div>}

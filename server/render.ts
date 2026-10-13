@@ -135,6 +135,33 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
   }
 
   // text clips (and captions attached to asset clips) via textfile=, so user text never needs filter escaping
+  // Procedural graphics use bounded masks, never arbitrary SVG/JS or external media.
+  for (const c of tl.clips.filter(c => c.shape && !tl.tracks?.[c.track]?.hidden)) {
+    const s = c.shape!, dur = clipDuration(c);
+    const w = Math.max(2, Math.round(W * s.width / 2) * 2), h = Math.max(2, Math.round(H * s.height / 2) * 2);
+    const factor = W / tl.resolution.width, radius = Math.min(s.radius * factor, w / 2, h / 2), stroke = Math.min(s.strokeWidth * factor, w / 2, h / 2);
+    const mask = (inset: number) => {
+      const hw = w / 2 - inset, hh = h / 2 - inset;
+      if (hw <= 0 || hh <= 0) return "0";
+      if (s.type === "ellipse") return `lte(pow((X-${w/2})/${hw},2)+pow((Y-${h/2})/${hh},2),1)`;
+      const r = Math.max(0, radius - inset);
+      if (!r) return `between(X,${inset},${w-inset})*between(Y,${inset},${h-inset})`;
+      return `lte(pow(max(abs(X-${w/2})-${hw-r},0),2)+pow(max(abs(Y-${h/2})-${hh-r},0),2),${r*r})`;
+    };
+    const outer = mask(0), inner = mask(stroke), hasStroke = stroke > 0 && s.stroke !== "transparent";
+    const channel = (i: number) => {
+      const v = (color: string) => color === "transparent" ? 0 : parseInt(color.slice(1 + i * 2, 3 + i * 2), 16);
+      return hasStroke ? `if(${inner},${v(s.fill)},${v(s.stroke)})` : String(v(s.fill));
+    };
+    const alpha = `${outer}*(${hasStroke ? `if(${inner},${s.fill === "transparent" ? 0 : 255},255)` : s.fill === "transparent" ? 0 : 255})`;
+    const label = `cg${layer}`, next = `base${layer + 1}`;
+    filters.push([`color=c=black@0:s=${w}x${h}:r=${fps}:d=${f(dur)}`, "format=rgba",
+      `geq=r='${channel(0)}':g='${channel(1)}':b='${channel(2)}':a='${alpha}'`, "format=yuva420p",
+      ...colorFilters(c), ...transformFilters(c, w, h, dur, true), `setpts=PTS+${f(c.start)}/TB`].join(",") + `[${label}]`);
+    filters.push(`[${current}][${label}]overlay=x='main_w*(${animationExpression(c,"x",`(t-${f(c.start)})`)})-overlay_w/2':y='main_h*(${animationExpression(c,"y",`(t-${f(c.start)})`)})-overlay_h/2':eof_action=pass:enable='gte(t,${f(c.start)})*lt(t,${f(c.start+dur)})':format=auto[${next}]`);
+    current = next; layer++;
+  }
+
   const texts = tl.clips.filter((c) => c.text && c.text.trim() && !tl.tracks?.[c.track]?.hidden);
   const escPath = (p: string) => p.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
   texts.forEach((c, i) => {
