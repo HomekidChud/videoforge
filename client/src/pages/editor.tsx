@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Play, Pause, SkipBack, SkipForward, Scissors, Undo2, Redo2, Magnet, Plus, Upload, Type, Film, Music2, Image as ImageIcon, Download, Check, AlertCircle, Loader2, FolderOpen, FilePlus2, Trash2, Share2, X, Lock, Globe } from "lucide-react";
-import { clipDuration, clipEnd, normalizeTimeline, timelineDuration, type Clip, type Timeline } from "@shared/timeline";
+import { Play, Pause, SkipBack, SkipForward, Scissors, Undo2, Redo2, Magnet, Plus, Upload, Type, Film, Music2, Image as ImageIcon, Download, Check, AlertCircle, Loader2, FolderOpen, FilePlus2, Trash2, Share2, X, Lock, Globe, ChevronDown } from "lucide-react";
+import { clipDuration, clipEnd, normalizeClip, normalizeTimeline, timelineDuration, type Clip, type Timeline } from "@shared/timeline";
+import { ANIMATABLE, clamp, valueAt, type AnimationProperty, type Keyframe } from "@shared/animation";
+import { TITLE_PRESETS } from "@shared/presets";
 import { api, API_BASE } from "@/lib/api";
 import { loadStoredKey } from "@/lib/apiKey";
 import { useAuthedMediaUrl, useMediaTokenLifecycle } from "@/lib/mediaUrl";
@@ -122,7 +124,7 @@ export default function EditorPage() {
     saving.current = job; try { await job; } finally { saving.current = null; }
   }, [qc, readOnly]);
   const revisionRef = useRef(0); revisionRef.current = revision;
-  useEffect(() => { if (readOnly) { setSaveState("readonly"); return; } if (!revision) return; setSaveState((s) => (s === "saving" ? s : "dirty")); const t = setTimeout(() => { saveNow(); }, 1400); return () => clearTimeout(t); }, [revision, readOnly, saveNow, projectName]);
+  useEffect(() => { if (readOnly) { setSaveState("readonly"); return; } if (!revision || revision === savedRevision.current) return; setSaveState((s) => (s === "saving" ? s : "dirty")); const t = setTimeout(() => { saveNow(); }, 1400); return () => clearTimeout(t); }, [revision, readOnly, saveNow, projectName]);
   useEffect(() => { const h = (e: BeforeUnloadEvent) => { if (saveState === "dirty" || saveState === "saving" || saveState === "error") { e.preventDefault(); e.returnValue = ""; } }; window.addEventListener("beforeunload", h); return () => window.removeEventListener("beforeunload", h); }, [saveState]);
 
   // Replace the whole document (open / new project) and mark it as already saved.
@@ -143,10 +145,11 @@ export default function EditorPage() {
     if (readOnly) return toast("This key is read-only.", "error");
     const clip = newClip(asset, start ?? (asset.kind === "audio" ? 0 : endOfVideo()), track); mutate((t) => ({ ...t, clips: [...t.clips, clip] })); setSelectedId(clip.id);
   }, [mutate, readOnly, toast]);
-  const addTitle = () => {
-    if (readOnly) return;
-    const clip: Clip = { id: uid(), assetId: "", track: "overlay", start: round(time), inPoint: 0, outPoint: 3, volume: 1, muted: false, text: "Your title", textSize: 8 };
-    mutate((t) => ({ ...t, clips: [...t.clips, clip] })); setSelectedId(clip.id);
+  const [titleMenu, setTitleMenu] = useState(false);
+  const addTitle = (preset: (typeof TITLE_PRESETS)[number] | null = null) => {
+    if (readOnly) return; setTitleMenu(false);
+    const clip: Clip = { id: uid(), assetId: "", track: "overlay", start: round(time), inPoint: 0, outPoint: 3, volume: 1, muted: false, text: preset?.text ?? "Your title", textSize: preset?.textSize ?? 8, ...(preset ? { y: preset.y, textBg: preset.textBg } : {}) };
+    mutate((t) => ({ ...t, clips: [...t.clips, normalizeClip(clip)] })); setSelectedId(clip.id);
   };
   const selected = timeline.clips.find((c) => c.id === selectedId) ?? null;
   const split = useCallback(() => {
@@ -158,6 +161,37 @@ export default function EditorPage() {
   }, [selected, mutate, toast]);
   const remove = useCallback((ripple = false) => { if (!selected || readOnly) return; mutate((t) => ripple ? rippleDelete(t, selected.id) : { ...t, clips: t.clips.filter((c) => c.id !== selected.id) }); setSelectedId(null); }, [selected, mutate, readOnly]);
   const duplicate = useCallback(() => { if (!selected || readOnly) return; const r = duplicateClip(tlRef.current, selected.id); if (r) { mutate(() => r.timeline); setSelectedId(r.id); } }, [selected, mutate, readOnly]);
+  // Edits to animatable values write a keyframe at the playhead when the property is animated.
+  const setValues = useCallback((id: string, values: Partial<Record<AnimationProperty, number>>, live = false) => {
+    const clip = tlRef.current.clips.find((c) => c.id === id); if (!clip) return;
+    const fps = tlRef.current.fps, local = round(clamp(Math.round((timeRef.current - clip.start) * fps) / fps, 0, clipDuration(clip)));
+    const patch: Partial<Clip> = {}; let keyframes = clip.keyframes;
+    (Object.keys(values) as AnimationProperty[]).forEach((prop) => {
+      const value = clamp(values[prop]!, ANIMATABLE[prop].min, ANIMATABLE[prop].max), frames = clip.keyframes?.[prop];
+      if (frames?.length) {
+        const list: Keyframe[] = frames.filter((k) => Math.abs(k.time - local) > 0.5 / fps), near = frames.find((k) => Math.abs(k.time - local) <= 0.5 / fps);
+        list.push({ time: near?.time ?? local, value: round(value), easing: near?.easing ?? "ease-in-out" }); list.sort((a, b) => a.time - b.time);
+        keyframes = { ...keyframes, [prop]: list };
+      } else (patch as any)[prop] = round(value);
+    });
+    if (keyframes !== clip.keyframes) patch.keyframes = keyframes;
+    patchClip(id, patch, live);
+  }, [patchClip]);
+  const toggleKey = useCallback((id: string, prop: AnimationProperty) => {
+    const clip = tlRef.current.clips.find((c) => c.id === id); if (!clip) return;
+    const fps = tlRef.current.fps, local = round(clamp(Math.round((timeRef.current - clip.start) * fps) / fps, 0, clipDuration(clip))), frames = clip.keyframes?.[prop] ?? [];
+    const exists = frames.some((k) => Math.abs(k.time - local) <= 0.5 / fps);
+    const list = exists ? frames.filter((k) => Math.abs(k.time - local) > 0.5 / fps) : [...frames, { time: local, value: round(valueAt(clip, prop, local)), easing: "ease-in-out" as const }].sort((a, b) => a.time - b.time);
+    patchClip(id, { keyframes: { ...clip.keyframes, [prop]: list } });
+  }, [patchClip]);
+  const addMarker = useCallback(() => { if (readOnly) return; mutate((t) => ({ ...t, markers: [...(t.markers ?? []), { id: uid(), time: round(timeRef.current), label: `Marker ${(t.markers?.length ?? 0) + 1}`, color: "#f6a447" }].sort((a, b) => a.time - b.time) })); }, [mutate, readOnly]);
+  const removeMarker = useCallback((id: string) => mutate((t) => ({ ...t, markers: (t.markers ?? []).filter((m) => m.id !== id) })), [mutate]);
+  const setTrack = useCallback((track: Clip["track"], p: { muted?: boolean; hidden?: boolean }) => mutate((t) => ({ ...t, tracks: { ...t.tracks, [track]: { ...t.tracks?.[track], ...p } } })), [mutate]);
+  const clipboard = useRef<Clip | null>(null);
+  const copyClip = useCallback(() => { if (selected) { clipboard.current = JSON.parse(JSON.stringify(selected)); toast("Clip copied"); } }, [selected, toast]);
+  const pasteClip = useCallback(() => { const c = clipboard.current; if (!c || readOnly) return; const copy: Clip = { ...JSON.parse(JSON.stringify(c)), id: uid(), start: round(timeRef.current) }; mutate((t) => ({ ...t, clips: [...t.clips, copy] })); setSelectedId(copy.id); }, [mutate, readOnly]);
+  const fitTimeline = () => { const el = document.querySelector(".timeline-scroll") as HTMLElement | null; if (el && duration > 0) setPps(Math.min(260, Math.max(8, Math.floor((el.clientWidth - 160) / duration)))); };
+
   const trimToPlayhead = (edge: "in" | "out") => {
     if (!selected || readOnly) return; const rel = time - selected.start, speed = selected.assetId ? selected.speed ?? 1 : 1;
     if (rel <= 0.1 || rel >= clipDuration(selected) - 0.1) return toast("Place the playhead inside the selected clip.");
@@ -173,6 +207,8 @@ export default function EditorPage() {
       else if (mod && key === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); }
       else if (mod && key === "y") { e.preventDefault(); redo(); }
       else if (mod && key === "d") { e.preventDefault(); duplicate(); }
+      else if (mod && key === "c") { copyClip(); } else if (mod && key === "v") { e.preventDefault(); pasteClip(); }
+      else if (!mod && key === "m") addMarker();
       else if (mod && key === "s") { e.preventDefault(); saveNow(); }
       else if (!mod && key === "s") split();
       else if (e.key === "Delete" || e.key === "Backspace") { if (selected) { e.preventDefault(); remove(e.shiftKey); } }
@@ -204,7 +240,7 @@ export default function EditorPage() {
     catch (e: any) { toast(e.message, "error"); }
   };
   const copyPublicLink = async () => { try { await navigator.clipboard.writeText(`${location.href.split("#")[0]}#/share/${projectId}`); toast("Public link copied"); } catch { toast("Couldn’t access the clipboard.", "error"); } };
-  const setProjectSettings = (p: { fps?: number; resolution?: { width: number; height: number } }) => mutate((t) => ({ ...t, ...p }));
+  const setProjectSettings = (p: { fps?: number; resolution?: { width: number; height: number }; background?: string }) => mutate((t) => ({ ...t, ...p }));
 
   const render = renderQ.data, renderUrl = render?.status === "done" && renderJobId ? mediaUrl(renderJobId, `/api/renders/${renderJobId}/download`) : "";
   const saveLabel = { empty: "Not saved yet", saved: "All changes saved", dirty: "Unsaved changes", saving: "Saving…", error: "Save failed", readonly: "Read-only key" }[saveState];
@@ -220,7 +256,7 @@ export default function EditorPage() {
         <button className="icon-btn" onClick={redo} disabled={!future.current.length || readOnly} aria-label="Redo" title="Redo (Ctrl+Shift+Z)"><Redo2 size={17} /></button>
         <span className="divider" />
         <button className={`icon-btn ${snapping ? "active accent" : ""}`} aria-pressed={snapping} onClick={() => setSnapping(!snapping)} aria-label="Toggle snapping" title="Snapping"><Magnet size={17} /></button>
-        <button className="secondary-btn hide-sm" onClick={addTitle} disabled={readOnly} data-testid="button-add-title"><Type size={15} />Add title</button>
+        <div className="menu-wrap hide-sm"><button className="secondary-btn" onClick={() => addTitle()} disabled={readOnly} data-testid="button-add-title"><Type size={15} />Add title</button><button className="icon-btn menu-caret" aria-label="Title styles" aria-expanded={titleMenu} disabled={readOnly} onClick={() => setTitleMenu(!titleMenu)} data-testid="button-title-menu"><ChevronDown size={14} /></button>{titleMenu && <div className="menu-pop" role="menu">{TITLE_PRESETS.map((p) => <button key={p.id} role="menuitem" onClick={() => addTitle(p)} data-testid={`title-${p.id}`}>{p.label}</button>)}</div>}</div>
         <button className="secondary-btn hide-sm" onClick={() => setSelectedId(null)} title="Project settings and sharing"><Share2 size={15} />{visibility === "public" ? "Public" : "Share"}</button>
         <button className="primary-btn" onClick={() => startRender.mutate()} disabled={!timeline.clips.length || startRender.isPending || (readOnly && false)} data-testid="button-export">{startRender.isPending ? <Loader2 size={15} className="spin" /> : <Download size={15} />}Export</button>
       </div></div>
@@ -244,15 +280,15 @@ export default function EditorPage() {
           {!projectsQ.isLoading && !projectsQ.data?.projects.length && <div className="library-empty"><FolderOpen size={24} /><b>No saved projects</b><p>Projects save automatically as you edit.</p></div>}</div>}
       </aside>
 
-      <main className="monitor"><ForgePreview timeline={timeline} assets={assets} time={time} playing={playing} mediaUrl={mediaUrl} onError={(m) => toast(m, "error")} />
+      <main className="monitor"><ForgePreview timeline={timeline} assets={assets} time={time} playing={playing} selectedId={selectedId} readOnly={readOnly} gesture={gesture} mediaUrl={mediaUrl} onError={(m) => toast(m, "error")} onValues={(id, v, live) => setValues(id, v, live)} />
         <div className="transport"><button className="icon-btn" aria-label="Jump to start" onClick={() => seek(0)}><SkipBack size={17} /></button><button className="play-btn" onClick={togglePlay} disabled={!duration} aria-label={playing ? "Pause" : "Play"} data-testid="button-play">{playing ? <Pause size={20} /> : <Play size={20} />}</button><button className="icon-btn" aria-label="Jump to end" onClick={() => seek(duration)}><SkipForward size={17} /></button>
           <span className="mono time-big">{timecode(time, timeline.fps)}</span><div className="flex-spacer" /><button className="secondary-btn" onClick={split} disabled={readOnly || !timeline.clips.length} title="Split at playhead (S)"><Scissors size={15} />Split</button></div></main>
 
-      <aside className="inspector" aria-label="Inspector">{selected ? <ClipInspector key={selected.id} clip={selected} asset={byId.get(selected.assetId)} readOnly={readOnly} gesture={gesture} patch={(p, live) => patchClip(selected.id, p, live)} onSplit={split} onDuplicate={duplicate} onDelete={() => remove(false)} />
-        : <ProjectInspector name={projectName} onName={setProjectName} timeline={timeline} setProject={setProjectSettings} readOnly={readOnly} canPublish={canPublish} projectId={projectId} visibility={visibility} onVisibility={toggleVisibility} onCopyLink={copyPublicLink} />}</aside>
+      <aside className="inspector" aria-label="Inspector">{selected ? <ClipInspector key={selected.id} clip={selected} asset={byId.get(selected.assetId)} readOnly={readOnly} gesture={gesture} time={time} fps={timeline.fps} patch={(p, live) => patchClip(selected.id, p, live)} setValues={(v, live) => setValues(selected.id, v, live)} toggleKey={(p) => toggleKey(selected.id, p)} seek={seek} onSplit={split} onDuplicate={duplicate} onDelete={() => remove(false)} />
+        : <ProjectInspector name={projectName} onName={setProjectName} timeline={timeline} setProject={setProjectSettings} readOnly={readOnly} canPublish={canPublish} projectId={projectId} visibility={visibility} onVisibility={toggleVisibility} onCopyLink={copyPublicLink} seek={seek} addMarker={addMarker} removeMarker={removeMarker} />}</aside>
 
       <section className="timeline-panel" aria-label="Timeline">
-        <ForgeTimeline timeline={timeline} assets={assets} selectedId={selectedId} time={time} playing={playing} pps={pps} snapping={snapping} readOnly={readOnly} mediaUrl={mediaUrl} onSelect={setSelectedId} onSeek={seek} onZoom={setPps} gesture={gesture} onDropAsset={(id, track, start) => { const a = byId.get(id); if (a) addAsset(a, track, start); }} />
+        <ForgeTimeline timeline={timeline} assets={assets} selectedId={selectedId} time={time} playing={playing} pps={pps} snapping={snapping} readOnly={readOnly} mediaUrl={mediaUrl} onTrack={setTrack} onFit={fitTimeline} onAddMarker={addMarker} onSelect={setSelectedId} onSeek={seek} onZoom={setPps} gesture={gesture} onDropAsset={(id, track, start) => { const a = byId.get(id); if (a) addAsset(a, track, start); }} />
       </section></div>
 
     {exportOpen && <div className="export-panel" role="dialog" aria-label="Export">

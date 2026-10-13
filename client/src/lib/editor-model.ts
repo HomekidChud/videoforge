@@ -1,3 +1,4 @@
+import { patchWithAnimation, splitKeyframes } from "@shared/editing";
 import { clipDuration, clipEnd, normalizeClip, type Clip, type Timeline } from "@shared/timeline";
 
 export const uid = () => crypto.randomUUID().replace(/-/g, "").slice(0, 12);
@@ -23,6 +24,7 @@ export function splitClip(t:Timeline,id:string,at:number):Timeline|null {
   const sourceSplit=round(c.inPoint+rel*(c.assetId?(c.speed??1):1));
   const left={...c,outPoint:sourceSplit},right={...c,id:uid(),start:round(at),inPoint:sourceSplit};
   delete left.fadeOut;delete right.fadeIn;
+  const keys=splitKeyframes(c,rel); left.keyframes=keys[0];right.keyframes=keys[1];
   return {...t,clips:t.clips.flatMap(x=>x.id===id?[left,right]:[x])};
 }
 export function duplicateClip(t:Timeline,id:string):{timeline:Timeline;id:string}|null {
@@ -43,8 +45,9 @@ export function snapTime(value:number,targets:number[],threshold:number,fps:numb
 export function clampClipPatch(c:Clip,patch:Partial<Clip>,asset?:AssetDTO):Clip {
   const raw={...c,...patch};
   const maxSource=asset&&asset.kind!=="image"&&asset.duration>0?asset.duration:86400;
-  raw.inPoint=Math.min(Math.max(0,raw.inPoint),Math.max(0,maxSource-0.1));
-  raw.outPoint=Math.max(raw.inPoint+0.1,Math.min(maxSource,raw.outPoint));
-  if(asset?.kind==="image") delete raw.speed;
-  return normalizeClip(raw);
+  const inPoint=Math.min(Math.max(0,raw.inPoint),Math.max(0,maxSource-0.1));
+  const outPoint=Math.max(inPoint+0.1,Math.min(maxSource,raw.outPoint));
+  const adjusted:Partial<Clip>={...patch,inPoint,outPoint};
+  if(asset?.kind==="image") adjusted.speed=undefined;
+  return patchWithAnimation(c,adjusted);
 }

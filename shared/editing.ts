@@ -5,10 +5,13 @@ const uid = () => Math.random().toString(36).slice(2,14);
 export type TimelineOp = { op: string; args?: any };
 export function splitKeyframes(c:Clip, at:number) { return [sliceKeyframes(c,0,at),sliceKeyframes(c,at,clipDuration(c))]; }
 export function patchWithAnimation(c:Clip, patch:Partial<Clip>):Clip {
-  const next={...c,...patch}; const dur=clipDuration(next);
-  if(patch.keyframes===undefined && c.keyframes && (next.inPoint!==c.inPoint||next.outPoint!==c.outPoint||next.speed!==c.speed)) {
+  const next={...c,...patch}; const dur=clipDuration(next), oldDur=clipDuration(c);
+  const windowChanged = Math.abs(dur-oldDur)>1e-6 || next.speed!==c.speed || (!!c.assetId && next.inPoint!==c.inPoint);
+  if(patch.keyframes===undefined && c.keyframes && windowChanged) {
     const oldSpeed=c.assetId ? c.speed??1 : 1, newSpeed=next.assetId ? next.speed??1 : 1;
-    const from=Math.max(0,(next.inPoint-c.inPoint)/oldSpeed), to=Math.min(clipDuration(c),from+dur*newSpeed/oldSpeed);
+    // Keep animation pinned to the footage: a left trim drops the front of every curve.
+    const from=c.assetId ? Math.max(0,(next.inPoint-c.inPoint)/oldSpeed) : next.start!==c.start ? Math.max(0,next.start-c.start) : 0;
+    const to=Math.min(oldDur,from+dur*newSpeed/oldSpeed);
     next.keyframes=sliceKeyframes(c,from,to);
     if(next.keyframes) for(const p of Object.keys(next.keyframes) as AnimationProperty[]) next.keyframes[p]=next.keyframes[p]!.map(k=>({...k,time:Math.min(dur,Math.round(k.time*oldSpeed/newSpeed*1000)/1000)}));
   }
