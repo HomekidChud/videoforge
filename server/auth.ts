@@ -256,7 +256,7 @@ function enforcePolicy(key: ApiKey, req: Request, res: Response): boolean {
     if (refs.some((id: string) => !assetAllowed(key, id))) return deny("Timeline contains media outside this API key's restrictions.");
   }
   // Editors publish live state about ten times a second; that heartbeat is not metered.
-  if (p.requestsPerMinute && !/^\/api\/live\/[^/]+\/publish$/.test(req.path)) {
+  if (p.requestsPerMinute && !/^\/api\/(?:live\/[^/]+\/publish|projects\/[^/]+\/presence)$/.test(req.path)) {
     const now = Date.now();
     let w = rateWindows.get(key.id);
     if (!w || now - w.start >= 60000) {

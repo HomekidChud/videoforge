@@ -64,6 +64,7 @@ function Watch({ id }: { id: string }) {
   const [timeline, setTimeline] = useState<Timeline>(EMPTY_TIMELINE());
   const [snap, setSnap] = useState<Snapshot | null>(null), [live, setLive] = useState(false), [error, setError] = useState("");
   const [rtt, setRtt] = useState(0), [hz, setHz] = useState(0), [pps, setPps] = useState(48), [clock, setClock] = useState({ time: 0, at: performance.now(), playing: false });
+  const [peers, setPeers] = useState<any[]>([]);
   const [time, setTime] = useState(0), [serverNow, setServerNow] = useState(Date.now());
   // Poll at 10 Hz. Unchanged polls return a few bytes; the timeline is only sent when it changed.
   useEffect(() => {
@@ -77,6 +78,7 @@ function Watch({ id }: { id: string }) {
           rev = r.rev; setLive(r.live); setServerNow(r.now); setError("");
           if (r.changed) {
             if (r.timeline) { trev = r.timelineRev; setTimeline(normalizeTimeline(r.timeline)); }
+            setPeers(r.peers ?? []);
             setSnap({ name: r.name, time: r.time, selectedId: r.selectedId, playing: r.playing, actor: r.actor, source: r.source, updatedAt: r.updatedAt, watchers: r.watchers, activity: r.activity });
             setClock({ time: r.time, at: performance.now(), playing: r.playing });
           }
@@ -111,12 +113,12 @@ function Watch({ id }: { id: string }) {
         <div className="activity-list" data-testid="live-activity">
           {feed.map((a) => <div key={`${a.seq}-${a.count}`} className={`activity-item ${a.kind}`}><span className="activity-who">{a.actor}</span><p>{a.summary}{a.count > 1 ? ` ×${a.count}` : ""}</p><time className="mono">{ago(a.ts, serverNow)}</time></div>)}
           {!feed.length && <div className="library-empty"><ActivityIcon size={24} /><b>Nothing yet</b><p>Edits appear here the moment they happen.</p></div>}</div></aside>
-      <main className="monitor"><ForgePreview timeline={timeline} assets={assets} time={time} playing={!!snap?.playing && live} selectedId={snap?.selectedId ?? null} readOnly gesture={NOOP_GESTURE} mediaUrl={mediaUrl} onError={() => {}} onValues={() => {}} muted />
+      <main className="monitor"><ForgePreview timeline={timeline} assets={assets} time={time} playing={!!snap?.playing && live} selectedId={snap?.selectedId ?? null} readOnly gesture={NOOP_GESTURE} mediaUrl={mediaUrl} peers={peers} onError={() => {}} onValues={() => {}} muted />
         <div className="transport"><span className="play-btn static" aria-hidden="true">{snap?.playing && live ? <Pause size={20} /> : <Play size={20} />}</span><span className="mono time-big" data-testid="live-time">{timecode(time, timeline.fps)}</span><div className="flex-spacer" /><span className="muted watch-note">{snap?.actor ? `${snap.actor} is ${live ? "editing" : "last to edit"}` : "No one has edited yet"}</span></div></main>
       <aside className="inspector" aria-label="Selection"><div className="inspector-body">
         <div className="inspector-title"><div className="thumb-chip"><MousePointer2 size={15} /></div><div><b>{selected ? (selected.assetId ? selAsset?.filename ?? "Clip" : `“${selected.text}”`) : "Nothing selected"}</b><span className="muted mono">{selected ? `${selected.track} · ${clipDuration(selected).toFixed(2)}s` : "Selection follows the editor"}</span></div></div>
         {values && <dl className="live-values">{Object.entries(values).map(([k, v]) => <div key={k}><dt>{k}</dt><dd className="mono">{round(v as number)}</dd></div>)}{selected?.keyframes && <div><dt>keyframes</dt><dd className="mono">{Object.values(selected.keyframes).reduce((n, k) => n + k.length, 0)}</dd></div>}</dl>}
         <p className="help-text">Values update as the editor drags, scrubs or plays. This screen cannot edit, upload or save.</p>
         <div className="live-facts"><div><span>Source</span><b>{snap?.source === "api" ? "API client" : snap?.source === "editor" ? "Studio" : snap?.source === "save" ? "Saved copy" : "Saved project"}</b></div><div><span>Last change</span><b>{snap ? ago(snap.updatedAt, serverNow) : "-"}</b></div><div><span>Watchers</span><b>{snap?.watchers ?? 0}</b></div></div></div></aside>
-      <section className="timeline-panel" aria-label="Timeline"><ForgeTimeline timeline={timeline} assets={assets} selectedId={snap?.selectedId ?? null} time={time} playing={!!snap?.playing && live} pps={pps} snapping={false} readOnly mediaUrl={mediaUrl} onTrack={() => {}} onFit={() => { const el = document.querySelector(".timeline-scroll") as HTMLElement | null; if (el && duration > 0) setPps(Math.min(260, Math.max(8, Math.floor((el.clientWidth - 160) / duration)))); }} onAddMarker={() => {}} onSelect={() => {}} onSeek={() => {}} onZoom={setPps} gesture={NOOP_GESTURE} onDropAsset={() => {}} onDropEffect={() => {}} onDropFiles={() => {}} onMoveMarker={() => {}} /></section></div></div>;
+      <section className="timeline-panel" aria-label="Timeline"><ForgeTimeline timeline={timeline} assets={assets} selectedId={snap?.selectedId ?? null} selectedIds={snap?.selectedId ? [snap.selectedId] : []} peers={peers} onSelectMany={() => {}} onCursor={() => {}} time={time} playing={!!snap?.playing && live} pps={pps} snapping={false} readOnly mediaUrl={mediaUrl} onTrack={() => {}} onFit={() => { const el = document.querySelector(".timeline-scroll") as HTMLElement | null; if (el && duration > 0) setPps(Math.min(260, Math.max(8, Math.floor((el.clientWidth - 160) / duration)))); }} onAddMarker={() => {}} onSelect={() => {}} onSeek={() => {}} onZoom={setPps} gesture={NOOP_GESTURE} onDropAsset={() => {}} onDropEffect={() => {}} onDropFiles={() => {}} onMoveMarker={() => {}} /></section></div></div>;
 }

@@ -17,8 +17,23 @@ type LiveSession = {
   projectId: string; name: string; rev: number; timelineRev: number; timeline: Timeline;
   time: number; selectedId: string | null; playing: boolean;
   actor: Actor | null; source: "editor" | "api" | "save" | "idle"; updatedAt: number; editorAt: number;
-  activity: Activity[]; seq: number; watchers: Map<string, number>;
+  activity: Activity[]; seq: number; watchers: Map<string, number>; peers: Map<string, Peer>;
 };
+export type Cursor = { area: "timeline"; t: number; lane?: string } | { area: "preview"; x: number; y: number };
+export type Peer = { cid: string; actorId: string; label: string; scope: string; color: string; time: number; selectedIds: string[]; playing: boolean; cursor: Cursor | null; at: number };
+const PEER_MS = 4000, COLORS = ["#ff6b6b", "#4dd4ac", "#5db3ff", "#ffd166", "#c792ea", "#ff9f68", "#7bd88f", "#f78fb3"];
+const colorOf = (cid: string) => COLORS[Array.from(cid).reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7) % COLORS.length];
+const num = (v: unknown, lo: number, hi: number) => (typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v * 1000) / 1000)) : 0);
+function parseCursor(c: any): Cursor | null {
+  if (!c || typeof c !== "object") return null;
+  if (c.area === "timeline") return { area: "timeline", t: num(c.t, 0, 86400), lane: ["overlay", "video", "audio"].includes(c.lane) ? c.lane : undefined };
+  if (c.area === "preview") return { area: "preview", x: num(c.x, 0, 1), y: num(c.y, 0, 1) };
+  return null;
+}
+function livePeers(s: LiveSession) {
+  const now = Date.now(); s.peers.forEach((p, k) => { if (now - p.at > PEER_MS) s.peers.delete(k); });
+  return Array.from(s.peers.values());
+}
 
 const sessions = new Map<string, LiveSession>();
 const LIVE_MS = 15000, WATCH_MS = 3000, MAX_ACTIVITY = 200, MERGE_MS = 1500;
@@ -29,7 +44,7 @@ function session(projectId: string): LiveSession | null {
   if (s) return s;
   const p = storage.getProject(projectId);
   if (!p) return null;
-  s = { projectId, name: p.name, rev: 1, timelineRev: 1, timeline: parse(p.timelineJson), time: 0, selectedId: null, playing: false, actor: null, source: "idle", updatedAt: p.updatedAt, editorAt: 0, activity: [], seq: 0, watchers: new Map() };
+  s = { projectId, name: p.name, rev: 1, timelineRev: 1, timeline: parse(p.timelineJson), time: 0, selectedId: null, playing: false, actor: null, source: "idle", updatedAt: p.updatedAt, editorAt: 0, activity: [], seq: 0, watchers: new Map(), peers: new Map() };
   sessions.set(projectId, s);
   return s;
 }
@@ -107,6 +122,30 @@ export function registerLiveRoutes(app: Express) {
     } catch (e: any) { res.status(400).json({ message: e.message || "bad request" }); }
   });
 
+  // Presence: live cursors, playheads and selections of everyone editing or viewing a project.
+  // One round trip per tick: send your own state, get everyone else's. Any key that can read the project may take part.
+  app.post("/api/projects/:id/presence", requireScope("read"), (req, res) => {
+    const id = String(req.params.id), s = session(id);
+    if (!s || !projectAllowed((req as any).apiKey, id)) return res.status(404).json({ message: "project not found" });
+    const b = req.body || {}, cid = typeof b.cid === "string" && /^[\w-]{4,40}$/.test(b.cid) ? b.cid : null;
+    if (!cid) return res.status(400).json({ message: "cid (4-40 letters, digits, - or _) is required" });
+    const actor = actorOf(req), before = JSON.stringify(livePeers(s).map(({ at, ...p }) => p));
+    if (b.leave) s.peers.delete(cid);
+    else {
+    const prev = s.peers.get(cid);
+    if(prev && prev.actorId !== actor.id) return res.status(409).json({ message: "cid is in use" });
+    if(!prev && s.peers.size >= 64) return res.status(429).json({ message: "Presence room is full" });
+    s.peers.set(cid, { cid, actorId: actor.id, label: actor.label, scope: actor.scope, color: colorOf(cid), time: num(b.time, 0, 86400), playing: !!b.playing,
+      selectedIds: Array.isArray(b.selectedIds) ? b.selectedIds.filter((x: unknown) => typeof x === "string").slice(0, 200).map((x: string) => x.slice(0, 64)) : [], cursor: parseCursor(b.cursor), at: Date.now() });
+    }
+    const peers = livePeers(s);
+    if (JSON.stringify(peers.map(({ at, ...p }) => p)) !== before) s.rev++;
+    const seen = new Map<string, number>();
+    const named = peers.filter((p) => p.cid !== cid).map(({ at, ...p }) => { const n = (seen.get(p.label) ?? 0) + 1; seen.set(p.label, n); return { ...p, name: n > 1 ? `${p.label} (${n})` : p.label }; });
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ self: { cid, color: colorOf(cid) }, peers: named });
+  });
+
   // Activity feed for one project. Any key that can read the project can read it.
   app.get("/api/projects/:id/activity", requireScope("read"), (req, res) => {
     const id = String(req.params.id), s = session(id);
@@ -132,7 +171,7 @@ export function registerLiveRoutes(app: Express) {
     const since = Number(req.query.since ?? -1), tsince = Number(req.query.tsince ?? -1);
     const base = { rev: s.rev, timelineRev: s.timelineRev, live: isLive(s), now: Date.now() };
     if (since === s.rev) return res.json({ ...base, changed: false });
-    res.json({ ...base, changed: true, name: s.name, time: s.time, selectedId: s.selectedId, playing: s.playing, actor: s.actor?.label ?? null, source: s.source, updatedAt: s.updatedAt, watchers: watchers(s),
+    res.json({ ...base, changed: true, name: s.name, time: s.time, selectedId: s.selectedId, playing: s.playing, actor: s.actor?.label ?? null, source: s.source, updatedAt: s.updatedAt, watchers: watchers(s), peers: livePeers(s).map(({ at, ...p }) => ({ ...p, name: p.label })),
       timeline: tsince === s.timelineRev ? undefined : s.timeline, activity: s.activity.slice(-80) });
   });
 }

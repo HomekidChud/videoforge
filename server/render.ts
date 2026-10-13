@@ -1,3 +1,4 @@
+import { incomingTransition } from "@shared/transitions";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -119,6 +120,10 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     const aspect = a.width && a.height ? a.width/a.height : W/H;
     const width=c.track==="overlay" ? W : W, height=c.track==="overlay" ? Math.max(2,Math.round(W/aspect/2)*2) : H;
     chain.push(...transformFilters(c,width,height,dur));
+    const tr = incomingTransition(tl,c);
+    if(tr) { const p=`min(1,max(0,T/${f(tr.duration)}))`, alpha=tr.type==='dissolve'?p:tr.type==='wipe-left'?`lte(X,W*(${p}))`:`gte(X,W*(1-(${p})))`;
+      chain.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*(${alpha})'`); }
+
     chain.push(`setpts=PTS+${f(c.start)}/TB`);
     filters.push(`[${idx}:v]${chain.join(",")}[cv${layer}]`);
     const next = `base${layer + 1}`;
@@ -164,6 +169,9 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     chain.push("aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo");
     chain.push(`volume='${animationExpression(c,"volume")}':eval=frame`);
     const dur = clipDuration(c);
+    const tr=incomingTransition(tl,c), outgoing=tl.clips.find(x=>incomingTransition(tl,x)?.fromClipId===c.id);
+    if(tr) chain.push(`afade=t=in:st=0:d=${f(tr.duration)}`);
+    if(outgoing) chain.push(`afade=t=out:st=${f(dur-outgoing.transitionIn!.duration)}:d=${f(outgoing.transitionIn!.duration)}`);
     if ((c.fadeIn ?? 0) > 0) chain.push(`afade=t=in:st=0:d=${f(Math.min(c.fadeIn!, dur))}`);
     if ((c.fadeOut ?? 0) > 0) chain.push(`afade=t=out:st=${f(Math.max(0, dur - c.fadeOut!))}:d=${f(Math.min(c.fadeOut!, dur))}`);
     const ms = Math.round(c.start * 1000);

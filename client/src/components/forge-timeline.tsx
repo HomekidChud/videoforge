@@ -2,15 +2,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Type, Music2, Film, Image as ImageIcon, Eye, EyeOff, Volume2, VolumeX, Flag, Maximize2 } from "lucide-react";
 import { clipDuration, clipEnd, timelineDuration, type Clip, type Timeline } from "@shared/timeline";
+import { incomingTransition } from "@shared/transitions";
 import { api } from "@/lib/api";
+import type { Peer } from "@/components/forge-presence";
 import { clampClipPatch, round, timecode, type AssetDTO } from "@/lib/editor-model";
 
 export type TimelineGesture = { begin: () => void; update: (id: string, patch: Partial<Clip>) => void; end: () => void };
 type Props = {
-  timeline: Timeline; assets: AssetDTO[]; selectedId: string | null; time: number; playing: boolean; pps: number; snapping: boolean; readOnly: boolean;
+  timeline: Timeline; assets: AssetDTO[]; selectedId: string | null; selectedIds: string[]; peers: Peer[]; follow?: boolean; onSelectMany: (ids: string[]) => void; onCursor: (c: { area: "timeline"; t: number; lane?: string } | null) => void; time: number; playing: boolean; pps: number; snapping: boolean; readOnly: boolean;
   mediaUrl: (id: string, url: string) => string;
   onTrack: (track: Clip["track"], patch: { muted?: boolean; hidden?: boolean }) => void; onFit: () => void; onAddMarker: () => void;
-  onSelect: (id: string | null) => void; onSeek: (t: number) => void; onDropAsset: (assetId: string, track: Clip["track"], start: number) => void;
+  onSelect: (id: string | null, mode?: "replace" | "toggle" | "keep") => void; onSeek: (t: number) => void; onDropAsset: (assetId: string, track: Clip["track"], start: number) => void;
   onDropEffect: (effect: any, target: { clipId?: string; track?: Clip["track"]; start?: number }) => void; onDropFiles: (files: File[], track: Clip["track"], start: number) => void; onMoveMarker: (id: string, time: number) => void; gesture: TimelineGesture; onZoom: (pps: number) => void;
 };
 const LANES: { id: Clip["track"]; label: string; hint: string }[] = [
@@ -19,7 +21,8 @@ const LANES: { id: Clip["track"]; label: string; hint: string }[] = [
   { id: "audio", label: "Audio", hint: "Drop music or voice-over here" },
 ];
 const STEPS = [0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
-type Drag = { id: string; mode: "move" | "trimL" | "trimR"; x: number; orig: Clip; asset?: AssetDTO; moved: boolean };
+type Drag = { id: string; mode: "move" | "trimL" | "trimR"; x: number; orig: Clip; asset?: AssetDTO; moved: boolean; group: Clip[] };
+type Marquee = { x0: number; y0: number; x1: number; y1: number; moved: boolean; base: string[] };
 
 function Waveform({ asset, clip, width }: { asset: AssetDTO; clip: Clip; width: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -39,16 +42,16 @@ function Waveform({ asset, clip, width }: { asset: AssetDTO; clip: Clip; width: 
   return <canvas ref={ref} className="wave-canvas" height={34} aria-hidden="true" />;
 }
 
-function packRows(clips: Clip[]) {
+function packRows(clips: Clip[], timeline: Timeline) {
   const ends: number[] = [], rows = new Map<string, number>();
-  [...clips].sort((a, b) => a.start - b.start).forEach((c) => { let r = ends.findIndex((e) => e <= c.start + 0.001); if (r < 0) { r = ends.length; ends.push(0); } ends[r] = clipEnd(c); rows.set(c.id, r); });
+  [...clips].sort((a, b) => a.start - b.start).forEach((c) => { const overlap = incomingTransition(timeline, c)?.duration ?? 0; let r = ends.findIndex((e) => e <= c.start + 0.001 + overlap); if (r < 0) { r = ends.length; ends.push(0); } ends[r] = clipEnd(c); rows.set(c.id, r); });
   return { rows, count: Math.max(1, ends.length) };
 }
 
-export default function ForgeTimeline({ timeline, assets, selectedId, time, playing, pps, snapping, readOnly, mediaUrl, onTrack, onFit, onAddMarker, onSelect, onSeek, onDropAsset, onDropEffect, onDropFiles, onMoveMarker, gesture, onZoom }: Props) {
+export default function ForgeTimeline({ timeline, assets, selectedId, selectedIds, peers, follow, onSelectMany, onCursor, time, playing, pps, snapping, readOnly, mediaUrl, onTrack, onFit, onAddMarker, onSelect, onSeek, onDropAsset, onDropEffect, onDropFiles, onMoveMarker, gesture, onZoom }: Props) {
   const scroller = useRef<HTMLDivElement>(null), lanes = useRef(new Map<string, HTMLDivElement>()), drag = useRef<Drag | null>(null);
   const [width, setWidth] = useState(900), [hoverClip, setHoverClip] = useState<string | null>(null), [hoverLane, setHoverLane] = useState<string | null>(null);
-  const markerDrag = useRef<string | null>(null);
+  const markerDrag = useRef<string | null>(null), marqueeRef = useRef<Marquee | null>(null), [marquee, setMarquee] = useState<Marquee | null>(null);
   const duration = timelineDuration(timeline);
   const total = Math.max(duration + Math.max(8, 400 / pps), width / pps);
   const gridStep = STEPS.find((s) => s * pps >= 76) ?? 600;
@@ -58,10 +61,10 @@ export default function ForgeTimeline({ timeline, assets, selectedId, time, play
   useEffect(() => { const el = scroller.current; if (!el) return; const ro = new ResizeObserver(() => setWidth(el.clientWidth)); ro.observe(el); setWidth(el.clientWidth); return () => ro.disconnect(); }, []);
   // keep the playhead in view while playing
   useEffect(() => {
-    const el = scroller.current; if (!el || !playing) return;
+    const el = scroller.current; if (!el || !(playing || follow)) return;
     const x = time * pps, left = el.scrollLeft + 150, right = el.scrollLeft + el.clientWidth - 90;
     if (x > right || x < left) el.scrollLeft = Math.max(0, x - 180);
-  }, [time, playing, pps]);
+  }, [time, playing, pps, follow]);
 
   const pointTime = (clientX: number) => {
     const el = scroller.current!, r = el.getBoundingClientRect();
@@ -73,10 +76,13 @@ export default function ForgeTimeline({ timeline, assets, selectedId, time, play
   const allowed = (clip: Clip, asset: AssetDTO | undefined, lane: Clip["track"]) => !asset ? lane === "overlay" : asset.kind === "audio" ? lane === "audio" : lane !== "audio";
 
   function down(e: React.PointerEvent, c: Clip, mode: Drag["mode"]) {
-    e.stopPropagation(); onSelect(c.id);
+    e.stopPropagation();
+    if (e.shiftKey || e.ctrlKey || e.metaKey) { onSelect(c.id, "toggle"); return; }
+    const inGroup = selectedIds.length > 1 && selectedIds.includes(c.id);
+    if (!inGroup) onSelect(c.id); else onSelect(c.id, "keep");
     if (readOnly || e.button !== 0) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    drag.current = { id: c.id, mode, x: e.clientX, orig: c, asset: byId.get(c.assetId), moved: false };
+    drag.current = { id: c.id, mode, x: e.clientX, orig: c, asset: byId.get(c.assetId), moved: false, group: mode === "move" && inGroup ? timeline.clips.filter((x) => selectedIds.includes(x.id)) : [c] };
     gesture.begin();
   }
   function move(e: React.PointerEvent) {
@@ -88,9 +94,15 @@ export default function ForgeTimeline({ timeline, assets, selectedId, time, play
       const dur = clipDuration(o), s1 = snap(o.start + dx), e1 = snap(o.start + dx + dur) - dur;
       const startErr = Math.abs(s1 - (o.start + dx)), endErr = Math.abs(e1 - (o.start + dx));
       let start = Math.max(0, threshold && endErr < startErr && e1 >= 0 ? e1 : s1);
-      const lane = laneAt(e.clientY); const patch: Partial<Clip> = { start: round(start) };
-      if (lane && lane !== o.track && allowed(o, d.asset, lane)) patch.track = lane;
-      gesture.update(o.id, patch);
+      const lane = laneAt(e.clientY), group = d.group;
+      if (group.length > 1) {
+        const delta = Math.max(start - o.start, -Math.min(...group.map((g) => g.start)));
+        group.forEach((g) => gesture.update(g.id, { start: round(g.start + delta) }));
+      } else {
+        const patch: Partial<Clip> = { start: round(start) };
+        if (lane && lane !== o.track && allowed(o, d.asset, lane)) patch.track = lane;
+        gesture.update(o.id, patch);
+      }
     } else if (d.mode === "trimL") {
       const end = o.start + clipDuration(o), start = Math.min(end - 0.1, snap(o.start + dx));
       const delta = start - o.start;
@@ -119,6 +131,17 @@ export default function ForgeTimeline({ timeline, assets, selectedId, time, play
   }
   function overClip(e: React.DragEvent, id: string) { if (readOnly || !hasDrag(e, "application/x-vf-effect")) return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "copy"; setHoverClip(id); setHoverLane(null); }
   function dropClip(e: React.DragEvent, id: string) { const effect = readEffect(e); if (!effect || readOnly) return; e.preventDefault(); e.stopPropagation(); setHoverClip(null); setHoverLane(null); onDropEffect(effect, { clipId: id }); }
+  function marqueeMove(e: React.PointerEvent) {
+    const m = marqueeRef.current; if (!m) return;
+    m.x1 = e.clientX; m.y1 = e.clientY; if (Math.abs(m.x1 - m.x0) + Math.abs(m.y1 - m.y0) > 5) m.moved = true;
+    if (!m.moved) return;
+    const l = Math.min(m.x0, m.x1), r = Math.max(m.x0, m.x1), t = Math.min(m.y0, m.y1), b = Math.max(m.y0, m.y1), ids = new Set(m.base);
+    scroller.current?.querySelectorAll<HTMLElement>("[data-clip-id]").forEach((el) => { const q = el.getBoundingClientRect(); if (q.left < r && q.right > l && q.top < b && q.bottom > t) ids.add(el.dataset.clipId!); });
+    setMarquee({ ...m }); onSelectMany(Array.from(ids));
+  }
+  function marqueeUp(e: React.PointerEvent) { const m = marqueeRef.current; marqueeRef.current = null; setMarquee(null); if (m && !m.moved) { onSelect(null); seekFrom(e); } }
+  const trackCursor = (e: React.PointerEvent) => { if (e.buttons) return; const lane = laneAt(e.clientY); onCursor(lane ? { area: "timeline", t: round(pointTime(e.clientX)), lane } : null); };
+  const peerOn = (id: string) => peers.find((p) => p.selectedIds.includes(id));
   function markerDown(e: React.PointerEvent, id: string, at: number) { e.stopPropagation(); onSeek(at); if (readOnly) return; e.currentTarget.setPointerCapture(e.pointerId); markerDrag.current = id; gesture.begin(); }
   function markerMove(e: React.PointerEvent) { if (!markerDrag.current || !e.buttons) return; e.stopPropagation(); onMoveMarker(markerDrag.current, round(Math.max(0, Math.round(pointTime(e.clientX) * timeline.fps) / timeline.fps))); }
   function markerUp() { if (markerDrag.current) { markerDrag.current = null; gesture.end(); } }
@@ -127,7 +150,7 @@ export default function ForgeTimeline({ timeline, assets, selectedId, time, play
     <div className="timeline-toolbar"><span className="mono time-readout" data-testid="text-timecode">{timecode(time, timeline.fps)}</span><span className="muted mono"> / {timecode(duration, timeline.fps)}</span><div className="flex-spacer"/>
       <button className="icon-btn" onClick={onAddMarker} disabled={readOnly} aria-label="Add marker at playhead" title="Add marker (M)"><Flag size={15} /></button><button className="icon-btn" onClick={onFit} aria-label="Fit timeline" title="Fit timeline to window"><Maximize2 size={15} /></button>
       <label className="zoom-control">Zoom<input type="range" aria-label="Timeline zoom" min={8} max={260} value={pps} onChange={(e) => onZoom(Number(e.target.value))} /></label></div>
-    <div className="timeline-scroll" ref={scroller} onWheel={(e) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); onZoom(Math.min(260, Math.max(8, Math.round(pps * (e.deltaY < 0 ? 1.15 : 0.87))))); } }} data-testid="timeline">
+    <div className="timeline-scroll" ref={scroller} onPointerMove={trackCursor} onPointerLeave={() => onCursor(null)} onWheel={(e) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); onZoom(Math.min(260, Math.max(8, Math.round(pps * (e.deltaY < 0 ? 1.15 : 0.87))))); } }} data-testid="timeline">
       <div className="timeline-inner" style={{ width: 132 + total * pps }}>
         <div className="ruler-row"><div className="lane-label sticky-corner"/>
           <div className="ruler" onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); seekFrom(e); }} onPointerMove={(e) => { if (e.buttons) seekFrom(e); }} data-testid="ruler">
@@ -135,16 +158,19 @@ export default function ForgeTimeline({ timeline, assets, selectedId, time, play
             {(timeline.markers ?? []).map((m) => <button key={m.id} className="marker" style={{ left: m.time * pps, color: m.color }} title={`${m.label} · ${timecode(m.time, timeline.fps)}`} onPointerDown={(e) => markerDown(e, m.id, m.time)} onPointerMove={markerMove} onPointerUp={markerUp} onPointerCancel={markerUp} data-testid={`marker-${m.id}`}><Flag size={11} fill="currentColor" /></button>)}
           </div></div>
         {LANES.map((lane) => {
-          const clips = timeline.clips.filter((c) => c.track === lane.id), packed = packRows(clips);
+          const clips = timeline.clips.filter((c) => c.track === lane.id), packed = packRows(clips, timeline);
           return <div className="lane-row" key={lane.id} style={{ minHeight: packed.count * 58 }}><div className="lane-label"><b>{lane.id === "overlay" ? "T" : lane.id === "video" ? "V" : "A"}</b><span>{lane.label}</span>{lane.id === "audio" ? <button className={`lane-toggle ${timeline.tracks?.audio?.muted ? "on" : ""}`} aria-label={timeline.tracks?.audio?.muted ? "Unmute audio track" : "Mute audio track"} aria-pressed={!!timeline.tracks?.audio?.muted} disabled={readOnly} onClick={() => onTrack("audio", { muted: !timeline.tracks?.audio?.muted })}>{timeline.tracks?.audio?.muted ? <VolumeX size={13} /> : <Volume2 size={13} />}</button> : <button className={`lane-toggle ${timeline.tracks?.[lane.id]?.hidden ? "on" : ""}`} aria-label={timeline.tracks?.[lane.id]?.hidden ? `Show ${lane.label}` : `Hide ${lane.label}`} aria-pressed={!!timeline.tracks?.[lane.id]?.hidden} disabled={readOnly} onClick={() => onTrack(lane.id, { hidden: !timeline.tracks?.[lane.id]?.hidden })}>{timeline.tracks?.[lane.id]?.hidden ? <EyeOff size={13} /> : <Eye size={13} />}</button>}</div>
-            <div className={`lane lane-${lane.id} ${hoverLane === lane.id ? "drop-over" : ""}`} ref={(el) => { if (el) lanes.current.set(lane.id, el); }} onDragOver={(e) => overLane(e, lane.id)} onDragLeave={(e) => { if (e.currentTarget === e.target) setHoverLane(null); }} onDrop={(e) => dropOn(e, lane.id)} onPointerDown={(e) => { if (e.target === e.currentTarget) { onSelect(null); seekFrom(e); } }} data-testid={`lane-${lane.id}`}>
+            <div className={`lane lane-${lane.id} ${hoverLane === lane.id ? "drop-over" : ""}`} ref={(el) => { if (el) lanes.current.set(lane.id, el); }} onDragOver={(e) => overLane(e, lane.id)} onDragLeave={(e) => { if (e.currentTarget === e.target) setHoverLane(null); }} onDrop={(e) => dropOn(e, lane.id)} onPointerDown={(e) => { if (e.target === e.currentTarget && e.button === 0) { e.currentTarget.setPointerCapture(e.pointerId); const m = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, moved: false, base: e.shiftKey ? selectedIds : [] }; marqueeRef.current = m; } }} onPointerMove={marqueeMove} onPointerUp={marqueeUp} onPointerCancel={marqueeUp} data-testid={`lane-${lane.id}`}>
               {!clips.length && <div className="lane-hint">{lane.hint}</div>}
+              {peers.map((p) => p.cursor?.area === "timeline" && p.cursor.lane === lane.id && <div key={p.cid} className="peer-cursor" style={{ left: p.cursor.t * pps, top: 14, "--pc": p.color } as any} data-testid="live-cursor"><span className="cursor-arrow" /><b>{p.name}</b></div>)}
               {clips.map((c) => {
                 const a = byId.get(c.assetId), w = Math.max(18, clipDuration(c) * pps), isText = !c.assetId;
                 const thumb = a && a.kind !== "audio" ? mediaUrl(a.id, `/api/media/${a.id}/thumb`) : "";
-                return <div key={c.id} role="button" tabIndex={0} aria-label={`${isText ? "Title" : a?.filename ?? "Clip"}, ${clipDuration(c).toFixed(1)} seconds`} aria-pressed={selectedId === c.id}
-                  className={`clip clip-${isText ? "text" : lane.id} ${selectedId === c.id ? "selected" : ""} ${readOnly ? "locked" : ""} ${hoverClip === c.id ? "drop-target" : ""} ${timeline.tracks?.[lane.id]?.hidden || timeline.tracks?.[lane.id]?.muted ? "track-off" : ""}`} style={{ left: c.start * pps, width: w, top: (packed.rows.get(c.id) ?? 0) * 58 + 6, bottom: "auto", height: 46, backgroundImage: thumb ? `linear-gradient(90deg,rgba(17,17,18,.2),rgba(17,17,18,.65)),url(${thumb})` : undefined }}
-                  onPointerDown={(e) => down(e, c, "move")} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onDragOver={(e) => overClip(e, c.id)} onDragLeave={() => setHoverClip(null)} onDrop={(e) => dropClip(e, c.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(c.id); } }} data-testid={`clip-${c.id}`}>
+                return <div key={c.id} role="button" tabIndex={0} aria-label={`${isText ? "Title" : a?.filename ?? "Clip"}, ${clipDuration(c).toFixed(1)} seconds`} aria-pressed={selectedIds.includes(c.id)}
+                  className={`clip clip-${isText ? "text" : lane.id} ${selectedIds.includes(c.id) ? "selected" : ""} ${selectedIds.length > 1 && selectedIds.includes(c.id) ? "multi" : ""} ${peerOn(c.id) ? "peer-selected" : ""} ${readOnly ? "locked" : ""} ${hoverClip === c.id ? "drop-target" : ""} ${timeline.tracks?.[lane.id]?.hidden || timeline.tracks?.[lane.id]?.muted ? "track-off" : ""}`} style={{ ...(peerOn(c.id) ? { "--peer": peerOn(c.id)!.color } as any : {}), zIndex: incomingTransition(timeline, c) ? 4 : undefined, left: c.start * pps, width: w, top: (packed.rows.get(c.id) ?? 0) * 58 + 6, bottom: "auto", height: 46, backgroundImage: thumb ? `linear-gradient(90deg,rgba(17,17,18,.2),rgba(17,17,18,.65)),url(${thumb})` : undefined }}
+                  onPointerDown={(e) => down(e, c, "move")} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onDragOver={(e) => overClip(e, c.id)} onDragLeave={() => setHoverClip(null)} onDrop={(e) => dropClip(e, c.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(c.id); } }} data-clip-id={c.id} data-testid={`clip-${c.id}`}>
+                  {incomingTransition(timeline, c) && <span className={`transition-zone ${incomingTransition(timeline, c)!.type}`} style={{ width: incomingTransition(timeline, c)!.duration * pps }} title={`${incomingTransition(timeline, c)!.type} · ${incomingTransition(timeline, c)!.duration}s`} data-testid={`transition-${c.id}`} />}
+                  {peerOn(c.id) && <span className="peer-tag" style={{ background: peerOn(c.id)!.color }}>{peerOn(c.id)!.name}</span>}
                   {a?.kind === "audio" && <Waveform asset={a} clip={c} width={w} />}
                   <span className="trim-handle left" onPointerDown={(e) => down(e, c, "trimL")} onPointerMove={move} onPointerUp={up} aria-hidden="true" />
                   <span className="clip-label">{isText ? <Type size={13} /> : a?.kind === "audio" ? <Music2 size={13} /> : a?.kind === "image" ? <ImageIcon size={13} /> : <Film size={13} />}<span>{isText ? c.text : a?.filename ?? "Missing media"}</span></span>
@@ -154,6 +180,8 @@ export default function ForgeTimeline({ timeline, assets, selectedId, time, play
                 </div>;
             })}</div></div>;
         })}
+        {peers.map((p) => <div key={p.cid} className="peer-playhead" style={{ left: 132 + p.time * pps, "--pc": p.color } as any} data-testid="peer-playhead" aria-hidden="true"><b>{p.name}</b></div>)}
         <div className="playhead" style={{ left: 132 + time * pps }} aria-hidden="true"><span className="playhead-cap" onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); }} onPointerMove={(e) => { if (e.buttons) seekFrom(e); }}/></div>
-      </div></div></div>;
+      </div></div>
+    {marquee?.moved && <div className="marquee-box" style={{ left: Math.min(marquee.x0, marquee.x1), top: Math.min(marquee.y0, marquee.y1), width: Math.abs(marquee.x1 - marquee.x0), height: Math.abs(marquee.y1 - marquee.y0) }} />}</div>;
 }

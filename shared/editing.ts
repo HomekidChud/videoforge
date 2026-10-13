@@ -1,3 +1,4 @@
+import { setTransition } from "./transitions";
 import { normalizeClip, normalizeTimeline, clipDuration, clipEnd, TRACKS, type Clip, type Timeline, type TrackName } from "./timeline";
 import { normalizeKeyframes, isProperty, sliceKeyframes, type AnimationProperty } from "./animation";
 import { motionPreset } from "./presets";
@@ -188,6 +189,8 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
           if (typeof args.time === "number") m.time = Math.max(0, args.time); if (typeof args.label === "string") m.label = args.label.slice(0, 80); if (typeof args.color === "string") m.color = args.color;
           timeline.markers = [...(timeline.markers ?? [])].sort((a, b) => a.time - b.time); break;
         }
+        case "set_transition": return setTransition(timeline,args.clipId,args.type,args.duration,args.join!==false);
+        case "remove_clips": { if(!Array.isArray(args.clipIds)) throw new Error("clipIds required"); timeline.clips=clips.filter(c=>!args.clipIds.includes(c.id)); break; }
         case "apply_motion": { const c=find(args?.clipId); Object.assign(c, motionPreset(c,args.preset)); break; }
         default:
           throw new Error(`unknown op: ${op}`);

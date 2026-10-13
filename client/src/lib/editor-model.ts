@@ -29,7 +29,7 @@ export function splitClip(t:Timeline,id:string,at:number):Timeline|null {
 }
 export function duplicateClip(t:Timeline,id:string):{timeline:Timeline;id:string}|null {
   const c=t.clips.find(x=>x.id===id);if(!c)return null;
-  const next={...c,id:uid(),start:clipEnd(c)};
+  const next={...c,id:uid(),start:clipEnd(c),transitionIn:undefined};
   return {timeline:{...t,clips:[...t.clips,next]},id:next.id};
 }
 export function rippleDelete(t:Timeline,id:string):Timeline {

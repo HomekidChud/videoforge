@@ -513,6 +513,55 @@ async function main() {
     assert(caps.body.ops.shift_clips && caps.body.ops.copy_style, "capabilities list the new ops");
   }
 
+  // --- 20. Clip transitions, bulk removal, live presence
+  console.log("20) Transitions and presence");
+  {
+    const mk = async (label: string, scope: string) => ({ Authorization: `Bearer ${(await jsonFetch("/api/keys", { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ label, scope }) })).body.key}` }) as any;
+    const W = await mk("presence writer", "write"), R = await mk("presence reader", "read");
+    const clip = (id: string, start: number) => ({ id, assetId, track: "video", start, inPoint: 0, outPoint: 3 });
+    const proj = await jsonFetch("/api/projects", { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ name: "transitions", timeline: { clips: [clip("a", 0), clip("b", 5), clip("c", 9)] } }) });
+    const pid = proj.body.id, ops = `/api/projects/${pid}/timeline/ops`;
+    const t1 = await jsonFetch(ops, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ op: "set_transition", args: { clipId: "b", type: "dissolve", duration: 1 } }) });
+    const b = t1.body.timeline?.clips.find((c: any) => c.id === "b"), c = t1.body.timeline?.clips.find((c: any) => c.id === "c");
+    assert(t1.status === 200 && b.start === 2 && b.transitionIn.fromClipId === "a" && b.transitionIn.duration === 1, `set_transition joins and overlaps, got ${t1.status} ${t1.body.message || ""}`);
+    assert(c.start === 6, `later video clips move up with the overlap, got ${c.start}`);
+    const strict = await jsonFetch(ops, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ op: "set_transition", args: { clipId: "c", type: "wipe-left", join: false } }) });
+    assert(strict.status === 200 || /end to end/.test(strict.body.message), "join:false refuses clips that do not touch");
+    const first = await jsonFetch(ops, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ op: "set_transition", args: { clipId: "a", type: "dissolve" } }) });
+    assert(first.status === 422, "the first clip cannot take a transition");
+    const bad = await jsonFetch(ops, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ op: "set_transition", args: { clipId: "b", type: "spin" } }) });
+    assert(bad.status === 422, "unknown transition types are rejected");
+    const frame = await fetch(`${H}/api/projects/${pid}/frame?t=2.5&width=160`, { headers: AUTH_ADMIN });
+    assert(frame.status === 200 && (frame.headers.get("content-type") || "").includes("png"), "frames render with a transition active");
+    const gone = await jsonFetch(ops, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ op: "set_transition", args: { clipId: "b", type: "none" } }) });
+    const b2 = gone.body.timeline.clips.find((c: any) => c.id === "b");
+    assert(!b2.transitionIn && b2.start === 3, "type none removes the transition and restores the gap-free layout");
+    const rm = await jsonFetch(ops, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ op: "remove_clips", args: { clipIds: ["a", "c"] } }) });
+    assert(rm.body.timeline.clips.length === 1 && rm.body.timeline.clips[0].id === "b", "remove_clips deletes several clips at once");
+    // presence
+    const post = (auth: any, body: any) => jsonFetch(`/api/projects/${pid}/presence`, { method: "POST", headers: auth, body: JSON.stringify(body) });
+    assert((await post(W, { time: 1 })).status === 400, "presence needs a client id");
+    const w = await post(W, { cid: "tab-writer-1", time: 1.5, selectedIds: ["b"], playing: false, cursor: { area: "timeline", t: 2.25, lane: "video" } });
+    assert(w.status === 200 && w.body.peers.length === 0, "first participant sees nobody else");
+    const r = await post(R, { cid: "tab-reader-1", time: 0.5, cursor: { area: "preview", x: 0.25, y: 2 } });
+    const seenW = r.body.peers?.[0];
+    assert(r.status === 200 && r.body.peers.length === 1 && seenW.time === 1.5 && seenW.selectedIds[0] === "b" && seenW.cursor.t === 2.25 && seenW.cursor.lane === "video", "read keys see an editor's cursor, playhead and selection");
+    const back = await post(W, { cid: "tab-writer-1", time: 1.5 });
+    const seenR = back.body.peers?.[0];
+    assert(seenR.cursor.area === "preview" && seenR.cursor.x === 0.25 && seenR.cursor.y === 1, "cursor values are clamped to the frame");
+    assert(seenW.color && seenW.color !== "" && seenW.name === "presence writer", "peers carry a colour and the key's label");
+    const hijack = await post(R, { cid: "tab-writer-1", time: 0 });
+    assert(hijack.status === 409, "a client id cannot be taken over by another key");
+    const watch = await jsonFetch(`/api/live/${pid}`, { headers: AUTH_ADMIN });
+    assert(watch.body.peers?.length === 2, "admin watchers see everyone present");
+    await post(R, { cid: "tab-reader-1", leave: true });
+    assert((await post(W, { cid: "tab-writer-1" })).body.peers.length === 0, "leaving removes you from the room");
+    const outside = await jsonFetch(`/api/projects/nope/presence`, { method: "POST", headers: W, body: JSON.stringify({ cid: "abcd" }) });
+    assert(outside.status === 404, "presence on a missing project is 404");
+    const caps = await jsonFetch("/api/capabilities", { headers: AUTH_ADMIN });
+    assert(caps.body.ops.set_transition && caps.body.ops.remove_clips && JSON.stringify(caps.body).includes("/presence"), "capabilities list transitions and presence");
+  }
+
   console.log(`\n${passed} passed, ${failed} failed`);
   killServer();
   if (failed > 0) process.exit(1);

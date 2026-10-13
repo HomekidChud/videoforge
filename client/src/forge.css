@@ -362,3 +362,28 @@
 .effects-panel { flex:1; }
 .panel-tabs button { display:flex; align-items:center; justify-content:center; gap:6px; }
 .live-pill { white-space:nowrap; flex-shrink:0; } .live-head > div { min-width:0; }
+
+/* ---- presence: live cursors, follow mode ---- */
+.presence-bar { display:flex; align-items:center; gap:6px; margin-left:8px; }
+.peer-avatar { width:26px; height:26px; border-radius:50%; color:#101010; font-weight:700; font-size:12px; display:inline-grid; place-items:center; border:2px solid transparent; transition:transform .12s, box-shadow .12s; }
+.peer-avatar:hover { transform:translateY(-1px); }
+.peer-avatar.following { box-shadow:0 0 0 2px #111, 0 0 0 4px #fff; border-color:#fff; }
+.follow-chip { display:inline-flex; align-items:center; gap:8px; font-size:var(--text-xs, 12px); padding:3px 10px; border:1px solid; border-radius:999px; white-space:nowrap; }
+.peer-cursor { position:absolute; z-index:40; pointer-events:none; transition:left .12s linear, top .12s linear; }
+.peer-cursor .cursor-arrow { display:block; width:0; height:0; border-left:6px solid transparent; border-right:6px solid transparent; border-bottom:12px solid var(--pc); transform:rotate(-30deg); filter:drop-shadow(0 1px 1px #0009); }
+.peer-cursor b { position:absolute; left:10px; top:10px; background:var(--pc); border-radius:4px; padding:1px 6px; font-size:11px; white-space:nowrap; }
+.peer-cursor b { color:#111; }
+.presence-overlay { position:absolute; inset:0; pointer-events:none; z-index:45; overflow:hidden; }
+.peer-playhead { position:absolute; top:0; bottom:0; width:0; border-left:1.5px solid var(--pc); z-index:19; pointer-events:none; opacity:.9; transition:left .12s linear; }
+.peer-playhead b { position:absolute; top:0; left:2px; background:var(--pc); border-radius:0 4px 4px 0; padding:0 5px; font-size:10px; color:#111; white-space:nowrap; }
+.clip.peer-selected { outline:2px solid var(--peer); outline-offset:1px; }
+.peer-tag { position:absolute; top:2px; right:14px; max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; line-height:14px; padding:0 5px; border-radius:3px; color:#111; z-index:5; pointer-events:none; }
+.clip.multi { box-shadow:0 0 0 2px var(--forge-accent), 0 0 0 4px #0008; }
+.marquee-box { position:fixed; border:1px solid var(--forge-accent); background:color-mix(in srgb, var(--forge-accent) 18%, transparent); z-index:60; pointer-events:none; }
+.transition-zone { position:absolute; left:0; top:0; bottom:0; z-index:3; pointer-events:none; border-right:2px solid #fff; background:repeating-linear-gradient(135deg, #ffffff55 0 4px, #0000 4px 8px); }
+.transition-zone.wipe-left { background:linear-gradient(90deg, #ffffff88, #ffffff11); }
+.transition-zone.wipe-right { background:linear-gradient(270deg, #ffffff88, #ffffff11); }
+.preview-area.drop-hot::after { content:"Drop to apply"; position:absolute; inset:12px; border:2px dashed var(--forge-accent); border-radius:8px; display:grid; place-items:end center; padding-bottom:14px; color:var(--forge-accent); font-weight:600; background:#0004; z-index:50; pointer-events:none; }
+.secondary-btn.danger { color:#ff8a8a; }
+@media (max-width: 760px) { .presence-bar .follow-chip { display:none; } }
+.lane .clip { z-index:1; } .lane .clip.selected { z-index:2; }

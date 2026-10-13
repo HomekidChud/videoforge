@@ -4,6 +4,7 @@ import { ANIMATABLE, valueAt, clamp, type AnimationProperty } from "@shared/anim
 import { FILTERS, RESOLUTIONS, clipDuration, type Clip, type Timeline } from "@shared/timeline";
 import { round, timecode, type AssetDTO } from "@/lib/editor-model";
 import type { TimelineGesture } from "@/components/forge-timeline";
+import { TRANSITIONS, type Transition } from "@shared/transitions";
 import ForgeMotion from "@/components/forge-motion";
 
 type Gesture = TimelineGesture;
@@ -24,8 +25,8 @@ function Section({ title, children, open = true }: { title: string; children: Re
   return <details className="insp-section" open={open}><summary>{title}</summary><div className="insp-content">{children}</div></details>;
 }
 
-export type ClipInspectorProps = { clip: Clip; asset?: AssetDTO; readOnly: boolean; gesture: Gesture; time: number; fps: number; patch: (p: Partial<Clip>, live?: boolean) => void; setValues: (v: Partial<Record<AnimationProperty, number>>, live?: boolean) => void; toggleKey: (p: AnimationProperty) => void; seek: (t: number) => void; onSplit: () => void; onDuplicate: () => void; onDelete: () => void };
-export function ClipInspector({ clip, asset, readOnly, gesture, time, fps, patch, setValues, toggleKey, seek, onSplit, onDuplicate, onDelete }: ClipInspectorProps) {
+export type ClipInspectorProps = { transition?: Transition; onTransition?: (type: string, duration?: number) => void; clip: Clip; asset?: AssetDTO; readOnly: boolean; gesture: Gesture; time: number; fps: number; patch: (p: Partial<Clip>, live?: boolean) => void; setValues: (v: Partial<Record<AnimationProperty, number>>, live?: boolean) => void; toggleKey: (p: AnimationProperty) => void; seek: (t: number) => void; onSplit: () => void; onDuplicate: () => void; onDelete: () => void };
+export function ClipInspector({ clip, asset, readOnly, gesture, time, fps, patch, setValues, toggleKey, seek, onSplit, onDuplicate, onDelete, transition, onTransition }: ClipInspectorProps) {
   const [tab, setTab] = useState<"edit" | "motion">("edit");
   const [textDraft, setTextDraft] = useState(clip.text ?? "");
   useEffect(() => setTextDraft(clip.text ?? ""), [clip.id]);
@@ -50,6 +51,10 @@ export function ClipInspector({ clip, asset, readOnly, gesture, time, fps, patch
       <Section title="Timing"><div className="two-col"><NumberField label="Start" value={clip.start} min={0} max={86400} disabled={readOnly} onCommit={(v) => patch({ start: v })} />
         {media ? <NumberField label="Speed" value={clip.speed ?? 1} min={0.25} max={4} step={0.25} suffix="×" disabled={readOnly} onCommit={(v) => patch({ speed: v })} /> : <NumberField label="Duration" value={dur} min={0.1} max={3600} disabled={readOnly} onCommit={(v) => patch({ outPoint: clip.inPoint + v })} />}</div>
         {media && <div className="two-col"><NumberField label="In" value={clip.inPoint} min={0} max={Math.max(0, (asset?.duration ?? 86400) - 0.1)} disabled={readOnly} onCommit={(v) => patch({ inPoint: v })} /><NumberField label="Out" value={clip.outPoint} min={0.1} max={asset?.duration || 86400} disabled={readOnly} onCommit={(v) => patch({ outPoint: v })} /></div>}</Section>
+      {clip.track === "video" && !isText && onTransition && <Section title="Transition in">
+        <div className="chip-grid" role="radiogroup" aria-label="Transition">{["none", ...TRANSITIONS].map((t) => <button key={t} role="radio" aria-checked={(transition?.type ?? "none") === t} className={(transition?.type ?? "none") === t ? "selected chip" : "chip"} disabled={readOnly} onClick={() => onTransition(t, transition?.duration)} data-testid={`transition-${t}`}>{t === "none" ? "None" : t === "dissolve" ? "Dissolve" : t === "wipe-left" ? "Wipe from left" : "Wipe from right"}</button>)}</div>
+        {transition && <NumberField label="Length" value={transition.duration} min={0.1} max={3} disabled={readOnly} onCommit={(v) => onTransition(transition.type, v)} />}
+        <p className="help-text">Overlaps this clip with the one before it. Later clips move up to close the gap.</p></Section>}
       {visual && <Section title="Transform">
         {anim("x", "Horizontal", pct)}{anim("y", "Vertical", pct)}{anim("scale", "Scale", pct)}{anim("rotation", "Rotation", (v) => `${Math.round(v)}°`)}{anim("opacity", "Opacity", pct)}
         <Slider label="Blur" value={clip.blur ?? 0} min={0} max={20} step={0.5} format={(v) => `${v}px`} onGesture={gesture} onChange={(v) => ps({ blur: v })} disabled={readOnly} />
@@ -79,5 +84,23 @@ export function ProjectInspector({ name, onName, timeline, setProject, readOnly,
       {canPublish ? <button className="secondary-btn full" disabled={!projectId} onClick={onVisibility}>{visibility === "private" ? <><Globe size={15} />Make public</> : <><Lock size={15} />Make private</>}</button> : <p className="help-text">Only admin keys can change visibility.</p>}
       {visibility === "public" && <button className="secondary-btn full" onClick={onCopyLink}><Link2 size={15} />Copy public link</button>}</Section>
     <Section title="Shortcuts" open={false}><dl className="shortcut-list">{[["Space", "Play / pause"], ["S", "Split at playhead"], ["M", "Add marker"], ["Del", "Delete clip"], ["⇧ Del", "Ripple delete"], ["⌘/Ctrl Z", "Undo (⇧ for redo)"], ["⌘/Ctrl C V", "Copy and paste clip"], ["⌘/Ctrl D", "Duplicate"], ["← →", "Step a frame (⇧ = 1s)"], ["[  ]", "Trim edge to playhead"], ["+ −", "Zoom timeline"]].map(([k, v]) => <div key={k}><dt className="mono">{k}</dt><dd>{v}</dd></div>)}</dl></Section>
+  </div>;
+}
+
+export function MultiInspector({ clips, readOnly, onPatch, onDuplicate, onDelete, onRippleDelete, onAlign, onTransitions, onClear }: { clips: Clip[]; readOnly: boolean; onPatch: (p: Partial<Clip>) => void; onDuplicate: () => void; onDelete: () => void; onRippleDelete: () => void; onAlign: (mode: "start" | "end" | "chain" | "distribute") => void; onTransitions: (type: string) => void; onClear: () => void }) {
+  const visual = clips.filter((c) => c.track !== "audio"), videos = clips.filter((c) => c.track === "video");
+  const [opacity, setOpacity] = useState(1), [volume, setVolume] = useState(1);
+  return <div className="inspector-body" data-testid="multi-inspector">
+    <div className="inspector-title"><div className="thumb-chip">{clips.length}</div><div><b>{clips.length} clips selected</b><span className="muted mono">Shift-click to add or remove</span></div></div>
+    <div className="action-row"><button className="secondary-btn" disabled={readOnly} onClick={onDuplicate} data-testid="multi-duplicate"><Copy size={15} />Duplicate</button><button className="secondary-btn danger" disabled={readOnly} onClick={onDelete} data-testid="multi-delete"><Trash2 size={15} />Delete</button><button className="secondary-btn" onClick={onClear}>Clear</button></div>
+    <Section title="Arrange">
+      <div className="chip-grid"><button className="chip" disabled={readOnly} onClick={() => onAlign("start")}>Align starts</button><button className="chip" disabled={readOnly} onClick={() => onAlign("end")}>Align ends</button><button className="chip" disabled={readOnly} onClick={() => onAlign("chain")} data-testid="multi-chain">Join end to end</button><button className="chip" disabled={readOnly} onClick={() => onAlign("distribute")}>Space evenly</button><button className="chip" disabled={readOnly} onClick={onRippleDelete}>Delete and close gaps</button></div></Section>
+    {videos.length > 1 && <Section title="Transitions"><div className="chip-grid">{TRANSITIONS.map((t) => <button key={t} className="chip" disabled={readOnly} onClick={() => onTransitions(t)} data-testid={`multi-transition-${t}`}>{t === "dissolve" ? "Dissolve between" : t === "wipe-left" ? "Wipe from left between" : "Wipe from right between"}</button>)}<button className="chip" disabled={readOnly} onClick={() => onTransitions("none")}>Remove</button></div></Section>}
+    {visual.length > 0 && <Section title="Look">
+      <div className="chip-grid" role="radiogroup" aria-label="Filter for all">{FILTERS.map((f) => <button key={f} className="chip" disabled={readOnly} onClick={() => onPatch({ filter: f })}>{f === "none" ? "No filter" : f}</button>)}</div>
+      <div className="slider-field"><span><em>Opacity</em><b className="mono">{Math.round(opacity * 100)}%</b></span><input type="range" min={0} max={1} step={0.05} value={opacity} disabled={readOnly} aria-label="Opacity for all" onChange={(e) => { setOpacity(Number(e.target.value)); onPatch({ opacity: Number(e.target.value) }); }} /></div>
+      <div className="toggle-row"><button className="chip" disabled={readOnly} onClick={() => onPatch({ fadeIn: 0.6, fadeOut: 0.6 })}>Fade both</button><button className="chip" disabled={readOnly} onClick={() => onPatch({ flipX: true })}>Mirror</button></div></Section>}
+    <Section title="Sound"><div className="slider-field"><span><em>Volume</em><b className="mono">{Math.round(volume * 100)}%</b></span><input type="range" min={0} max={2} step={0.05} value={volume} disabled={readOnly} aria-label="Volume for all" onChange={(e) => { setVolume(Number(e.target.value)); onPatch({ volume: Number(e.target.value) }); }} /></div>
+      <div className="toggle-row"><button className="chip" disabled={readOnly} onClick={() => onPatch({ muted: true })}>Mute all</button><button className="chip" disabled={readOnly} onClick={() => onPatch({ muted: false })}>Unmute all</button></div></Section>
   </div>;
 }

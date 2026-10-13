@@ -7,6 +7,7 @@ export type TrackName = "video" | "overlay" | "audio";
 export type ClipFilter = "none" | "mono" | "sepia" | "vivid" | "cool" | "warm" | "faded";
 
 export type Clip = {
+  transitionIn?: import("./transitions").Transition;
   id: string;
   assetId: string; // "" for pure text clips
   track: TrackName;
@@ -95,6 +96,7 @@ export function normalizeClip(raw: any): Clip {
     muted: !!raw.muted,
   };
   if (text) clip.text = text;
+  if(raw.transitionIn && ["dissolve","wipe-left","wipe-right"].includes(raw.transitionIn.type) && typeof raw.transitionIn.fromClipId === "string") clip.transitionIn = { fromClipId: raw.transitionIn.fromClipId.slice(0,64), type: raw.transitionIn.type, duration: round(num(raw.transitionIn.duration,.05,3,.6)) };
   const opt = (k: keyof Clip, v: unknown, lo: number, hi: number, def: number) => {
     if (v === undefined || v === null) return;
     const n = round(num(v, lo, hi, def));
