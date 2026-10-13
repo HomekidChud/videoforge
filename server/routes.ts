@@ -99,81 +99,222 @@ function parseTimeline(json: string): Timeline {
 // Render worker (ffmpeg)
 // ---------------------------------------------------------------
 
+function escText(t: string): string {
+  return t
+    .replace(/\\/g, "\\\\")
+    .replace(/:/g, "\\:")
+    .replace(/'/g, "\\'")
+    .replace(/%/g, "\\%")
+    .replace(/\n/g, "\\n");
+}
+
+/** Clip timeline duration accounting for playback speed. */
+function clipTimelineDur(c: Clip): number {
+  const speed = Math.max(0.1, Math.min(4, c.speed ?? 1));
+  const src = c.outPoint - c.inPoint;
+  return Math.max(0.1, src / speed);
+}
+
+/** Total timeline duration = max over clips of (start + duration). */
+function timelineTotal(clips: Clip[]): number {
+  let end = 0;
+  for (const c of clips) {
+    const isImage = c.track === "video" && c.duration !== undefined && c.duration > 0 && c.outPoint - c.inPoint <= 0.01;
+    const d = isImage ? c.duration! : clipTimelineDur(c);
+    end = Math.max(end, c.start + d);
+  }
+  return end;
+}
+
 function buildFilterGraph(project: Project, assets: Map<string, Asset>): { inputs: string[]; filters: string[]; maps: string[] } {
   const timeline = parseTimeline(project.timelineJson);
   const inputs: string[] = [];
   const filters: string[] = [];
   const maps: string[] = [];
-  let vin = 0, ain = 0; // running input index
-  let vConcat = "";
-  let aConcat = "";
   const outW = timeline.resolution?.width || 1280;
   const outH = timeline.resolution?.height || 720;
   const fps = timeline.fps || 30;
 
-  const videoClips = timeline.clips.filter((c) => c.track === "video");
-  const overlayClips = timeline.clips.filter((c) => c.text && c.text.trim());
+  const clips = timeline.clips.filter((c) => c.assetId && assets.has(c.assetId));
+  const total = Math.max(0.1, timelineTotal(clips));
+  const totalDur = (total + 0.5).toFixed(3);
 
-  videoClips.forEach((clip, i) => {
-    const asset = assets.get(clip.assetId);
-    if (!asset) return;
+  // ---- Video: start with a black canvas of the full duration, overlay every clip at its start
+  let bgAcc = "blackbg";
+  filters.push(`color=c=black:s=${outW}x${outH}:d=${totalDur}:r=${fps}[${bgAcc}];`);
+
+  // ---- Audio: silent base of the full duration
+  let aBase = "abase0";
+  filters.push(`anullsrc=r=44100:cl=stereo:d=${totalDur}[${aBase}];`);
+  let aMixCount = 0;
+
+  const inIdxByClip: number[] = [];
+
+  clips.forEach((clip, i) => {
+    const asset = assets.get(clip.assetId)!;
+    const isImage = asset.kind === "image";
+    const speed = Math.max(0.1, Math.min(4, clip.speed ?? 1));
+    const vDur = isImage ? Math.max(0.2, clip.duration ?? 5) : clipTimelineDur(clip);
+
     inputs.push("-i", path.join(MEDIA_DIR, asset.id));
-    const dur = Math.max(0.1, clip.outPoint - clip.inPoint);
-    const vIdx = vin;
-    filters.push(
-      `[${vIdx}:v]` +
-      `trim=start=${clip.inPoint}:end=${clip.outPoint},setpts=PTS-STARTPTS,` +
-      `scale=${outW}:${outH}:force_original_aspect_ratio=decrease,pad=${outW}:${outH}:(ow-iw)/2:(oh-ih)/2,` +
-      `fps=${fps},format=yuv420p[v${i}];`
-    );
-    vConcat += `[v${i}]`;
-    // audio from the same input — only when the source has audio
-    if (asset.hasAudio) {
-      const aIdx = vin;
+    const inIdx = inputs.length / 2 - 1;
+    inIdxByClip.push(inIdx);
+
+    // ============ VIDEO CHAIN ============
+    if (clip.track !== "audio") {
+      let v = `[${inIdx}:v]`;
+
+      // image: loop to duration. video: nothing yet (trim comes after speed).
+      if (isImage) {
+        filters.push(`${v}loop=loop=-1:size=1:start=0,setpts=PTS-STARTPTS,fps=${fps},trim=duration=${vDur.toFixed(3)},setpts=PTS-STARTPTS[vi${i}a];`);
+        v = `[vi${i}a]`;
+      }
+
+      // crop (fractions)
+      const cT = Math.min(0.45, Math.max(0, clip.cropTop ?? 0));
+      const cB = Math.min(0.45, Math.max(0, clip.cropBottom ?? 0));
+      const cL = Math.min(0.45, Math.max(0, clip.cropLeft ?? 0));
+      const cR = Math.min(0.45, Math.max(0, clip.cropRight ?? 0));
+      if (cT + cB > 0 || cL + cR > 0) {
+        filters.push(`${v}crop=iw*${(1 - cL - cR).toFixed(4)}:ih*${(1 - cT - cB).toFixed(4)}:iw*${cL.toFixed(4)}:ih*${cT.toFixed(4)}[vc${i}];`);
+        v = `[vc${i}]`;
+      }
+
+      // colour adjustments
+      const b = clip.brightness ?? 1;
+      const ct = clip.contrast ?? 1;
+      const sa = clip.saturation ?? 1;
+      const hu = clip.hue ?? 0;
+      if (b !== 1 || ct !== 1 || sa !== 1 || hu !== 0) {
+        const parts: string[] = [];
+        if (b !== 1) parts.push(`eq=brightness=${(b - 1).toFixed(3)}:contrast=${ct.toFixed(3)}:saturation=${sa.toFixed(3)}`);
+        if (hu !== 0) parts.push(`hue=h=${(hu * Math.PI / 180).toFixed(4)}`);
+        if (parts.length > 0) {
+          filters.push(`${v}${parts.join(",")}[vf${i}];`);
+          v = `[vf${i}]`;
+        }
+      }
+
+      // blur
+      const bl = clip.blur ?? 0;
+      if (bl > 0) {
+        filters.push(`${v}boxblur=luma_radius=${Math.max(1, Math.round(bl * 8))}:luma_power=1:chroma_radius=${Math.max(1, Math.round(bl * 8))}:chroma_power=1[vb${i}];`);
+        v = `[vb${i}]`;
+      }
+
+      // scale (zoom)
+      const sc = Math.max(0.05, Math.min(4, clip.scale ?? 1));
+      if (sc !== 1) {
+        filters.push(`${v}scale=iw*${sc.toFixed(4)}:ih*${sc.toFixed(4)}[vs${i}];`);
+        v = `[vs${i}]`;
+      }
+
+      // rotate + flips
+      const rot = clip.rotate ?? 0;
+      if (clip.flipH) {
+        filters.push(`${v}hflip[vfh${i}];`);
+        v = `[vfh${i}]`;
+      }
+      if (clip.flipV) {
+        filters.push(`${v}vflip[vfv${i}];`);
+        v = `[vfv${i}]`;
+      }
+      if (Math.abs(rot) > 0.5) {
+        const rad = (rot * Math.PI / 180).toFixed(4);
+        // rotate around center, keep same dimensions
+        filters.push(`${v}rotate=${rad}*PI/180:fillcolor=black@0:ow=iw:oh=ih[vr${i}];`);
+        v = `[vr${i}]`;
+      }
+
+      // trim + speed for video
+      if (!isImage) {
+        filters.push(`${v}trim=start=${clip.inPoint.toFixed(3)}:end=${clip.outPoint.toFixed(3)},setpts=PTS-STARTPTS[vi${i}b];`);
+        v = `[vi${i}b]`;
+        if (speed !== 1) {
+          filters.push(`${v}setpts=PTS/${speed.toFixed(4)}[vsp${i}];`);
+          v = `[vsp${i}]`;
+        }
+      }
+
+      // fits into canvas
+      filters.push(`${v}scale=${outW}:${outH}:force_original_aspect_ratio=decrease,pad=${outW}:${outH}:(ow-iw)/2:(oh-ih)/2:color=black,format=yuv420p,setsar=1[vcf${i}];`);
+      v = `[vcf${i}]`;
+
+      // video fades (relative to clip's own local time — we shift the clip by start via overlay timing, so fade is on the clip's trimmed output)
+      const fi = Math.max(0, Math.min(vDur / 2, clip.fadeIn ?? 0));
+      const fo = Math.max(0, Math.min(vDur / 2, clip.fadeOut ?? 0));
+      if (fi > 0) {
+        filters.push(`${v}fade=t=in:st=0:d=${fi.toFixed(2)}[vfi${i}];`);
+        v = `[vfi${i}]`;
+      }
+      if (fo > 0) {
+        filters.push(`${v}fade=t=out:st=${Math.max(0, vDur - fo).toFixed(2)}:d=${fo.toFixed(2)}[vfo${i}];`);
+        v = `[vfo${i}]`;
+      }
+
+      // overlay onto background at clip.start
+      const newBg = `bg${i}`;
+      filters.push(`[${bgAcc}]${v}overlay=0:0:enable='between(t,${clip.start.toFixed(3)},${(clip.start + vDur).toFixed(3)})'[${newBg}];`);
+      bgAcc = newBg;
+
+      // text overlay for this clip
+      if (clip.text && clip.text.trim()) {
+        const e = escText(clip.text.trim());
+        const newT = `bgt${i}`;
+        filters.push(
+          `[${bgAcc}]drawtext=text='${e}':fontcolor=white:fontsize=${Math.round(outH / 18)}:x=(w-text_w)/2:y=h*0.78:` +
+          `box=1:boxcolor=black@0.5:boxborderw=${Math.round(outH / 60)}:enable='between(t,${clip.start.toFixed(3)},${(clip.start + vDur).toFixed(3)})'[${newT}];`
+        );
+        bgAcc = newT;
+      }
+    }
+
+    // ============ AUDIO CHAIN ============
+    if (asset.hasAudio || asset.kind === "audio") {
       const vol = clip.muted ? 0 : Math.min(1, Math.max(0, clip.volume ?? 1));
-      filters.push(
-        `[${aIdx}:a]atrim=start=${clip.inPoint}:end=${clip.outPoint},asetpts=PTS-STARTPTS,` +
-        `volume=${vol}[a${i}];`
-      );
-      aConcat += `[a${i}]`;
+      let a = `[${inIdx}:a]`;
+
+      // trim
+      if (!isImage) {
+        filters.push(`${a}atrim=start=${clip.inPoint.toFixed(3)}:end=${clip.outPoint.toFixed(3)},asetpts=PTS-STARTPTS[atr${i}];`);
+        a = `[atr${i}]`;
+        // speed
+        if (speed !== 1) {
+          const at = Math.min(2, Math.max(0.5, 1 / speed));
+          filters.push(`${a}atempo=${at.toFixed(4)}[asp${i}];`);
+          a = `[asp${i}]`;
+        }
+      }
+
+      // audio fades
+      const afi = Math.max(0, Math.min(vDur / 2, clip.audioFadeIn ?? 0));
+      const afo = Math.max(0, Math.min(vDur / 2, clip.audioFadeOut ?? 0));
+      if (afi > 0) {
+        filters.push(`${a}afade=t=in:st=0:d=${afi.toFixed(2)}[afi${i}];`);
+        a = `[afi${i}]`;
+      }
+      if (afo > 0) {
+        filters.push(`${a}afade=t=out:st=${Math.max(0, vDur - afo).toFixed(2)}:d=${afo.toFixed(2)}[afo${i}];`);
+        a = `[afo${i}]`;
+      }
+
+      // volume
+      if (vol !== 1) {
+        filters.push(`${a}volume=${vol.toFixed(3)}[avl${i}];`);
+        a = `[avl${i}]`;
+      }
+
+      // delay to clip.start then mix onto base
+      filters.push(`${a}adelay=${Math.round(clip.start * 1000)}|${Math.round(clip.start * 1000)}[adl${i}];`);
+      a = `[adl${i}]`;
+      const newBase = `amix${aMixCount}`;
+      filters.push(`[${aBase}]${a}amix=inputs=2:duration=first:dropout_transition=0,apad=whole_dur=${totalDur}[${newBase}];`);
+      aBase = newBase;
+      aMixCount++;
     }
-    vin++;
   });
 
-  if (videoClips.length > 1) {
-    filters.push(`${vConcat}concat=n=${videoClips.length}:v=1:a=0[vout_raw];`);
-  } else if (videoClips.length === 1) {
-    filters.push(`[v0]null[vout_raw];`);
-  }
-
-  // overlay text clips: drawtext burned onto [vout_raw] segments
-  let overlayChain = "";
-  overlayClips.forEach((clip, i) => {
-    if (!clip.text) return;
-    const esc = clip.text.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\\'").replace(/%/g, "\\%");
-    overlayChain +=
-      `drawtext=text='${esc}':fontcolor=white:fontsize=${Math.round(outH / 18)}:x=(w-text_w)/2:y=h*0.78:` +
-      `box=1:boxcolor=black@0.5:boxborderw=${Math.round(outH / 60)}:enable='between(t,${clip.start},${clip.outPoint})',`;
-  });
-
-  if (overlayChain) {
-    // strip trailing comma from the last filter in the chain
-    filters.push(`[vout_raw]${overlayChain.replace(/,$/, "")}[vout];`);
-  } else {
-    filters.push(`[vout_raw]null[vout];`);
-  }
-
-  const hasAudio = videoClips.some((c) => assets.get(c.assetId)?.hasAudio);
-  if (hasAudio) {
-    if (videoClips.length > 1) {
-      filters.push(`${aConcat}concat=n=${videoClips.length}:v=0:a=1[aout];`);
-    } else {
-      filters.push(`[a0]anull[aout];`);
-    }
-    maps.push("-map", "[vout]", "-map", "[aout]");
-  } else {
-    maps.push("-map", "[vout]", "-an");
-  }
+  maps.push("-map", `[${bgAcc}]`, "-map", `[${aBase}]`);
   return { inputs, filters, maps };
 }
 
@@ -495,6 +636,8 @@ export async function registerRoutes(
           const inPoint = Math.max(0, c.inPoint ?? 0);
           const outPoint = Math.min(asset.duration || inPoint + 10, c.outPoint ?? (inPoint + 5));
           const start = c.start ?? 0;
+          const num = (v: unknown, lo: number, hi: number, dflt?: number) =>
+            typeof v === "number" && isFinite(v) ? Math.min(hi, Math.max(lo, v)) : dflt;
           const clip: Clip = {
             id: c.id || uid(),
             assetId: c.assetId,
@@ -502,9 +645,29 @@ export async function registerRoutes(
             start,
             inPoint,
             outPoint,
-            volume: c.volume ?? 1,
+            volume: num(c.volume, 0, 1, 1) ?? 1,
             muted: c.muted ?? false,
             text: c.text,
+            duration: num(c.duration, 0.1, 3600),
+            speed: num(c.speed, 0.1, 4),
+            brightness: num(c.brightness, 0, 2),
+            contrast: num(c.contrast, 0, 2),
+            saturation: num(c.saturation, 0, 2),
+            hue: num(c.hue, -180, 180),
+            blur: num(c.blur, 0, 10),
+            opacity: num(c.opacity, 0, 1),
+            scale: num(c.scale, 0.05, 4),
+            rotate: num(c.rotate, -180, 180),
+            flipH: typeof c.flipH === "boolean" ? c.flipH : undefined,
+            flipV: typeof c.flipV === "boolean" ? c.flipV : undefined,
+            cropTop: num(c.cropTop, 0, 0.45),
+            cropBottom: num(c.cropBottom, 0, 0.45),
+            cropLeft: num(c.cropLeft, 0, 0.45),
+            cropRight: num(c.cropRight, 0, 0.45),
+            fadeIn: num(c.fadeIn, 0, 60),
+            fadeOut: num(c.fadeOut, 0, 60),
+            audioFadeIn: num(c.audioFadeIn, 0, 60),
+            audioFadeOut: num(c.audioFadeOut, 0, 60),
           };
           clips.push(clip);
           break;
@@ -522,6 +685,43 @@ export async function registerRoutes(
           if (!c) throw new Error(`clip ${clipId} not found`);
           if (typeof inPoint === "number") c.inPoint = Math.max(0, inPoint);
           if (typeof outPoint === "number") c.outPoint = Math.max(c.inPoint + 0.1, outPoint);
+          break;
+        }
+        case "update_clip": {
+          // generic clip property patch (speed, filters, transform, fades, text)
+          const { clipId, patch } = args || {};
+          const c = clips.find((x) => x.id === clipId);
+          if (!c) throw new Error(`clip ${clipId} not found`);
+          const p = patch || {};
+          const num = (v: unknown, lo: number, hi: number) =>
+            typeof v === "number" && isFinite(v) ? Math.min(hi, Math.max(lo, v)) : undefined;
+          const setNum = (k: keyof Clip, v: number | undefined, lo: number, hi: number) => {
+            const n = num(v, lo, hi); if (n !== undefined) (c as any)[k] = n;
+          };
+          setNum("volume", p.volume, 0, 1);
+          setNum("duration", p.duration, 0.1, 3600);
+          setNum("speed", p.speed, 0.1, 4);
+          setNum("brightness", p.brightness, 0, 2);
+          setNum("contrast", p.contrast, 0, 2);
+          setNum("saturation", p.saturation, 0, 2);
+          setNum("hue", p.hue, -180, 180);
+          setNum("blur", p.blur, 0, 10);
+          setNum("opacity", p.opacity, 0, 1);
+          setNum("scale", p.scale, 0.05, 4);
+          setNum("rotate", p.rotate, -180, 180);
+          setNum("cropTop", p.cropTop, 0, 0.45);
+          setNum("cropBottom", p.cropBottom, 0, 0.45);
+          setNum("cropLeft", p.cropLeft, 0, 0.45);
+          setNum("cropRight", p.cropRight, 0, 0.45);
+          setNum("fadeIn", p.fadeIn, 0, 60);
+          setNum("fadeOut", p.fadeOut, 0, 60);
+          setNum("audioFadeIn", p.audioFadeIn, 0, 60);
+          setNum("audioFadeOut", p.audioFadeOut, 0, 60);
+          if (typeof p.muted === "boolean") c.muted = p.muted;
+          if (typeof p.flipH === "boolean") c.flipH = p.flipH;
+          if (typeof p.flipV === "boolean") c.flipV = p.flipV;
+          if (typeof p.text === "string") c.text = p.text.trim() ? p.text : undefined;
+          if (typeof p.start === "number") c.start = Math.max(0, p.start);
           break;
         }
         case "move_clip": {
@@ -545,6 +745,26 @@ export async function registerRoutes(
           if (!c) throw new Error(`clip ${clipId} not found`);
           if (typeof text !== "string" || !text.trim()) throw new Error("text required");
           c.text = text;
+          break;
+        }
+        case "split_clip": {
+          const { clipId, at } = args || {};
+          const c = clips.find((x) => x.id === clipId);
+          if (!c) throw new Error(`clip ${clipId} not found`);
+          if (typeof at !== "number") throw new Error("at (seconds, source-relative) required");
+          const srcAt = c.inPoint + at;
+          if (at <= 0.05 || srcAt >= c.outPoint - 0.05) throw new Error("split point must be inside the clip");
+          const second: Clip = { ...c, id: uid(), start: c.start + at, inPoint: srcAt };
+          c.outPoint = srcAt;
+          clips.push(second);
+          break;
+        }
+        case "duplicate_clip": {
+          const { clipId } = args || {};
+          const c = clips.find((x) => x.id === clipId);
+          if (!c) throw new Error(`clip ${clipId} not found`);
+          const copy: Clip = { ...c, id: uid(), start: c.start + (c.outPoint - c.inPoint) };
+          clips.push(copy);
           break;
         }
         case "reorder": {

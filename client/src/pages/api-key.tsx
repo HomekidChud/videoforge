@@ -51,9 +51,9 @@ export default function ApiKeyPage() {
       <div className="w-full max-w-sm">
         <h1 className="text-lg font-bold mb-1">VideoForge</h1>
         <p className="text-xs text-zinc-400 mb-6">
-          Paste your API key to sign in. Keys are scoped (read / write / admin) —
-          see <a className="text-blue-400 underline" href="#/api-docs">API docs</a> for how to
-          create one.
+          Paste your API key to sign in. Keys have fine-grained permissions —
+          see <a className="text-blue-400 underline" href="#/api-docs">API docs</a> or the{" "}
+          <a className="text-blue-400 underline" href="#/dashboard">dashboard</a> to manage them.
         </p>
 
         <form onSubmit={submit} className="space-y-3">
