@@ -252,6 +252,7 @@ function enforcePolicy(key: ApiKey, req: Request, res: Response): boolean {
     // Block injecting another project's asset via project JSON or agent ops.
     const refs = req.body?.timeline?.clips?.map((c: any) => c.assetId).filter(Boolean) || [];
     if (req.body?.args?.assetId) refs.push(req.body.args.assetId);
+    if (Array.isArray(req.body?.ops)) req.body.ops.forEach((o: any) => { if (o?.args?.assetId) refs.push(o.args.assetId); });
     if (refs.some((id: string) => !assetAllowed(key, id))) return deny("Timeline contains media outside this API key's restrictions.");
   }
   if (p.requestsPerMinute) {

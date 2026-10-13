@@ -9,7 +9,10 @@ import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import Busboy from "busboy";
 import type { Asset } from "@shared/schema";
-import { normalizeClip, normalizeTimeline, clipDuration, type Clip, type Timeline } from "@shared/timeline";
+import { normalizeTimeline, clipEnd, timelineDuration, type Timeline } from "@shared/timeline";
+import { applyTimelineOp } from "@shared/editing";
+import { animatedValues } from "@shared/animation";
+import { capabilities } from "@shared/capabilities";
 import { buildRenderPlan, runFfmpeg } from "./render";
 import { requireScope, requireMediaAccess, projectAllowed, assetAllowed } from "./auth";
 
@@ -405,139 +408,54 @@ export async function registerRoutes(
   });
 
   // ---------- timeline edit (agents) ----------
-  // atomic ops that operate on a project's timeline in one call
+  // Atomic ops: send one { op, args } or { ops: [...] } to apply a batch all-or-nothing.
   app.post("/api/projects/:id/timeline/ops", requireScope("write"), (req, res) => {
-    const p = storage.getProject(String(req.params.id));
+    const id = String(req.params.id);
+    const p = storage.getProject(id);
     if (!p) return res.status(404).json({ message: "project not found" });
-    const timeline = parseTimeline(p.timelineJson);
-    const { op, args } = req.body || {};
-    if (!op) return res.status(400).json({ message: "op required" });
-    try {
-      const clips = timeline.clips;
-      const find = (id: unknown) => {
-        const c = clips.find((x) => x.id === id);
-        if (!c) throw new Error(`clip ${id} not found`);
-        return c;
-      };
-      switch (op) {
-        case "add_clip": {
-          const c = (args || {}) as Partial<Clip>;
-          const asset = c.assetId ? storage.getAsset(c.assetId) : undefined;
-          if (c.assetId && !asset) throw new Error(`asset ${c.assetId} not found`);
-          if (!c.assetId && !c.text) throw new Error("assetId or text required");
-          const inPoint = Math.max(0, c.inPoint ?? 0);
-          const maxOut = asset && asset.kind !== "image" && asset.duration ? asset.duration : Infinity;
-          const outPoint = Math.min(maxOut, c.outPoint ?? inPoint + (asset?.kind === "video" || asset?.kind === "audio" ? Math.min(asset.duration || 5, 5) : 5));
-          const track = (c.track as any) || (asset?.kind === "audio" ? "audio" : c.assetId ? "video" : "overlay");
-          clips.push(normalizeClip({ ...c, id: c.id || uid(), track, start: c.start ?? 0, inPoint, outPoint }));
-          break;
-        }
-        case "add_text_clip": {
-          const { text, start, duration, ...style } = args || {};
-          if (typeof text !== "string" || !text.trim()) throw new Error("text required");
-          clips.push(normalizeClip({ ...style, id: uid(), assetId: "", track: "overlay", text, start: start ?? 0, inPoint: 0, outPoint: duration ?? 3 }));
-          break;
-        }
-        case "remove_clip": {
-          const i = clips.findIndex((c) => c.id === args?.clipId);
-          if (i < 0) throw new Error(`clip ${args?.clipId} not found`);
-          clips.splice(i, 1);
-          break;
-        }
-        case "trim_clip": {
-          const { clipId, inPoint, outPoint } = args || {};
-          const c = find(clipId);
-          if (typeof inPoint === "number") c.inPoint = Math.max(0, inPoint);
-          if (typeof outPoint === "number") c.outPoint = Math.max(c.inPoint + 0.1, outPoint);
-          break;
-        }
-        case "move_clip": {
-          const { clipId, start, track } = args || {};
-          const c = find(clipId);
-          if (typeof start === "number") c.start = Math.max(0, start);
-          if (["video", "overlay", "audio"].includes(track)) c.track = track;
-          break;
-        }
-        case "set_audio": {
-          const { clipId, volume, muted } = args || {};
-          const c = find(clipId);
-          if (typeof volume === "number") c.volume = Math.min(1, Math.max(0, volume));
-          if (typeof muted === "boolean") c.muted = muted;
-          break;
-        }
-        case "add_text": {
-          const { clipId, text } = args || {};
-          const c = find(clipId);
-          if (typeof text !== "string" || !text.trim()) throw new Error("text required");
-          c.text = text;
-          break;
-        }
-        case "update_clip": {
-          const { clipId, ...patch } = args || {};
-          const c = find(clipId);
-          const { id: _id, assetId: _asset, ...safe } = patch;
-          // normalizeClip drops fields equal to their defaults, so replacing the
-          // object (rather than merging) lets a patch reset a value to default.
-          clips[clips.indexOf(c)] = normalizeClip({ ...c, ...safe, id: c.id, assetId: c.assetId });
-          break;
-        }
-        case "split_clip": {
-          const { clipId, at } = args || {};
-          const c = find(clipId);
-          if (typeof at !== "number") throw new Error("at (timeline seconds) required");
-          const dur = clipDuration(c);
-          const rel = at - c.start;
-          if (rel < 0.1 || rel > dur - 0.1) throw new Error("split point must be inside the clip (at least 0.1s from either edge)");
-          const speed = c.speed ?? 1;
-          const srcSplit = c.assetId ? c.inPoint + rel * speed : c.inPoint + rel;
-          const right: Clip = { ...c, id: uid(), start: at, inPoint: srcSplit };
-          delete right.fadeIn;
-          delete c.fadeOut;
-          c.outPoint = srcSplit;
-          clips.push(right);
-          break;
-        }
-        case "set_project": {
-          const { fps, resolution } = args || {};
-          if (fps) timeline.fps = fps;
-          if (resolution) timeline.resolution = resolution;
-          break;
-        }
-        case "reorder": {
-          const { order } = args || {};
-          if (!Array.isArray(order)) throw new Error("order (array of clip ids) required");
-          const byId = new Map(clips.map((c) => [c.id, c]));
-          const next = order.map((id: string) => byId.get(id)).filter(Boolean) as Clip[];
-          if (next.length !== clips.length) throw new Error("order must contain every clip id");
-          let t = 0;
-          for (const c of next.filter((c) => c.track === "video")) {
-            c.start = t;
-            t += clipDuration(c);
-          }
-          timeline.clips = next;
-          break;
-        }
-        default:
-          return res.status(400).json({ message: `unknown op: ${op}` });
+    const list = Array.isArray(req.body?.ops) ? req.body.ops : req.body?.op ? [{ op: req.body.op, args: req.body.args }] : [];
+    if (!list.length) return res.status(400).json({ message: "op or ops required" });
+    if (list.length > 100) return res.status(400).json({ message: "at most 100 ops per request" });
+    let timeline = parseTimeline(p.timelineJson);
+    for (let i = 0; i < list.length; i++) {
+      try {
+        timeline = applyTimelineOp(timeline, list[i], (assetId) => storage.getAsset(assetId));
+      } catch (e: any) {
+        return res.status(422).json({ message: `${list.length > 1 ? `op ${i + 1} (${list[i]?.op}): ` : ""}${e.message || "op failed"}`, failedIndex: i });
       }
-      const normalized = normalizeTimeline(timeline);
-      timeline.clips = normalized.clips; timeline.fps = normalized.fps; timeline.resolution = normalized.resolution;
-      const updated = storage.updateProject(String(req.params.id), {
-        timelineJson: JSON.stringify(timeline),
-        updatedAt: now(),
-      });
-      res.json({
-        id: updated!.id,
-        name: updated!.name,
-        visibility: updated!.visibility,
-        timeline,
-        createdAt: updated!.createdAt,
-        updatedAt: updated!.updatedAt,
-      });
-    } catch (e: any) {
-      res.status(422).json({ message: e.message || "op failed" });
     }
+    const updated = storage.updateProject(id, { timelineJson: JSON.stringify(timeline), updatedAt: now() })!;
+    res.json({ id: updated.id, name: updated.name, visibility: updated.visibility, timeline, applied: list.length, createdAt: updated.createdAt, updatedAt: updated.updatedAt });
   });
+
+  // Evaluate every animated value at a time, so an agent can verify keyframes without rendering.
+  app.get("/api/projects/:id/state", requireScope("read"), (req, res) => {
+    const p = storage.getProject(String(req.params.id));
+    if (!p || !projectAllowed((req as any).apiKey, p.id)) return res.status(404).json({ message: "project not found" });
+    const timeline = parseTimeline(p.timelineJson), t = Math.max(0, Number(req.query.t ?? 0) || 0);
+    res.json({ time: t, duration: timelineDuration(timeline), clips: timeline.clips.filter((c) => t >= c.start && t < clipEnd(c)).map((c) => ({ id: c.id, track: c.track, local: Math.round((t - c.start) * 1000) / 1000, values: animatedValues(c, t) })) });
+  });
+
+  // Render one finished frame as PNG: the fastest visual feedback loop for an agent.
+  app.get("/api/projects/:id/frame", requireScope("read"), async (req, res) => {
+    const p = storage.getProject(String(req.params.id));
+    if (!p || !projectAllowed((req as any).apiKey, p.id)) return res.status(404).json({ message: "project not found" });
+    const out = path.join(TMP_DIR, `frame_${uid()}.png`); let temp: string[] = [];
+    try {
+      const timeline = parseTimeline(p.timelineJson), at = Math.min(Math.max(0, Number(req.query.t ?? 0) || 0), Math.max(0, timelineDuration(timeline) - 0.04));
+      const width = Math.min(1920, Math.max(160, Math.round(Number(req.query.width ?? 960) || 960)));
+      const assets = new Map(storage.listAssets().map((a) => [a.id, a]));
+      const plan = buildRenderPlan(timeline, assets, MEDIA_DIR, TMP_DIR, `frame${uid()}`, out, { frameAt: at, width });
+      temp = plan.tempFiles;
+      const { code, stderrTail } = await runFfmpeg(plan.args, 1, () => {});
+      if (code !== 0 || !fs.existsSync(out)) return res.status(422).json({ message: `frame render failed: ${stderrTail.split("\n").filter(Boolean).slice(-2).join(" ").slice(0, 300)}` });
+      res.setHeader("Content-Type", "image/png"); res.setHeader("Cache-Control", "no-store");
+      fs.createReadStream(out).on("close", () => fs.promises.unlink(out).catch(() => {})).pipe(res);
+    } catch (e: any) { res.status(422).json({ message: e.message || "frame render failed" }); }
+    finally { temp.forEach((f) => fs.promises.unlink(f).catch(() => {})); }
+  });
+
+  app.get("/api/capabilities", requireScope("read"), (_req, res) => res.json(capabilities()));
 
   // ---------- render ----------
   app.post("/api/renders", requireScope("write"), (req, res) => {

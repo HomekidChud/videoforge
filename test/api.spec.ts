@@ -420,6 +420,49 @@ async function main() {
     assert(ej.body.status === "error" && /empty/i.test(ej.body.error), "empty timeline gives a clear render error");
   }
 
+  // --- 18. Keyframes, easing, batch ops, state, frame preview, capabilities
+  console.log("18) Keyframes and agent tooling");
+  {
+    const caps = await jsonFetch("/api/capabilities", { headers: AUTH_ADMIN });
+    assert(caps.status === 200 && caps.body.animatableProperties.rotation && caps.body.ops.upsert_keyframe, "capabilities describe animatable properties and ops");
+    const proj = await jsonFetch("/api/projects", { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ name: "anim", timeline: { resolution: { width: 640, height: 360 }, clips: [] } }) });
+    const pid = proj.body.id, ops = `/api/projects/${pid}/timeline/ops`;
+    const batch = await jsonFetch(ops, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ ops: [
+      { op: "add_clip", args: { id: "a1", assetId, track: "video", start: 0, inPoint: 0, outPoint: 4 } },
+      { op: "add_text_clip", args: { text: "100% ready", start: 0, duration: 4, textSize: 8 } },
+      { op: "set_keyframes", args: { clipId: "a1", property: "scale", keyframes: [{ time: 0, value: 1, easing: "ease-in-out" }, { time: 4, value: 1.4 }] } },
+      { op: "upsert_keyframe", args: { clipId: "a1", property: "opacity", time: 0, value: 0, easing: [0.2, 0, 0.1, 1.4] } },
+      { op: "upsert_keyframe", args: { clipId: "a1", property: "opacity", time: 1, value: 1 } },
+    ] }) });
+    assert(batch.status === 200 && batch.body.applied === 5, `batch applied atomically, got ${batch.status} ${batch.body.message || ""}`);
+    const a1 = batch.body.timeline.clips.find((c: any) => c.id === "a1");
+    assert(a1.keyframes.scale.length === 2 && a1.keyframes.opacity[0].easing.length === 4, "keyframes and custom bezier persist");
+    const failed = await jsonFetch(ops, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ ops: [{ op: "move_clip", args: { clipId: "a1", start: 9 } }, { op: "set_keyframes", args: { clipId: "a1", property: "volume", keyframes: [{ time: 99, value: 1 }] } }] }) });
+    assert(failed.status === 422 && failed.body.failedIndex === 1, "failing batch reports index");
+    assert((await jsonFetch(`/api/projects/${pid}`, { headers: AUTH_ADMIN })).body.timeline.clips.find((c: any) => c.id === "a1").start === 0, "failed batch is rolled back");
+    assert((await jsonFetch(ops, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ op: "set_keyframes", args: { clipId: "a1", property: "bogus", keyframes: [] } }) })).status === 422, "unknown property rejected");
+    const mid = await jsonFetch(`/api/projects/${pid}/state?t=2`, { headers: AUTH_ADMIN });
+    const v = mid.body.clips.find((c: any) => c.id === "a1").values;
+    assert(Math.abs(v.scale - 1.2) < 0.02 && v.opacity === 1, `state evaluates ease-in-out midpoint, got ${v.scale}`);
+    const early = (await jsonFetch(`/api/projects/${pid}/state?t=0.5`, { headers: AUTH_ADMIN })).body.clips.find((c: any) => c.id === "a1").values.opacity;
+    assert(early > 0 && early <= 1.5, `bezier overshoot can be sampled, got ${early}`);
+    const split = await jsonFetch(ops, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ op: "split_clip", args: { clipId: "a1", at: 2 } }) });
+    const right = split.body.timeline.clips.find((c: any) => c.id !== "a1" && c.track === "video");
+    assert(right.keyframes.scale[0].time === 0 && Math.abs(right.keyframes.scale[0].value - 1.2) < 0.03, "split keeps animation continuous");
+    const motion = await jsonFetch(ops, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ op: "apply_motion", args: { clipId: "a1", preset: "pop" } }) });
+    assert(motion.status === 200 && motion.body.timeline.clips.find((c: any) => c.id === "a1").keyframes.scale.length >= 2, "motion preset writes keyframes");
+    const frame = await fetch(`${H}/api/projects/${pid}/frame?t=1&width=320`, { headers: AUTH_ADMIN });
+    const bytes = Buffer.from(await frame.arrayBuffer());
+    assert(frame.status === 200 && bytes.subarray(1, 4).toString() === "PNG", "frame endpoint returns a PNG");
+    const render = await jsonFetch("/api/renders", { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ projectId: pid }) });
+    let status = "queued", err = "";
+    for (const end = Date.now() + 90000; Date.now() < end && !["done", "error"].includes(status);) {
+      await new Promise((r) => setTimeout(r, 700));
+      const j = await jsonFetch(`/api/renders/${render.body.jobId}`, { headers: AUTH_ADMIN }); status = j.body.status; err = j.body.error || "";
+    }
+    assert(status === "done", `animated render finished: ${status} ${err}`);
+  }
+
   console.log(`\n${passed} passed, ${failed} failed`);
   killServer();
   if (failed > 0) process.exit(1);

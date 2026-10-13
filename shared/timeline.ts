@@ -1,3 +1,4 @@
+import { normalizeKeyframes, type Keyframes } from "./animation";
 // Timeline model shared by the editor, the HTTP API and the FFmpeg renderer.
 // Everything coming from a client is passed through normalizeTimeline() so the
 // renderer only ever sees bounded, well-typed values.
@@ -28,6 +29,13 @@ export type Clip = {
   scale?: number; // 0.1..1 of frame width (overlay track)
   textSize?: number; // % of frame height, 2..20
   textColor?: string; // #rrggbb
+  keyframes?: Keyframes;
+  rotation?: number;
+  fit?: "contain" | "cover";
+  flipX?: boolean;
+  flipY?: boolean;
+  blur?: number; // 0..20 pixels
+  label?: string;
   textBg?: boolean; // translucent box behind text
 };
 
@@ -36,6 +44,9 @@ export type Timeline = {
   fps: number;
   resolution: { width: number; height: number };
   clips: Clip[];
+  background?: string;
+  markers?: { id: string; time: number; label: string; color?: string }[];
+  tracks?: Partial<Record<TrackName, { muted?: boolean; hidden?: boolean; locked?: boolean }>>;
 };
 
 export const TRACKS: TrackName[] = ["overlay", "video", "audio"];
@@ -98,7 +109,15 @@ export function normalizeClip(raw: any): Clip {
   opt("opacity", raw.opacity, 0, 1, 1);
   opt("x", raw.x, 0, 1, 0.5);
   opt("y", raw.y, 0, 1, track === "overlay" && !assetId ? 0.82 : 0.5);
-  opt("scale", raw.scale, 0.1, 1, track === "overlay" ? 0.35 : 1);
+  opt("scale", raw.scale, 0.1, 2, assetId && track === "overlay" ? 0.35 : 1);
+  opt("rotation", raw.rotation, -360, 360, 0);
+  opt("blur", raw.blur, 0, 20, 0);
+  if(raw.fit === "cover") clip.fit = "cover";
+  if(raw.flipX) clip.flipX = true;
+  if(raw.flipY) clip.flipY = true;
+  if(typeof raw.label === "string" && raw.label.trim()) clip.label = raw.label.slice(0,120);
+  const keyframes = normalizeKeyframes(raw.keyframes, clipDuration(clip));
+  if(Object.keys(keyframes).length) clip.keyframes = keyframes;
   opt("textSize", raw.textSize, 2, 20, 6);
   if (FILTERS.includes(raw.filter) && raw.filter !== "none") clip.filter = raw.filter;
   if (typeof raw.textColor === "string" && /^#[0-9a-fA-F]{6}$/.test(raw.textColor) && raw.textColor.toLowerCase() !== "#ffffff") clip.textColor = raw.textColor.toLowerCase();
@@ -118,7 +137,10 @@ export function normalizeTimeline(raw: any): Timeline {
   });
   const w = Math.round(num(raw.resolution?.width, 160, 3840, 1280) / 2) * 2;
   const h = Math.round(num(raw.resolution?.height, 160, 3840, 720) / 2) * 2;
-  return { version: 2, fps: Math.round(num(raw.fps, 1, 60, 30)), resolution: { width: w, height: h }, clips };
+  const tracks: Timeline["tracks"] = {};
+  for(const name of TRACKS) { const t = raw.tracks?.[name]; if(t) tracks[name] = { muted: !!t.muted, hidden: !!t.hidden, locked: !!t.locked }; }
+  const markers = (Array.isArray(raw.markers) ? raw.markers : []).slice(0,100).map((m:any,i:number)=>({ id: typeof m.id === "string" ? m.id.slice(0,64) : `marker${i}`, time: round(num(m.time,0,86400,0)), label: String(m.label??"Marker").slice(0,120), color: /^#[0-9a-fA-F]{6}$/.test(m.color) ? m.color : "#f6a447" })).sort((a:any,b:any)=>a.time-b.time);
+  return { version: 3, background: /^#[0-9a-fA-F]{6}$/.test(raw.background) ? raw.background : "#000000", markers, tracks, fps: Math.round(num(raw.fps, 1, 60, 30)), resolution: { width: w, height: h }, clips };
 }
 
 // Effective values with defaults applied (normalizeClip omits defaults).
