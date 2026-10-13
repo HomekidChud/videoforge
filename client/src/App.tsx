@@ -10,6 +10,7 @@ import SharePage from "@/pages/share";
 import EditorPage from "@/pages/editor";
 import ApiDocsPage from "@/pages/api-docs";
 import ApiKeyPage from "@/pages/api-key";
+import { LiveListPage, LiveWatchPage } from "@/pages/live";
 import { useApiKey, ApiKeyProvider, setKeyChangeNotifier } from "@/lib/apiKey";
 import { invalidateMediaTokens } from "@/lib/mediaUrl";
 
@@ -35,6 +36,8 @@ function AppRouter() {
     <Switch>
       <Route path="/share/:id" component={SharePage} />
       <Route path="/platform">{() => <RequireApiKey><PlatformPage /></RequireApiKey>}</Route>
+      <Route path="/live/:id">{(params) => <RequireApiKey><LiveWatchPage params={params as { id: string }} /></RequireApiKey>}</Route>
+      <Route path="/live">{() => <RequireApiKey><LiveListPage /></RequireApiKey>}</Route>
       <Route path="/api-key" component={ApiKeyPage} />
       <Route path="/api-docs" component={ApiDocsPage} />
       <Route path="/">

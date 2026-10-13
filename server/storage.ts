@@ -16,7 +16,7 @@ import { mkdirSync } from "node:fs";
 
 mkdirSync("data/media", { recursive: true });
 
-const sqlite = new Database("data.db");
+const sqlite = new Database(process.env.VIDEOFORGE_DB || "data.db");
 sqlite.pragma("journal_mode = WAL");
 
 export const db = drizzle(sqlite);

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Play, Pause, SkipBack, SkipForward, Scissors, Undo2, Redo2, Magnet, Plus, Upload, Type, Film, Music2, Image as ImageIcon, Download, Check, AlertCircle, Loader2, FolderOpen, FilePlus2, Trash2, Share2, X, Lock, Globe, ChevronDown } from "lucide-react";
+import { Play, Pause, SkipBack, SkipForward, Scissors, Undo2, Redo2, Magnet, Plus, Upload, Type, Film, Music2, Image as ImageIcon, Download, Check, AlertCircle, Loader2, FolderOpen, FilePlus2, Trash2, Share2, X, Lock, Globe, ChevronDown, Eye, Sparkles } from "lucide-react";
 import { clipDuration, clipEnd, normalizeClip, normalizeTimeline, timelineDuration, type Clip, type Timeline } from "@shared/timeline";
 import { ANIMATABLE, clamp, valueAt, type AnimationProperty, type Keyframe } from "@shared/animation";
-import { TITLE_PRESETS } from "@shared/presets";
+import { TITLE_PRESETS, motionPreset } from "@shared/presets";
 import { api, API_BASE } from "@/lib/api";
 import { loadStoredKey } from "@/lib/apiKey";
 import { useAuthedMediaUrl, useMediaTokenLifecycle } from "@/lib/mediaUrl";
@@ -12,6 +12,7 @@ import { ForgeNav } from "@/components/forge-shell";
 import ForgePreview from "@/components/forge-preview";
 import ForgeTimeline, { type TimelineGesture } from "@/components/forge-timeline";
 import { ClipInspector, ProjectInspector } from "@/components/forge-inspector";
+import ForgeEffects, { type Effect } from "@/components/forge-effects";
 
 type SaveState = "empty" | "saved" | "dirty" | "saving" | "error" | "readonly";
 type Me = { id: string; scope: "read" | "write" | "admin" };
@@ -60,7 +61,7 @@ export default function EditorPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [time, setTime] = useState(0), [playing, setPlaying] = useState(false);
   const [pps, setPps] = useState(64), [snapping, setSnapping] = useState(true);
-  const [panel, setPanel] = useState<"media" | "projects">("media");
+  const [panel, setPanel] = useState<"media" | "effects" | "projects">("media");
   const [notice, setNotice] = useState<{ text: string; tone: "info" | "error" } | null>(null);
   const [upload, setUpload] = useState<{ pct: number } | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("empty"), [saveError, setSaveError] = useState("");
@@ -192,6 +193,39 @@ export default function EditorPage() {
   const pasteClip = useCallback(() => { const c = clipboard.current; if (!c || readOnly) return; const copy: Clip = { ...JSON.parse(JSON.stringify(c)), id: uid(), start: round(timeRef.current) }; mutate((t) => ({ ...t, clips: [...t.clips, copy] })); setSelectedId(copy.id); }, [mutate, readOnly]);
   const fitTimeline = () => { const el = document.querySelector(".timeline-scroll") as HTMLElement | null; if (el && duration > 0) setPps(Math.min(260, Math.max(8, Math.floor((el.clientWidth - 160) / duration)))); };
 
+  const moveMarker = useCallback((id: string, at: number) => { const t = tlRef.current; apply({ ...t, markers: (t.markers ?? []).map((m) => (m.id === id ? { ...m, time: at } : m)) }); }, [apply]);
+  // Effects: applied by click to the selection, or dropped on a clip, a lane or the preview.
+  const applyEffect = useCallback((effect: Effect, target: { clipId?: string; track?: Clip["track"]; start?: number } = {}) => {
+    if (readOnly) return toast("This key is read-only.", "error");
+    if (effect.kind === "title") {
+      const preset = TITLE_PRESETS.find((p) => p.id === effect.id) ?? null; const at = target.start ?? timeRef.current;
+      const clip: Clip = { id: uid(), assetId: "", track: "overlay", start: round(at), inPoint: 0, outPoint: 3, volume: 1, muted: false, text: preset?.text ?? "Your title", textSize: preset?.textSize ?? 8, ...(preset ? { y: preset.y, textBg: preset.textBg } : {}) };
+      mutate((t) => ({ ...t, clips: [...t.clips, normalizeClip(clip)] })); setSelectedId(clip.id); return;
+    }
+    const clips = tlRef.current.clips, t = timeRef.current;
+    const clip = clips.find((c) => c.id === (target.clipId ?? selectedId))
+      ?? clips.filter((c) => c.track !== "audio" && t >= c.start && t < clipEnd(c)).sort((a, b) => (a.track === "overlay" ? -1 : 0) - (b.track === "overlay" ? -1 : 0))[0];
+    if (!clip) return toast("Select a clip, or drop the effect onto one.");
+    const audioOnly = clip.track === "audio" || byId.get(clip.assetId)?.kind === "audio";
+    if (audioOnly && effect.kind !== "patch") return toast("That effect needs a picture. Drop it on a video, image or title.");
+    const patch = effect.kind === "motion" ? motionPreset(clip, effect.id) : effect.kind === "filter" ? ({ filter: effect.id } as Partial<Clip>) : effect.patch;
+    patchClip(clip.id, patch); setSelectedId(clip.id); toast(`${effect.label} applied`);
+  }, [readOnly, toast, mutate, selectedId, patchClip, byId]);
+
+  // Live: publish the working copy about ten times a second so master admins can watch.
+  const [watchers, setWatchers] = useState(0);
+  const pub = useRef({ timer: 0 as any, last: 0 }), selectedRef = useRef<string | null>(null), playingRef = useRef(false);
+  selectedRef.current = selectedId; playingRef.current = playing;
+  const publish = useCallback(() => {
+    const id = idRef.current; if (!id || readOnly) return; pub.current.last = Date.now();
+    api<{ watchers: number }>("POST", `/api/live/${id}/publish`, { timeline: tlRef.current, time: timeRef.current, selectedId: selectedRef.current, playing: playingRef.current, name: nameRef.current }).then((r) => setWatchers(r.watchers)).catch(() => {});
+  }, [readOnly]);
+  useEffect(() => {
+    if (!projectId || readOnly || pub.current.timer) return;
+    pub.current.timer = setTimeout(() => { pub.current.timer = 0; publish(); }, Math.max(0, 100 - (Date.now() - pub.current.last)));
+  }, [timeline, time, selectedId, playing, projectId, projectName, readOnly, publish]);
+  useEffect(() => { if (!projectId || readOnly) { setWatchers(0); return; } const i = setInterval(publish, 4000); return () => clearInterval(i); }, [projectId, readOnly, publish]);
+
   const trimToPlayhead = (edge: "in" | "out") => {
     if (!selected || readOnly) return; const rel = time - selected.start, speed = selected.assetId ? selected.speed ?? 1 : 1;
     if (rel <= 0.1 || rel >= clipDuration(selected) - 0.1) return toast("Place the playhead inside the selected clip.");
@@ -222,12 +256,13 @@ export default function EditorPage() {
   });
 
   // ---------------------------------------------------------------- upload / export
-  async function importFiles(list: FileList | File[]) {
+  async function importFiles(list: FileList | File[], place?: { track: Clip["track"]; start: number }) {
     const files = Array.from(list).filter((f) => /^(video|audio|image)\//.test(f.type) || /\.(mp4|mov|mkv|webm|mp3|wav|m4a|png|jpe?g|webp|gif)$/i.test(f.name));
     if (!files.length) return toast("Choose video, audio or image files.", "error");
     if (readOnly) return toast("This key is read-only.", "error");
     setUpload({ pct: 0 });
-    try { const r = await uploadWithProgress(files, (pct) => setUpload({ pct })); await qc.invalidateQueries({ queryKey: ["/api/media"] }); toast(`Imported ${r.assets.length} file${r.assets.length > 1 ? "s" : ""}`); }
+    try { const r = await uploadWithProgress(files, (pct) => setUpload({ pct })); await qc.invalidateQueries({ queryKey: ["/api/media"] }); toast(`Imported ${r.assets.length} file${r.assets.length > 1 ? "s" : ""}`);
+      if (place) { let at = place.start; const added: Clip[] = []; for (const a of r.assets) { const track = a.kind === "audio" ? "audio" : place.track === "audio" ? "video" : place.track; const c = newClip(a, at, track); added.push(c); if (a.kind !== "audio") at = clipEnd(c); } if (added.length) { mutate((t) => ({ ...t, clips: [...t.clips, ...added] })); setSelectedId(added[0].id); } } }
     catch (e: any) { toast(e.message, "error"); } finally { setUpload(null); }
   }
   const startRender = useMutation({
@@ -250,7 +285,8 @@ export default function EditorPage() {
     <div className="studio-bar">
       <div className="project-title"><input aria-label="Project name" className="title-input" value={projectName} disabled={readOnly} maxLength={200} onChange={(e) => setProjectName(e.target.value)} data-testid="input-project-title" />
         <span className={`save-state ${saveState}`} role="status" data-testid="text-save-state" title={saveError}>{saveState === "saving" ? <Loader2 size={13} className="spin" /> : saveState === "error" ? <AlertCircle size={13} /> : saveState === "saved" ? <Check size={13} /> : null}{saveLabel}</span>
-        {saveState === "error" && <button className="ghost-link" onClick={() => saveNow()}>Retry</button>}</div>
+        {saveState === "error" && <button className="ghost-link" onClick={() => saveNow()}>Retry</button>}
+        {watchers > 0 && <span className="watch-badge" title="A master admin is watching this project live. They cannot edit it."><Eye size={13} />{watchers} watching</span>}</div>
       <div className="studio-actions">
         <button className="icon-btn" onClick={undo} disabled={!past.current.length || readOnly} aria-label="Undo" title="Undo (Ctrl+Z)" data-testid="button-undo"><Undo2 size={17} /></button>
         <button className="icon-btn" onClick={redo} disabled={!future.current.length || readOnly} aria-label="Redo" title="Redo (Ctrl+Shift+Z)"><Redo2 size={17} /></button>
@@ -263,8 +299,8 @@ export default function EditorPage() {
 
     <div className="studio-grid">
       <aside className="library" aria-label="Library">
-        <div className="panel-tabs"><button className={panel === "media" ? "active" : ""} onClick={() => setPanel("media")}>Media</button><button className={panel === "projects" ? "active" : ""} onClick={() => setPanel("projects")}>Projects</button></div>
-        {panel === "media" ? <>
+        <div className="panel-tabs"><button className={panel === "media" ? "active" : ""} onClick={() => setPanel("media")}>Media</button><button className={panel === "effects" ? "active" : ""} onClick={() => setPanel("effects")} data-testid="tab-effects">Effects</button><button className={panel === "projects" ? "active" : ""} onClick={() => setPanel("projects")}>Projects</button></div>
+        {panel === "effects" ? <ForgeEffects disabled={readOnly} onApply={(e) => applyEffect(e)} /> : panel === "media" ? <>
           <label className={`dropzone ${readOnly ? "disabled" : ""}`} data-testid="button-upload">{upload ? <><Loader2 className="spin" size={18} /><span>Uploading {Math.round(upload.pct * 100)}%</span><i style={{ width: `${upload.pct * 100}%` }} /></> : <><Upload size={19} /><b>Import media</b><span>Video, audio or images — or drop files anywhere</span></>}
             <input type="file" multiple accept="video/*,audio/*,image/*" disabled={readOnly || !!upload} onChange={(e) => { if (e.target.files?.length) importFiles(e.target.files); e.target.value = ""; }} /></label>
           <div className="asset-list">
@@ -280,7 +316,7 @@ export default function EditorPage() {
           {!projectsQ.isLoading && !projectsQ.data?.projects.length && <div className="library-empty"><FolderOpen size={24} /><b>No saved projects</b><p>Projects save automatically as you edit.</p></div>}</div>}
       </aside>
 
-      <main className="monitor"><ForgePreview timeline={timeline} assets={assets} time={time} playing={playing} selectedId={selectedId} readOnly={readOnly} gesture={gesture} mediaUrl={mediaUrl} onError={(m) => toast(m, "error")} onValues={(id, v, live) => setValues(id, v, live)} />
+      <main className="monitor"><ForgePreview timeline={timeline} assets={assets} time={time} playing={playing} selectedId={selectedId} readOnly={readOnly} gesture={gesture} mediaUrl={mediaUrl} onError={(m) => toast(m, "error")} onValues={(id, v, live) => setValues(id, v, live)} onDropEffect={(effect) => applyEffect(effect)} />
         <div className="transport"><button className="icon-btn" aria-label="Jump to start" onClick={() => seek(0)}><SkipBack size={17} /></button><button className="play-btn" onClick={togglePlay} disabled={!duration} aria-label={playing ? "Pause" : "Play"} data-testid="button-play">{playing ? <Pause size={20} /> : <Play size={20} />}</button><button className="icon-btn" aria-label="Jump to end" onClick={() => seek(duration)}><SkipForward size={17} /></button>
           <span className="mono time-big">{timecode(time, timeline.fps)}</span><div className="flex-spacer" /><button className="secondary-btn" onClick={split} disabled={readOnly || !timeline.clips.length} title="Split at playhead (S)"><Scissors size={15} />Split</button></div></main>
 
@@ -288,7 +324,7 @@ export default function EditorPage() {
         : <ProjectInspector name={projectName} onName={setProjectName} timeline={timeline} setProject={setProjectSettings} readOnly={readOnly} canPublish={canPublish} projectId={projectId} visibility={visibility} onVisibility={toggleVisibility} onCopyLink={copyPublicLink} seek={seek} addMarker={addMarker} removeMarker={removeMarker} />}</aside>
 
       <section className="timeline-panel" aria-label="Timeline">
-        <ForgeTimeline timeline={timeline} assets={assets} selectedId={selectedId} time={time} playing={playing} pps={pps} snapping={snapping} readOnly={readOnly} mediaUrl={mediaUrl} onTrack={setTrack} onFit={fitTimeline} onAddMarker={addMarker} onSelect={setSelectedId} onSeek={seek} onZoom={setPps} gesture={gesture} onDropAsset={(id, track, start) => { const a = byId.get(id); if (a) addAsset(a, track, start); }} />
+        <ForgeTimeline timeline={timeline} assets={assets} selectedId={selectedId} time={time} playing={playing} pps={pps} snapping={snapping} readOnly={readOnly} mediaUrl={mediaUrl} onTrack={setTrack} onFit={fitTimeline} onAddMarker={addMarker} onSelect={setSelectedId} onSeek={seek} onZoom={setPps} gesture={gesture} onDropAsset={(id, track, start) => { const a = byId.get(id); if (a) addAsset(a, track, start); }} onDropEffect={(effect, target) => applyEffect(effect, target)} onDropFiles={(files, track, start) => importFiles(files, { track, start })} onMoveMarker={moveMarker} />
       </section></div>
 
     {exportOpen && <div className="export-panel" role="dialog" aria-label="Export">

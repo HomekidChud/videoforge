@@ -398,8 +398,8 @@ Supported `op` values:
 | `apply_motion` | `clipId`, `preset` (`fade`, `slide-left`, `rise`, `zoom`, `pop`, `drift`) | Apply a ready-made animation. Only the properties the preset animates are replaced. |
 | `duplicate_clip` | `clipId`, `start`? | Copy a clip, including keyframes. |
 | `ripple_delete` | `clipId` | Remove a clip and close the gap on its track. |
-| `set_track` | `track`, `muted`?, `hidden`?, `locked`? | Mute or hide a whole track. |
-| `add_marker` / `remove_marker` | `time`, `label`?, `color`? / `markerId` | Timeline markers, useful as named cue points. |
+| `set_track` | `track`, `settings: {muted?, hidden?, locked?}` | Mute or hide a whole track. |
+| `add_marker` / `set_marker` / `remove_marker` | `time`, `label`?, `color`? / `id`, `time`?, `label`?, `color`? / `id` | Timeline markers, useful as named cue points. |
 | `reorder` | `order: [clipId, clipId, ...]` | Reorder clips on the timeline. Must include every clip id exactly once. Video clips get re-spaced sequentially. |
 
 New clip fields: `rotation` (degrees), `blur` (px), `fit` (`contain\|cover`), `flipX`, `flipY`, `label`, and `keyframes`. Timeline fields: `background`, `markers`, `tracks`. Scale accepts 0.1 to 2.
@@ -417,10 +417,22 @@ Animatable properties: `x`, `y`, `scale`, `rotation`, `opacity`, `volume`, `brig
                      {"time": 2, "value": 0.8} ] } }
 ```
 
+### Bulk and layout operations
+
+| Op | Arguments | What it does |
+|----|-----------|--------------|
+| `shift_clips` | `delta`, `from`?, `track`?, `clipIds`? | Slide clips later or earlier. `from` limits it to clips starting at or after that time. |
+| `close_gaps` | `track`? (default `video`) | Pack a track's clips end to end in their current order. |
+| `update_clips` | `patch`, `clipIds`? or `track`? | Apply one patch to many clips, for example a filter or fade on every clip of a track. |
+| `copy_style` | `fromClipId`, `toClipIds` | Copy transform, colour, fades, text style and keyframes. Keyframe times are stretched to fit the target clip. |
+
 ### Inspecting results
 
 - `GET /api/capabilities` lists every op, property range, easing preset and motion preset, so an agent can discover the editor surface without reading docs.
 - `GET /api/projects/:id/state?t=1.5` returns each clip's evaluated values (position, scale, opacity and so on) at that time, with keyframes resolved.
+- `GET /api/projects/:id/storyboard?count=6&width=320` returns one PNG contact sheet of evenly spaced frames. The `X-Storyboard` header lists `cols`, `rows` and the sampled `times`. One request shows an agent the whole edit.
+- `GET /api/projects/:id/activity?since=SEQ` lists recent edits, who made them and when (in memory, cleared on restart).
+- `POST /api/projects/:id/duplicate` copies a project.
 - `GET /api/projects/:id/frame?t=1.5&width=640` returns a PNG still of the composed frame at that time. Use it to check an edit visually before exporting.
 
 Example — append a clip:
@@ -604,3 +616,16 @@ Example 403 response:
 - Shared TypeScript types live in `shared/schema.ts`.
 - The in-app API reference is rendered at `#/api-docs`.
 - The full permission model lives in `server/auth.ts`.
+
+
+## Live watching (master admins)
+
+Admin keys can watch any project as it is edited. Watching is strictly view-only: the endpoints below have no write verbs, and read or write keys get 403.
+
+| Endpoint | Who | Purpose |
+|----------|-----|---------|
+| `GET /api/live` | admin | Every project with `live` (activity in the last 15 seconds), who last edited, playhead, clip count and watcher count. `refreshMs` is the suggested poll interval (100). |
+| `GET /api/live/:id?since=REV&tsince=TIMELINE_REV` | admin | The editor's working copy: timeline (including unsaved edits), playhead `time`, `selectedId`, `playing`, `actor`, and the recent `activity`. If nothing changed since `since`, the reply is a few bytes (`changed: false`). The timeline is omitted when `tsince` matches. |
+| `POST /api/live/:id/publish` | write | Used by the studio about ten times a second to share its working copy. It is not counted against `requestsPerMinute` and never writes to the saved project. Replies with `{ watchers }`. |
+
+API edits, saves and exports also appear in the feed, so an admin sees agent activity live. In the studio, the editor sees a "watching" badge while an admin has the project open. Presence and the feed are in memory only.

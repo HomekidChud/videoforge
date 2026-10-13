@@ -9,7 +9,7 @@ gated behind **API keys with permission scopes** (`read`, `write`, `admin`).
 
 - **Frontend:** React + Vite + Tailwind CSS + shadcn/ui + wouter + TanStack Query
 - **Backend:** Express 5, better-sqlite3 (Drizzle ORM), FFmpeg + ffprobe (render, thumbnails, probing)
-- **Storage:** `data/media/` (uploads), `data/renders/` (outputs), `data.db` (SQLite)
+- **Storage:** `data/media/` (uploads), `data/renders/` (outputs), `data.db` (SQLite, override with `VIDEOFORGE_DB`)
 
 ## Features
 
@@ -26,6 +26,10 @@ gated behind **API keys with permission scopes** (`read`, `write`, `admin`).
 ## Editing and animation
 
 The studio supports keyframes on position, scale, rotation, opacity, volume and colour, with a value graph and draggable bezier tween slopes, motion presets, on-canvas move and scale handles, markers, track mute and hide, title presets, copy and paste, and a background colour. Everything is exposed through the timeline ops API (batches, keyframes, frame previews, state evaluation and a capabilities endpoint). See [docs/API.md](docs/API.md).
+
+## Live watching
+
+Master admins get a Live page that lists every project and opens any of them in a view-only mode. It follows the editor's unsaved timeline, playhead, selection and animated values, refreshed ten times a second, with an activity feed that also shows API and agent edits. See the live section of [docs/API.md](docs/API.md).
 
 ## Run
 

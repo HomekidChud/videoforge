@@ -21,7 +21,7 @@ const ROOT = path.resolve(__dirname, "..");
 const TEST_PORT = 5199; // separate from the dev port so we don't clash
 
 // Clean slate for tests
-const DB = path.join(ROOT, "data.db");
+const DB = path.join(ROOT, "data.test.db"); // never touch the dev database
 for (const f of [DB, `${DB}-journal`, `${DB}-wal`, `${DB}-shm`]) {
   try { fs.unlinkSync(f); } catch {}
 }
@@ -41,7 +41,7 @@ process.on("SIGINT", () => { killServer(); process.exit(1); });
 async function startServer(): Promise<void> {
   server = spawn("npx", ["tsx", "server/index.ts"], {
     cwd: ROOT,
-    env: { ...process.env, PORT: String(TEST_PORT), NODE_ENV: "development", VIDEOFORGE_REQUIRE_UI_AUTH: "1" },
+    env: { ...process.env, VIDEOFORGE_DB: DB, PORT: String(TEST_PORT), NODE_ENV: "development", VIDEOFORGE_REQUIRE_UI_AUTH: "1" },
     stdio: ["ignore", OUT, OUT],
     detached: true, // own process group, so the whole tsx → node tree is killed on exit
   });
