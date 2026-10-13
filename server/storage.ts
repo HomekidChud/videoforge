@@ -13,10 +13,11 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
 import { mkdirSync } from "node:fs";
+import { getEnv } from "./env";
 
 mkdirSync("data/media", { recursive: true });
 
-const sqlite = new Database(process.env.VIDEOFORGE_DB || "data.db");
+const sqlite = new Database(getEnv().VIDEOFORGE_DB);
 sqlite.pragma("journal_mode = WAL");
 
 export const db = drizzle(sqlite);

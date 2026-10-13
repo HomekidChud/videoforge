@@ -6,6 +6,7 @@ import type { Asset } from "@shared/schema";
 import { clipDuration, clipScale, clipSpeed, clipX, clipY, normalizeTimeline, timelineDuration, type Clip, type Timeline } from "@shared/timeline";
 
 import { animationExpression, baseValue, type AnimationProperty } from "@shared/animation";
+import { getEnv } from "./env";
 
 const f = (n: number) => Number(n.toFixed(3));
 
@@ -146,7 +147,8 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     const size = Math.round((H * (c.textSize ?? 6)) / 100);
     const color = (c.textColor ?? "#ffffff").replace("#", "0x");
     const box = c.textBg ? `:box=1:boxcolor=black@0.55:boxborderw=${Math.round(size * 0.35)}` : `:borderw=${Math.max(1, Math.round(size / 18))}:bordercolor=black@0.7`;
-    const font = process.env.VIDEOFORGE_FONT ? `:fontfile='${escPath(process.env.VIDEOFORGE_FONT)}'` : "";
+    const fontPath = getEnv().VIDEOFORGE_FONT;
+    const font = fontPath ? `:fontfile='${escPath(fontPath)}'` : "";
     const tc:Clip=c.assetId ? {...c,assetId:"",x:.5,y:.82,scale:1,rotation:0,keyframes:undefined} : c;
     const textChain=[`color=c=black@0:s=${W}x${H}:r=${fps}:d=${f(dur)}`,"format=yuva420p",`drawtext=expansion=none:textfile='${escPath(file)}'${font}:fontsize=${size}:fontcolor=${color}${box}:x=(w-text_w)/2:y=(h-text_h)/2`,...transformFilters(tc,W,H,dur,true),`setpts=PTS+${f(c.start)}/TB`];
     filters.push(`${textChain.join(",")}[ct${i}]`);

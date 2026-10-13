@@ -15,6 +15,7 @@ import { animatedValues } from "@shared/animation";
 import { capabilities } from "@shared/capabilities";
 import { buildRenderPlan, runFfmpeg } from "./render";
 import { requireScope, requireMediaAccess, projectAllowed, assetAllowed, keyRestrictions } from "./auth";
+import { maxUploadBytes } from "./env";
 import { actorOf, syncTimeline, logEvent, renameLive, dropLive, registerLiveRoutes } from "./live";
 
 const MEDIA_DIR = path.resolve("data/media");
@@ -22,7 +23,7 @@ const OUTPUT_DIR = path.resolve("data/renders");
 fs.mkdirSync(MEDIA_DIR, { recursive: true });
 fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 
-const MAX_UPLOAD_BYTES = Number(process.env.VIDEOFORGE_MAX_UPLOAD_MB || 2048) * 1048576;
+const MAX_UPLOAD_BYTES = maxUploadBytes();
 const now = () => Date.now();
 const uid = () => crypto.randomBytes(6).toString("hex");
 
