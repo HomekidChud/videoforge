@@ -31,7 +31,7 @@ const OUT = fs.openSync("/tmp/vf_test_server.log", "w");
 
 function killServer() {
   if (server) {
-    server.kill("SIGKILL");
+    try { process.kill(-server.pid!, "SIGKILL"); } catch { server.kill("SIGKILL"); }
     server = null;
   }
 }
@@ -43,6 +43,7 @@ async function startServer(): Promise<void> {
     cwd: ROOT,
     env: { ...process.env, PORT: String(TEST_PORT), NODE_ENV: "development", VIDEOFORGE_REQUIRE_UI_AUTH: "1" },
     stdio: ["ignore", OUT, OUT],
+    detached: true, // own process group, so the whole tsx → node tree is killed on exit
   });
   // wait until /api/health responds
   const deadline = Date.now() + 30000;
@@ -364,6 +365,59 @@ async function main() {
     const revokeSelf = await jsonFetch(`/api/keys/${scoped.body.record.id}`, { method: "DELETE", headers: AUTH_ADMIN });
     assert(revokeSelf.status === 200, "scoped key can be revoked");
     assert((await jsonFetch(`/api/projects/${projectId}`, { headers: SC })).status === 403, "revoked scoped key blocked");
+  }
+
+  // --- 17. Multi-track composition: image, picture-in-picture, speed, text clip, audio track, split
+  console.log("17) Multi-track render");
+  {
+    const png = path.join(ROOT, "data", "test_img.png"), wav = path.join(ROOT, "data", "test_tone.wav");
+    const run = (args: string[]) => new Promise<void>((res, rej) => spawn("ffmpeg", ["-y", ...args], { stdio: "ignore" }).on("close", (c) => (c === 0 ? res() : rej(new Error("ffmpeg fixture failed")))));
+    await run(["-f", "lavfi", "-i", "color=c=red:s=320x240:d=1", "-frames:v", "1", png]);
+    await run(["-f", "lavfi", "-i", "sine=frequency=880:duration=4", wav]);
+    const up = async (file: string, name: string, type: string) => {
+      const fd = new FormData(); fd.append("files", new File([fs.readFileSync(file)], name, { type }));
+      return (await (await fetch(`${H}/api/media/upload`, { method: "POST", headers: AUTH_ADMIN, body: fd })).json()).assets[0];
+    };
+    const img = await up(png, "red.png", "image/png"), tone = await up(wav, "tone.wav", "audio/wav");
+    assert(img.kind === "image" && tone.kind === "audio" && tone.duration > 3.5, "image and audio assets uploaded");
+    const created = await jsonFetch("/api/projects", { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ name: "multi", timeline: { fps: 24, resolution: { width: 640, height: 360 }, clips: [
+      { id: "v1", assetId, track: "video", start: 0, inPoint: 0, outPoint: 4, volume: 1, muted: false, speed: 2, fadeIn: 0.3, filter: "sepia" },
+      { id: "img", assetId: img.id, track: "video", start: 2, inPoint: 0, outPoint: 2, volume: 1, muted: false },
+      { id: "pip", assetId, track: "overlay", start: 1, inPoint: 0, outPoint: 2, volume: 1, muted: true, scale: 0.3, x: 0.8, y: 0.2 },
+      { id: "txt", assetId: "", track: "overlay", start: 0.5, inPoint: 0, outPoint: 2, volume: 1, muted: false, text: "It's 100%: \\ quoted", textBg: true },
+      { id: "aud", assetId: tone.id, track: "audio", start: 1, inPoint: 0, outPoint: 3, volume: 0.5, muted: false },
+    ] } }) });
+    assert(created.status === 201, `multi project created, got ${created.status}`);
+    const pid = created.body.id;
+    const split = await jsonFetch(`/api/projects/${pid}/timeline/ops`, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ op: "split_clip", args: { clipId: "v1", at: 1 } }) });
+    assert(split.status === 200 && split.body.timeline.clips.length === 6, `split added a clip, got ${split.status}`);
+    const left = split.body.timeline.clips.find((c: any) => c.id === "v1"), right = split.body.timeline.clips.find((c: any) => c.start === 1 && c.id !== "v1" && c.assetId === assetId && c.track === "video");
+    assert(left && right && Math.abs(left.outPoint - 2) < 0.01 && Math.abs(right.inPoint - 2) < 0.01, "split respects 2x speed in source time");
+    assert((await jsonFetch(`/api/projects/${pid}/timeline/ops`, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ op: "split_clip", args: { clipId: "v1", at: 50 } }) })).status === 422, "split outside clip rejected");
+    const bad = await jsonFetch("/api/projects", { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ name: "bad", timeline: { clips: [{ assetId: "x".repeat(10), start: "nope" }] } }) });
+    assert(bad.status === 201 && bad.body.timeline.clips[0].start === 0, "invalid numbers are sanitized");
+    const render = await jsonFetch("/api/renders", { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ projectId: pid }) });
+    let status = "queued", err = "";
+    for (const end = Date.now() + 90000; Date.now() < end && !["done", "error"].includes(status);) {
+      await new Promise((r) => setTimeout(r, 700));
+      const j = await jsonFetch(`/api/renders/${render.body.jobId}`, { headers: AUTH_ADMIN });
+      status = j.body.status; err = j.body.error || "";
+    }
+    assert(status === "done", `multi-track render finished, status=${status} ${err}`);
+    const out = path.join(ROOT, "data", "test_multi.mp4");
+    fs.writeFileSync(out, Buffer.from(await (await fetch(`${H}/api/renders/${render.body.jobId}/download`, { headers: AUTH_ADMIN })).arrayBuffer()));
+    const probeOut = await new Promise<string>((res) => { const p = spawn("ffprobe", ["-v", "error", "-show_entries", "format=duration:stream=codec_type,width,height", "-of", "json", out]); let o = ""; p.stdout.on("data", (d: Buffer) => (o += d)); p.on("close", () => res(o)); });
+    const info = JSON.parse(probeOut);
+    assert(info.streams.some((s: any) => s.codec_type === "audio"), "render has mixed audio");
+    assert(info.streams.some((s: any) => s.width === 640 && s.height === 360), "render uses 640x360 canvas");
+    assert(Math.abs(parseFloat(info.format.duration) - 4) < 0.4, `render duration ~4s (2x speed, image to 4s), got ${info.format.duration}`);
+    const wf = await jsonFetch(`/api/media/${tone.id}/waveform`, { headers: AUTH_ADMIN });
+    assert(wf.status === 200 && wf.body.peaks.length > 50, "waveform peaks returned");
+    const empty = await jsonFetch("/api/projects", { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ name: "empty", timeline: { clips: [] } }) });
+    const er = await jsonFetch("/api/renders", { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ projectId: empty.body.id }) });
+    await new Promise((r) => setTimeout(r, 800));
+    const ej = await jsonFetch(`/api/renders/${er.body.jobId}`, { headers: AUTH_ADMIN });
+    assert(ej.body.status === "error" && /empty/i.test(ej.body.error), "empty timeline gives a clear render error");
   }
 
   console.log(`\n${passed} passed, ${failed} failed`);

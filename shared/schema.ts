@@ -92,24 +92,7 @@ export const apiKeys = sqliteTable("api_keys", {
 // TypeScript timeline model (stored as JSON in projects.timelineJson)
 // ---------------------------------------------------------------------------
 
-export type Clip = {
-  id: string;
-  assetId: string;
-  track: "video" | "audio" | "overlay";
-  start: number; // timeline seconds
-  inPoint: number; // source seconds
-  outPoint: number; // source seconds
-  volume: number; // 0..1
-  muted: boolean;
-  text?: string; // caption text for overlay clips
-};
-
-export type Timeline = {
-  version: number;
-  fps: number;
-  resolution: { width: number; height: number };
-  clips: Clip[];
-};
+export type { Clip, Timeline } from "./timeline";
 
 export type Asset = typeof mediaAssets.$inferSelect;
 export type Project = typeof projects.$inferSelect;

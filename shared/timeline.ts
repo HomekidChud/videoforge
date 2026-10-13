@@ -1,0 +1,128 @@
+// Timeline model shared by the editor, the HTTP API and the FFmpeg renderer.
+// Everything coming from a client is passed through normalizeTimeline() so the
+// renderer only ever sees bounded, well-typed values.
+
+export type TrackName = "video" | "overlay" | "audio";
+export type ClipFilter = "none" | "mono" | "sepia" | "vivid" | "cool" | "warm" | "faded";
+
+export type Clip = {
+  id: string;
+  assetId: string; // "" for pure text clips
+  track: TrackName;
+  start: number; // timeline seconds
+  inPoint: number; // source seconds
+  outPoint: number; // source seconds (for images/text: inPoint + display duration)
+  volume: number; // 0..1
+  muted: boolean;
+  text?: string;
+  speed?: number; // 0.25..4
+  fadeIn?: number; // seconds
+  fadeOut?: number; // seconds
+  filter?: ClipFilter;
+  brightness?: number; // -0.5..0.5
+  contrast?: number; // 0.5..2
+  saturation?: number; // 0..2
+  opacity?: number; // 0..1
+  x?: number; // 0..1 centre position (overlay track and text)
+  y?: number;
+  scale?: number; // 0.1..1 of frame width (overlay track)
+  textSize?: number; // % of frame height, 2..20
+  textColor?: string; // #rrggbb
+  textBg?: boolean; // translucent box behind text
+};
+
+export type Timeline = {
+  version: number;
+  fps: number;
+  resolution: { width: number; height: number };
+  clips: Clip[];
+};
+
+export const TRACKS: TrackName[] = ["overlay", "video", "audio"];
+export const FILTERS: ClipFilter[] = ["none", "mono", "sepia", "vivid", "cool", "warm", "faded"];
+export const RESOLUTIONS = [
+  { label: "16:9 HD (1280×720)", width: 1280, height: 720 },
+  { label: "16:9 Full HD (1920×1080)", width: 1920, height: 1080 },
+  { label: "9:16 Vertical (1080×1920)", width: 1080, height: 1920 },
+  { label: "1:1 Square (1080×1080)", width: 1080, height: 1080 },
+  { label: "4:5 Portrait (1080×1350)", width: 1080, height: 1350 },
+];
+export const MAX_CLIPS = 200;
+export const MIN_CLIP = 0.1;
+
+const num = (v: unknown, lo: number, hi: number, fallback: number) => {
+  const n = typeof v === "number" && Number.isFinite(v) ? v : fallback;
+  return Math.min(hi, Math.max(lo, n));
+};
+const round = (n: number) => Math.round(n * 1000) / 1000;
+
+export function clipSpeed(c: Pick<Clip, "speed">): number { return c.speed && c.speed > 0 ? c.speed : 1; }
+/** Duration the clip occupies on the timeline (after speed is applied). */
+export function clipDuration(c: Pick<Clip, "inPoint" | "outPoint" | "speed" | "track" | "assetId">): number {
+  const src = Math.max(MIN_CLIP, c.outPoint - c.inPoint);
+  return round(c.assetId ? src / clipSpeed(c) : src);
+}
+export function clipEnd(c: Clip): number { return round(c.start + clipDuration(c)); }
+export function timelineDuration(t: Timeline): number {
+  return t.clips.reduce((m, c) => Math.max(m, clipEnd(c)), 0);
+}
+
+export function normalizeClip(raw: any): Clip {
+  if (!raw || typeof raw !== "object") throw new Error("clip must be an object");
+  const track: TrackName = ["video", "overlay", "audio"].includes(raw.track) ? raw.track : "video";
+  const assetId = typeof raw.assetId === "string" ? raw.assetId.slice(0, 64) : "";
+  const text = typeof raw.text === "string" && raw.text.trim() ? raw.text.slice(0, 500) : undefined;
+  if (!assetId && !text) throw new Error("clip needs an assetId or text");
+  const inPoint = round(num(raw.inPoint, 0, 86400, 0));
+  const outPoint = round(Math.max(inPoint + MIN_CLIP, num(raw.outPoint, 0, 86400, inPoint + 5)));
+  const clip: Clip = {
+    id: typeof raw.id === "string" && raw.id ? raw.id.slice(0, 64) : Math.random().toString(36).slice(2, 10),
+    assetId, track,
+    start: round(num(raw.start, 0, 86400, 0)),
+    inPoint, outPoint,
+    volume: round(num(raw.volume, 0, 1, 1)),
+    muted: !!raw.muted,
+  };
+  if (text) clip.text = text;
+  const opt = (k: keyof Clip, v: unknown, lo: number, hi: number, def: number) => {
+    if (v === undefined || v === null) return;
+    const n = round(num(v, lo, hi, def));
+    if (n !== def) (clip as any)[k] = n;
+  };
+  opt("speed", raw.speed, 0.25, 4, 1);
+  opt("fadeIn", raw.fadeIn, 0, 10, 0);
+  opt("fadeOut", raw.fadeOut, 0, 10, 0);
+  opt("brightness", raw.brightness, -0.5, 0.5, 0);
+  opt("contrast", raw.contrast, 0.5, 2, 1);
+  opt("saturation", raw.saturation, 0, 2, 1);
+  opt("opacity", raw.opacity, 0, 1, 1);
+  opt("x", raw.x, 0, 1, 0.5);
+  opt("y", raw.y, 0, 1, track === "overlay" && !assetId ? 0.82 : 0.5);
+  opt("scale", raw.scale, 0.1, 1, track === "overlay" ? 0.35 : 1);
+  opt("textSize", raw.textSize, 2, 20, 6);
+  if (FILTERS.includes(raw.filter) && raw.filter !== "none") clip.filter = raw.filter;
+  if (typeof raw.textColor === "string" && /^#[0-9a-fA-F]{6}$/.test(raw.textColor) && raw.textColor.toLowerCase() !== "#ffffff") clip.textColor = raw.textColor.toLowerCase();
+  if (raw.textBg === true) clip.textBg = true;
+  return clip;
+}
+
+export function normalizeTimeline(raw: any): Timeline {
+  if (!raw || typeof raw !== "object" || !Array.isArray(raw.clips)) throw new Error("timeline.clips must be an array");
+  if (raw.clips.length > MAX_CLIPS) throw new Error(`a timeline can contain at most ${MAX_CLIPS} clips`);
+  const seen = new Set<string>();
+  const clips = raw.clips.map((c: any) => {
+    const clip = normalizeClip(c);
+    while (seen.has(clip.id)) clip.id = Math.random().toString(36).slice(2, 10);
+    seen.add(clip.id);
+    return clip;
+  });
+  const w = Math.round(num(raw.resolution?.width, 160, 3840, 1280) / 2) * 2;
+  const h = Math.round(num(raw.resolution?.height, 160, 3840, 720) / 2) * 2;
+  return { version: 2, fps: Math.round(num(raw.fps, 1, 60, 30)), resolution: { width: w, height: h }, clips };
+}
+
+// Effective values with defaults applied (normalizeClip omits defaults).
+export const clipX = (c: Clip) => c.x ?? 0.5;
+export const clipY = (c: Clip) => c.y ?? (!c.assetId ? 0.82 : 0.5);
+export const clipScale = (c: Clip) => c.scale ?? (c.track === "overlay" ? 0.35 : 1);
+export const isTextClip = (c: Clip) => !c.assetId;
