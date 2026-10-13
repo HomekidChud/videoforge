@@ -1,6 +1,8 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
+import { spawn } from "node:child_process";
 import { rm, readFile } from "node:fs/promises";
+import path from "node:path";
 
 // server deps to bundle to reduce openat(2) syscalls
 // which helps cold start times
@@ -35,6 +37,17 @@ async function buildAll() {
 
   console.log("building client...");
   await viteBuild();
+
+  console.log("checking client bundle for secrets...");
+  // Post-build secret check on the produced bundle.
+  await new Promise<void>((resolve, reject) => {
+    const p = spawn("npx", ["tsx", "script/check-bundle-secrets.ts"], {
+      cwd: path.resolve(import.meta.dirname ?? ".", ".."),
+      stdio: "inherit",
+    });
+    p.on("exit", (c) => (c === 0 ? resolve() : reject(new Error(`check-bundle-secrets failed (exit ${c})`))));
+    p.on("error", reject);
+  });
 
   console.log("building server...");
   const pkg = JSON.parse(await readFile("package.json", "utf-8"));

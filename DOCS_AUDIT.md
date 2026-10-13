@@ -56,9 +56,11 @@ is 700+ lines; a full cross-check against every endpoint signature is needed.
 
 ### D-3 — README claims things the code doesn't do
 README says "Live watching" follows the editor's unsaved timeline "refreshed ten
-times a second" — but `server/live.ts` polls on the client (`editor.tsx` publishes
-every ~400 ms via `setInterval` and the server just returns the current state).
-The wording implies server-push. **Action**: rewrite to "the client polls".
+times a second" — but `server/live.ts` is client-pull: the editor publishes on
+every state change (throttled to ≥100 ms) plus a 4 s heartbeat, and master
+admins poll `GET /api/live/:id` every 100 ms. The wording implies server-push.
+**Action**: rewrite to "the admin client polls at 10 Hz; the editor publishes on
+change (throttled to ≥100 ms) plus a 4 s heartbeat."
 
 ### D-4 — In-app `api-docs.tsx` is a duplicate of `docs/API.md`
 Two sources of truth will drift. `api-docs.tsx` is a hardcoded subset (26

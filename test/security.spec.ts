@@ -133,10 +133,14 @@ await startServer({ CORS_ORIGIN: "https://app.example.com" });
   check("Referrer-Policy: no-referrer", headers["referrer-policy"] === "no-referrer", headers);
   check("X-Frame-Options: DENY", headers["x-frame-options"] === "DENY", headers);
   check("COOP: same-origin", headers["cross-origin-opener-policy"] === "same-origin", headers);
-  check("COEP: require-corp", headers["cross-origin-embedder-policy"] === "require-corp", headers);
-  check("CSP includes default-src 'self'", (headers["content-security-policy"] ?? "").includes("default-src 'self'"), headers);
-  check("CSP includes frame-ancestors 'none'", (headers["content-security-policy"] ?? "").includes("frame-ancestors 'none'"), headers);
+  // CSP is Report-Only in this checkpoint (see SECURITY_AUDIT.md H-3).
+  check("CSP is Report-Only (not enforcing)", headers["content-security-policy-report-only"]?.includes("default-src 'self'"), headers);
+  check("No enforcing CSP present", headers["content-security-policy"] === undefined, headers);
+  check("Report-Only CSP includes frame-ancestors 'none'", (headers["content-security-policy-report-only"] ?? "").includes("frame-ancestors 'none'"), headers);
   check("Permissions-Policy denies camera", (headers["permissions-policy"] ?? "").includes("camera=()"), headers);
+  // COEP intentionally omitted this checkpoint (would break cross-origin media in
+  // the split-origin Pages deployment). CORP same-origin is set instead.
+  check("CORP: same-origin", headers["cross-origin-resource-policy"] === "same-origin", headers);
 }
 
 console.log("4) CORS allowlist");
@@ -146,7 +150,17 @@ console.log("4) CORS allowlist");
   const blocked = await fetch(`${H}/api/health`, { headers: { Origin: "https://evil.example" } });
   check("unlisted origin → 403", blocked.status === 403, blocked.status);
   const noOrigin = await fetch(`${H}/api/health`);
-  check("no origin → 200 (same-origin curl)", noOrigin.status === 200, noOrigin.status);
+  check("no origin → 200 (non-browser client)", noOrigin.status === 200, noOrigin.status);
+  // Browsers send Origin on SAME-ORIGIN POSTs too — must not be blocked.
+  const sameOriginPost = await fetch(`${H}/api/health`, {
+    headers: { Origin: `http://127.0.0.1:${TEST_PORT}`, Host: `127.0.0.1:${TEST_PORT}` },
+  });
+  check("same-origin Origin header (browser POST) → 200", sameOriginPost.status === 200, sameOriginPost.status);
+  // And a cross-origin Origin under the allowlist is still blocked.
+  const blockedSameHost = await fetch(`${H}/api/health`, {
+    headers: { Origin: "https://evil.example", Host: `127.0.0.1:${TEST_PORT}` },
+  });
+  check("cross-origin Origin with same Host → 403", blockedSameHost.status === 403, blockedSameHost.status);
 }
 
 // ---------------------------------------------------------------------------
@@ -213,6 +227,7 @@ console.log("7) Pre-commit secret scanner (real hook)");
 
   const good = await run({ "a.txt": "just a normal line of code" });
   check("clean file commits (no block)", !good.out.includes("Commit blocked"), { out: good.out.slice(0, 300) });
+  check("clean commit actually succeeded", !good.out.includes("error"), { out: good.out.slice(0, 300) });
 
   const sk = await run({ "b.ts": 'const KEY = "sk-abcdefabcdefabcdefabcdefabcdef";' });
   check("sk- secret blocked", sk.out.includes("Commit blocked"), { out: sk.out.slice(0, 300) });
@@ -274,10 +289,13 @@ console.log("9) CORS_ORIGIN=none denies cross-origin");
     import("${ROOT.replace(/\\/g, "/")}/server/env.ts")
       .then((m) => {
         const e = m.getEnv();
-        const withOrigin = m.isCorsAllowed("https://app.example.com");
-        const noOrigin = m.isCorsAllowed(undefined);
-        if (withOrigin) { console.error("FAIL: Origin should be denied under 'none'"); process.exit(2); }
-        if (!noOrigin) { console.error("FAIL: same-origin should still work under 'none'"); process.exit(2); }
+        const withOrigin = m.isCorsAllowed("https://app.example.com", "api.example.com");
+        // Browsers send Origin on same-origin POSTs — must be allowed.
+        const sameOriginPost = m.isCorsAllowed("https://api.example.com", "api.example.com");
+        const noOrigin = m.isCorsAllowed(undefined, undefined);
+        if (withOrigin) { console.error("FAIL: cross-origin should be denied under 'none'"); process.exit(2); }
+        if (!sameOriginPost) { console.error("FAIL: same-origin POST Origin should be allowed under 'none'"); process.exit(2); }
+        if (!noOrigin) { console.error("FAIL: non-browser (no Origin) should still work under 'none'"); process.exit(2); }
         console.log("OK"); process.exit(0);
       })
       .catch((e) => { console.error("import error", e); process.exit(2); });
@@ -291,19 +309,17 @@ console.log("9) CORS_ORIGIN=none denies cross-origin");
 }
 
 // ---------------------------------------------------------------------------
-// 10) CORS_ORIGIN unset in development allows all (Vite HMR)
+// 11) Production: http:// and localhost CORS entries rejected
 // ---------------------------------------------------------------------------
-console.log("10) CORS unset in dev allows all");
-{
-  const tmpScript = path.join(ROOT, ".tmp-env-test-5.mjs");
+console.log("11) Production rejects http:// and localhost CORS entries");
+for (const bad of ["http://app.example.com", "https://localhost:3000", "https://127.0.0.1:5000"]) {
+  const tmpScript = path.join(ROOT, `.tmp-env-test-${bad.length}.mjs`);
   fs.writeFileSync(tmpScript, `
-    process.env.NODE_ENV = "development";
+    process.env.NODE_ENV = "production";
+    process.env.APP_ENV = "production";
+    process.env.CORS_ORIGIN = ${JSON.stringify(bad)};
     import("${ROOT.replace(/\\/g, "/")}/server/env.ts")
-      .then((m) => {
-        const anyOrigin = m.isCorsAllowed("https://anything.example");
-        if (!anyOrigin) { console.error("FAIL: dev should allow all origins when CORS_ORIGIN unset"); process.exit(2); }
-        console.log("OK"); process.exit(0);
-      })
+      .then((m) => { m.getEnv(); console.log("UNEXPECTED: should have exited"); })
       .catch((e) => { console.error("import error", e); process.exit(2); });
   `);
   const proc = spawn("npx", ["tsx", tmpScript], { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"] });
@@ -311,7 +327,63 @@ console.log("10) CORS unset in dev allows all");
   proc.stderr.on("data", (d) => (stderr += d.toString()));
   await once(proc, "exit");
   fs.unlinkSync(tmpScript);
-  check("dev + unset CORS_ORIGIN = allow-all", proc.exitCode === 0, { code: proc.exitCode, stderr: stderr.slice(0, 300) });
+  check(`production rejects ${bad}`, proc.exitCode === 1, { code: proc.exitCode, stderr: stderr.slice(0, 300) });
+}
+
+// ---------------------------------------------------------------------------
+// 12) Production: APP_ENV=development is rejected
+// ---------------------------------------------------------------------------
+console.log("12) Production rejects APP_ENV=development");
+{
+  const tmpScript = path.join(ROOT, ".tmp-env-appenv.mjs");
+  fs.writeFileSync(tmpScript, `
+    process.env.NODE_ENV = "production";
+    // APP_ENV defaults to development — must be an error
+    process.env.CORS_ORIGIN = "https://app.example.com";
+    import("${ROOT.replace(/\\/g, "/")}/server/env.ts")
+      .then((m) => { m.getEnv(); console.log("UNEXPECTED: should have exited"); })
+      .catch((e) => { console.error("import error", e); process.exit(2); });
+  `);
+  const proc = spawn("npx", ["tsx", tmpScript], { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"] });
+  let stderr = "";
+  proc.stderr.on("data", (d) => (stderr += d.toString()));
+  await once(proc, "exit");
+  fs.unlinkSync(tmpScript);
+  check("APP_ENV=development under NODE_ENV=production rejected", proc.exitCode === 1 && stderr.includes("APP_ENV"), { code: proc.exitCode, stderr: stderr.slice(0, 300) });
+}
+
+// ---------------------------------------------------------------------------
+// 13) Weak bootstrap key rejected
+// ---------------------------------------------------------------------------
+console.log("13) Weak bootstrap key rejected");
+for (const weak of ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "01234567890123456789012345678901", "short"]) {
+  const tmpScript = path.join(ROOT, `.tmp-env-boot-${weak.length}.mjs`);
+  fs.writeFileSync(tmpScript, `
+    process.env.VIDEOFORGE_BOOTSTRAP_KEY = ${JSON.stringify(weak)};
+    import("${ROOT.replace(/\\/g, "/")}/server/env.ts")
+      .then((m) => { m.getEnv(); console.log("UNEXPECTED: should have exited"); })
+      .catch((e) => { console.error("import error", e); process.exit(2); });
+  `);
+  const proc = spawn("npx", ["tsx", tmpScript], { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"] });
+  let stderr = "";
+  proc.stderr.on("data", (d) => (stderr += d.toString()));
+  await once(proc, "exit");
+  fs.unlinkSync(tmpScript);
+  check(`weak bootstrap key (${weak.slice(0, 8)}…) rejected`, proc.exitCode === 1 && stderr.includes("BOOTSTRAP_KEY"), { code: proc.exitCode, stderr: stderr.slice(0, 300) });
+}
+// A strong key is accepted.
+{
+  const tmpScript = path.join(ROOT, ".tmp-env-boot-strong.mjs");
+  fs.writeFileSync(tmpScript, `
+    process.env.VIDEOFORGE_BOOTSTRAP_KEY = "a8f3c9e2b7d4f6a1c8e5b3d9f2a7c4e6b9d1f8a3c5e7b9d1f4a6c8e2b5d7f9a1";
+    import("${ROOT.replace(/\\/g, "/")}/server/env.ts")
+      .then((m) => { const e = m.getEnv(); if (!e.VIDEOFORGE_BOOTSTRAP_KEY) { process.exit(2); } console.log("OK"); process.exit(0); })
+      .catch((e) => { console.error("import error", e); process.exit(2); });
+  `);
+  const proc = spawn("npx", ["tsx", tmpScript], { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"] });
+  await once(proc, "exit");
+  fs.unlinkSync(tmpScript);
+  check("strong bootstrap key accepted", proc.exitCode === 0, { code: proc.exitCode });
 }
 
 // ---------------------------------------------------------------------------

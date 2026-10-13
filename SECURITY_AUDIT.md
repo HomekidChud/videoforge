@@ -76,38 +76,43 @@ Sources that might hold secrets:
 
 ## 2. Findings
 
-### H-1 — `CORS_ORIGIN` defaults to `*` (High)
-`server/index.ts:44-56`. If unset, the server responds to any Origin with
-`Access-Control-Allow-Origin: *` and `Access-Control-Allow-Credentials: true`.
-Combined with the `vf_ui=1` cookie bypass (below), a malicious page could make
-authenticated cross-origin calls. **Fix**: build a typed env module
-(`env.server.ts` with Zod) that requires an explicit allowlist in
-`NODE_ENV=production`, refuses `*` in production, and fails fast at boot.
-**Status: planned (Milestone 1 of the security work).**
+### H-1 — `CORS_ORIGIN` defaults to `*` (High, fixed)
+`server/index.ts:44-56` (pre-fix). If unset, the server responded to any Origin
+with `Access-Control-Allow-Origin: *` and `Access-Control-Allow-Credentials: true`.
+A malicious page could make unauthenticated preflight-friendly calls (though
+with Bearer-only auth and no cookies, the blast radius was limited to
+unauthenticated endpoints). **Fixed** by the typed env module — see §4.
 
-### H-2 — `vf_ui=1` cookie bypass in dev (High, dev-only)
-`test/api.spec.ts:15` sets `VIDEOFORGE_REQUIRE_UI_AUTH=1` to force the key in
-tests, and `docs/API.md` documents the same flag. The cookie path in the
-server appears to have been removed in a prior commit (I could not find a
-`vf_ui` reference in `server/*.ts`) — the docs are stale. **Fix**: confirm by
-reading the server once more and update `docs/API.md` if the flag no longer
-applies. **Status: docs stale — see DOCS_AUDIT.md.**
+### H-2 — `vf_ui=1` cookie bypass (Historical; removed upstream in commit `81e744f`)
+The cookie bypass was **removed** upstream in commit `81e744f` (verified via
+`git log -S "vf_ui"`). What remained on this branch was **stale documentation**
+(`docs/API.md` still described it) and a stale test env var. **Fixed on this
+branch** by removing the env var from the test; the `docs/API.md` section
+removal is tracked in `DOCS_AUDIT.md` D-1.
 
-### H-3 — No CSP / security headers (High)
-The Express app sets **no** `Content-Security-Policy`, `Strict-Transport-Security`,
-`X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Opener-Policy`,
-or `Cross-Origin-Embedder-Policy`. Vite HMR in dev injects inline scripts; the
-production bundle is served as static files so a strict CSP is achievable.
-**Fix**: add a header middleware with a default-deny CSP; test the app under it.
-**Status: planned.**
+### H-3 — No CSP / security headers (High, partially fixed — CSP deferred)
+The Express app set **no** `Content-Security-Policy`, `Strict-Transport-Security`,
+`X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`,
+`Cross-Origin-Opener-Policy`, or `Cross-Origin-Embedder-Policy`. Vite HMR in
+dev injects inline scripts; the production bundle is served as static files so
+a strict CSP is achievable.
 
-### H-4 — No CSRF protection (High)
-Bearer-token-only auth means CSRF is largely moot for `/api/*` (no cookies), **but**
-`express-session`, `passport`, `passport-local`, `memorystore`, `@supabase/supabase-js`
-are installed in `package.json` while no session code exists in `server/`. If
-cookie sessions are ever added, CSRF becomes live. **Fix**: document the decision
-(Bearer-only → no CSRF surface today); add CSRF if session auth is introduced.
-**Status: documented.**
+**Partial fix on this branch**: all the non-CSP headers are set on every
+response (verified by tests). **CSP is shipped as `Content-Security-Policy-Report-Only`**
+deliberately — enforcing it before exercising the React client in a real
+browser risks silently breaking the editor (Vite dev preamble, split-origin
+Pages deployment, cross-origin media). Enforcing a verified CSP is the
+web-hardening milestone. **Status: partial (non-CSP headers enforced +
+tested; CSP Report-Only).**
+
+### H-4 — CSRF: no surface today, but dead dependencies invite one (Low, documentation)
+Bearer-token-only auth means CSRF is **not** a live vulnerability for `/api/*` —
+there are no cookies to ride. **However**, `express-session`, `passport`,
+`passport-local`, `memorystore`, `@supabase/supabase-js` are installed in
+`package.json` while no session code exists in `server/`. If cookie sessions
+are ever added, CSRF becomes live. **Action**: remove the dead dependencies
+(next milestone) or document why they're retained. If session auth is
+introduced, CSRF protection must come with it.
 
 ### H-5 — XSS surface in `api-docs.tsx` (verified safe, no action)
 Read the file: it renders a hardcoded `endpoints` array through plain React
@@ -120,8 +125,17 @@ vector. **Status: closed.**
   file is NOT rejected if ffprobe fails** — a `console.warn` is logged and
   the asset is created with `duration: 0` (`routes.ts:214-219`). So ffprobe
   does not gate acceptance; malformed files are accepted with bogus metadata.
-- **No magic-byte check before ffprobe**. A `.png`-labeled `.exe` would be probed
-  by ffmpeg and rejected, but the probe could be slow or CPU-expensive.
+- **No magic-byte check before ffprobe**. A `.png`-labeled `.exe` is **not
+  rejected** — it is probed, the probe fails, and the file is stored with
+  `duration: 0`. Content stored on the app's origin is a
+  **stored-XSS-via-content-type risk**: the upload endpoint sets
+  `Content-Type` from the DB `mime` column, which is the client-supplied
+  MIME, so an attacker could upload `text/html`-labeled content and get it
+  served from the same origin as the app. Mitigations today: `nosniff` (set
+  on this branch) prevents script execution from a mislabeled file, and the
+  media route serves with the recorded `mime`. A real fix needs
+  magic-byte validation + a hard MIME allowlist + serving uploads from a
+  separate origin. **Next milestone (H-6 fix).**
 - **No per-user quota**, no file-count quota, no upload rate limit (only
   `requestsPerMinute` per key, which is optional).
 - **Filenames are not sanitized for on-disk use** (but the on-disk name is a random

@@ -66,13 +66,13 @@ Analysis (from static code; a live browser profile is the next step):
 
 | Trigger | Cost | Cause |
 |---|---|---|
-| Duplicating 1 clip (`duplicateClip` in `editor-model.ts:30`) | O(1) shallow copy + O(n) React re-render | New `Timeline` object → full React tree re-render |
-| Duplicating N selected clips | O(n) per clip (shallow, not deep clone) | Each duplicate is cheap in JS; the cost is N React re-renders |
+| Duplicating 1 clip (`duplicateClip` in `editor-model.ts:30`) | O(n) — `clips.find()` is a linear scan, then `[...clips, next]` spreads the array | One new `Timeline` object → **one** full React tree re-render (not N) |
+| Duplicating N selected clips | O(n × N) for the loop (each iteration re-finds the clip and spreads the array), then **one** `mutate()` call → one React re-render | JS cost is O(n × N); the re-render cost is a single full-tree pass |
 | Undo/redo of a duplicate | O(n) `JSON.parse(JSON.stringify(...))` | Snapshots stored as full deep clones |
 | Playback | 60 Hz full-tree re-render | `time` prop is read by every child |
 | Drag (move/trim) | `pointermove` → `gesture.update` → `apply()` per move | Every move re-renders the full tree, no memoization |
 
-**My working hypothesis (not yet profiled)**: the dominant cost is React re-rendering, not JS-object cloning (which is shallow). Decoding happens in browser `<video>` elements off the main thread. But a real browser profile is the only way to confirm this — marked **unverified / blocked** until the Performance panel run happens.
+**Working hypothesis (NOT yet profiled)**: the main-thread cost during editing is React re-rendering the full tree per mutation and per pointermove, not JS-object cloning (which is shallow) and not decoding (which the browser `<video>` elements handle off the main thread). **A live browser Performance-panel run is required to confirm — not performed in this checkpoint.**
 
 ## 7. What already works (don't rewrite)
 

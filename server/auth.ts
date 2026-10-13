@@ -19,6 +19,7 @@ import { storage, db } from "./storage";
 import { apiKeys, type ApiKey } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { restrictionsSchema, DEFAULT_RESTRICTIONS, type KeyRestrictions } from "@shared/policy";
+import { getEnv } from "./env";
 
 export type Scope = "read" | "write" | "admin";
 export const SCOPES: Scope[] = ["read", "write", "admin"];
@@ -46,7 +47,7 @@ export async function ensureOwnerKeyExists(): Promise<string> {
   // VIDEOFORGE_BOOTSTRAP_KEY env var. This means the key never appears in
   // logs, files, or URLs, and it survives ephemeral-filesystem restarts
   // (the key hash is re-seeded into the DB on every boot).
-  const bootstrap = process.env.VIDEOFORGE_BOOTSTRAP_KEY?.trim();
+  const bootstrap = getEnv().VIDEOFORGE_BOOTSTRAP_KEY?.trim();
   if (bootstrap) {
     const hash = hashKey(bootstrap);
     const existing = listKeys().find((k) => k.keyHash === hash);

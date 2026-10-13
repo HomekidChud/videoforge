@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { loadStoredKey } from "@/lib/apiKey";
+import { API_BASE } from "@/lib/client-env";
 
-const env = ((import.meta as any).env ?? {}) as Record<string, string | undefined>;
-const API_BASE = (env.VITE_API_BASE ?? "").replace(/\/$/, "");
 const SHORT_TTL_MS = 6 * 60 * 60 * 1000; // 6h, matches server
 const RENEW_AT_MS = 10 * 60 * 1000; // renew when <10 min left
 const RETRY_MS = 30 * 1000; // bounded failure retry

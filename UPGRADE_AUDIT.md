@@ -50,7 +50,8 @@ Limitations:
 "watch this project's unsaved state" feature:
 
 - The editor publishes (`POST /api/live/:id/publish`) its current in-browser
-  timeline every ~400 ms and on every state change.
+  timeline on every state change (throttled to ≥100 ms) plus a 4 s heartbeat
+  interval (`editor.tsx:280`).
 - A master-admin viewer polls `GET /api/live/:id?since=&tsince=` every 100 ms.
 - `syncTimeline` / `diffTimelines` generate an activity feed
   ("Added title", "Edited clip xyz: trim", "Started an export").

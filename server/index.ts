@@ -17,25 +17,33 @@ declare module "http" {
 }
 
 // ---------------------------------------------------------------------------
-// Security headers. Applied to every response. CSP is a default-deny baseline;
-// the Vite dev server adds its own for HMR in development.
+// Security headers. Applied to every response.
+//
+// CSP is deliberately a NON-ENFORCING baseline in this checkpoint — the React
+// client has not yet been exercised under a strict CSP in a real browser
+// (Vite dev injects an inline preamble + HMR websocket; the split-origin
+// Pages deployment needs cross-origin connect-src). A verified, strict CSP
+// belongs to the web-hardening milestone; a policy that might silently break
+// the editor is worse than no CSP in this checkpoint.
+//
+// Report-Only is used for the CSP so we can observe violations without
+// blocking the app. All the other headers are enforcing.
 // ---------------------------------------------------------------------------
 app.use((_req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()");
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
-  res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
   res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader(
-    "Content-Security-Policy",
+    "Content-Security-Policy-Report-Only",
     [
       "default-src 'self'",
       "img-src 'self' data: blob:",
       "media-src 'self' blob: data:",
       "font-src 'self' data:",
-      "style-src 'self' 'unsafe-inline'", // Vite injects inline styles in dev; production build is static
+      "style-src 'self' 'unsafe-inline'",
       "script-src 'self'",
       "connect-src 'self' ws: wss: http: https: blob: data:",
       "worker-src 'self' blob:",
@@ -55,7 +63,7 @@ app.use((_req, res, next) => {
 // ---------------------------------------------------------------------------
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (origin && !isCorsAllowed(origin)) {
+  if (origin && !isCorsAllowed(origin, req.headers.host)) {
     return res.status(403).json({ message: "Origin not allowed." });
   }
   if (origin) res.setHeader("Access-Control-Allow-Origin", origin);

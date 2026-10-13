@@ -20,7 +20,16 @@
 
 set -euo pipefail
 
-DIFF=$(git diff --cached --unified=0 --no-color -- ':!package-lock.json' ':!docs/API.md' 2>/dev/null || true)
+# `package-lock.json` is a machine-generated dependency tree with high-entropy
+# integrity hashes that produce false positives; it is not hand-edited. We
+# don't exclude any hand-authored files — a credential in docs/ is as bad as
+# one in server/.
+# Fail closed if `git diff` itself fails (don't swallow the error).
+if ! DIFF=$(git diff --cached --unified=0 --no-color -- ':!package-lock.json' 2>&1); then
+  echo "❌ pre-commit: git diff failed. Failing closed."
+  echo "$DIFF"
+  exit 1
+fi
 [ -z "$DIFF" ] && exit 0
 
 # Single alternation, POSIX ERE, no lookaheads or inline flags.

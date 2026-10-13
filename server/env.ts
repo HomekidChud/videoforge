@@ -13,11 +13,9 @@ import { z } from "zod";
 // variables explicitly marked "secret" are ever validated for strength; none
 // of them are logged.
 //
-// NOTE: In Zod 4, `.superRefine()` on an `.optional()` does NOT fail when the
-// value is `undefined` (refinements run but their issues are ignored for
-// absent optionals). Cross-field rules (like "CORS_ORIGIN is required in
-// production") therefore live in a single refinement on the whole object,
-// not on the individual optional field.
+// Cross-field rules ("CORS_ORIGIN is required in production", "no localhost in
+// production") live in a single refinement on the whole object rather than
+// on individual optional fields.
 // ---------------------------------------------------------------------------
 
 const isProduction = (d: { NODE_ENV?: string }) => d.NODE_ENV === "production";
@@ -76,21 +74,70 @@ export const envSchema = z
     // Every non-`none` entry must be a valid absolute URL (scheme + host).
     if (cors !== undefined && cors !== "" && cors !== "none") {
       for (const item of cors.split(",").map((s) => s.trim()).filter(Boolean)) {
-        let ok = false;
+        let u: URL;
         try {
-          const u = new URL(item);
-          ok = (u.protocol === "https:" || u.protocol === "http:") && !!u.hostname;
+          u = new URL(item);
         } catch {
-          ok = false;
-        }
-        if (!ok) {
           ctx.issues.push({
             code: "custom",
             input: item,
             path: ["CORS_ORIGIN"],
             message: `CORS_ORIGIN contains an entry that is not a valid absolute URL (expected https://host or http://host). Every non-'none' entry must be an absolute URL.`,
           });
+          continue;
         }
+        if (!(u.protocol === "https:" || u.protocol === "http:") || !u.hostname) {
+          ctx.issues.push({
+            code: "custom",
+            input: item,
+            path: ["CORS_ORIGIN"],
+            message: `CORS_ORIGIN contains an entry that is not a valid http(s) URL.`,
+          });
+          continue;
+        }
+        // In production, plain-HTTP and localhost are not permitted.
+        if (prod) {
+          if (u.protocol === "http:") {
+            ctx.issues.push({
+              code: "custom",
+              input: item,
+              path: ["CORS_ORIGIN"],
+              message: `CORS_ORIGIN entries must be https:// in production (found a http:// entry).`,
+            });
+          }
+          if (u.hostname === "localhost" || u.hostname === "127.0.0.1" || u.hostname === "::1") {
+            ctx.issues.push({
+              code: "custom",
+              input: item,
+              path: ["CORS_ORIGIN"],
+              message: `CORS_ORIGIN entries must not be localhost in production.`,
+            });
+          }
+        }
+      }
+    }
+
+    // In production, APP_ENV must match (no accidental development default).
+    if (prod && ctx.value.APP_ENV === "development") {
+      ctx.issues.push({
+        code: "custom",
+        input: ctx.value.APP_ENV,
+        path: ["APP_ENV"],
+        message: `APP_ENV must be 'production' (or 'staging') when NODE_ENV=production.`,
+      });
+    }
+
+    // Bootstrap key must not be a trivially-guessable value.
+    const boot = ctx.value.VIDEOFORGE_BOOTSTRAP_KEY;
+    if (boot !== undefined) {
+      const isWeak = /^(.)\1+$/.test(boot) || /^(0|1)$/.test(boot) || /^(?:\d+)$/.test(boot) || boot.length < 32;
+      if (isWeak) {
+        ctx.issues.push({
+          code: "custom",
+          input: undefined,
+          path: ["VIDEOFORGE_BOOTSTRAP_KEY"],
+          message: `VIDEOFORGE_BOOTSTRAP_KEY looks weak (repeated/numeric/short). Use 'openssl rand -hex 32'.`,
+        });
       }
     }
 
@@ -174,15 +221,34 @@ export const corsMode = (): CorsMode => {
 
 /**
  * True if this Origin may call the API cross-origin.
+ *
+ * Same-origin requests (browser POST with an Origin header matching the
+ * request's own host, or a non-browser request with no Origin at all) are
+ * always allowed regardless of CORS mode.
  */
-export const isCorsAllowed = (origin: string | undefined): boolean => {
+export function isSameOrigin(origin: string | undefined, host: string | undefined): boolean {
+  if (!origin) return true; // non-browser / no Origin header
+  if (!host) return false;
+  try {
+    const u = new URL(origin);
+    // The Host header is `host[:port]`; compare hostname and default-port
+    // normalisation (http/https on 80/443).
+    const [hostName, hostPort] = host.split(":");
+    const originPort = u.port || (u.protocol === "https:" ? "443" : "80");
+    const expectedPort = hostPort || (u.protocol === "https:" ? "443" : "80");
+    return u.hostname === hostName && originPort === expectedPort;
+  } catch {
+    return false;
+  }
+}
+
+export const isCorsAllowed = (origin: string | undefined, host?: string | undefined): boolean => {
   const mode = corsMode();
   if (mode.kind === "allow-all") return true; // dev-only (boot check rejects unset in prod)
-  // `none` and allowlist both deny cross-origin requests, but same-origin
-  // (no Origin header — curl, server-to-server, same-origin fetch) is fine.
-  if (!origin) return true;
+  if (isSameOrigin(origin, host)) return true; // same-origin / no-Origin never blocked
   if (mode.kind === "deny-all") return false;
-  return mode.list.includes(origin);
+  // origin is defined here — isSameOrigin returned false, which requires origin.
+  return typeof origin === "string" && mode.list.includes(origin);
 };
 
 export const maxUploadBytes = () => getEnv().VIDEOFORGE_MAX_UPLOAD_MB * 1024 * 1024;
