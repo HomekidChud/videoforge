@@ -135,6 +135,45 @@ Response (the plaintext key is shown **once**):
 
 Store that `key` value in your AI agent's credential manager / env var immediately.
 
+### Restricted keys
+
+`POST /api/keys` also accepts a `restrictions` object. Every field is optional and enforced by the server on every request:
+
+```json
+{
+  "label": "Partner site",
+  "scope": "write",
+  "restrictions": {
+    "expiresAt": 1790000000000,
+    "allowedOrigins": ["https://partner.example.com"],
+    "projectIds": ["4ce9003e140d"],
+    "requestsPerMinute": 60,
+    "allowUpload": true,
+    "allowRender": true,
+    "allowDelete": false
+  }
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `expiresAt` | Unix ms. After this time the key returns 401. |
+| `allowedOrigins` | Exact browser origins permitted. Requests carrying a different `Origin` header get 403. This is not an IP allowlist, and non-browser clients send no `Origin`. |
+| `projectIds` | Limit the key to these projects (and their renders). `null` means all projects. |
+| `requestsPerMinute` | Per-key rate limit; exceeding it returns 429. |
+| `allowUpload`, `allowRender`, `allowDelete` | Switch individual capabilities off. |
+
+Admin keys cannot be restricted. `GET /api/auth/me` returns the calling key's label, scope and restrictions, and an admin key cannot revoke itself.
+
+### Project visibility (public or private)
+
+Projects are `private` by default. An admin key can set `"visibility": "public"` with `PUT /api/projects/:id`. A public project exposes only its latest finished render, never the source media, timeline or any key:
+
+- `GET /api/public/projects/:id` returns `{ id, name, updatedAt, renderUrl }` with no authentication.
+- `GET /api/public/projects/:id/renders/:jobId` streams that MP4.
+
+Both return 404 for private projects. The browser viewer lives at `#/share/:id`.
+
 ### Listing keys
 
 ```bash
@@ -192,6 +231,9 @@ Requirements:
 | `PORT` | `5000` | Port to bind. |
 | `NODE_ENV` | `development` | Set to `production` for the built bundle. |
 | `VIDEOFORGE_REQUIRE_UI_AUTH` | unset | Set to `1` to force even the UI to present an API key. |
+| `VIDEOFORGE_BOOTSTRAP_KEY` | unset | Seeds the owner (admin) key on first boot instead of generating one. |
+| `VIDEOFORGE_MAX_UPLOAD_MB` | `2048` | Maximum size of a single upload. |
+| `VIDEOFORGE_FONT` | system default | Path to a `.ttf` used for burned-in text. |
 
 ### Security notes
 
@@ -271,6 +313,10 @@ Delete an asset and its underlying file. **Scope: `write`.**
 
 Stream the raw media file. **Scope: `read`.** Range requests are supported (`Accept-Ranges: bytes`).
 
+### `GET /api/media/:id/waveform`
+
+Peak envelope for audio and video assets, used by the timeline to draw waveforms. **Scope: `read`.**
+
 ### `GET /api/media/:id/thumb`
 
 Get a JPEG thumbnail (first video frame, or scaled-down image). Generated on-demand and cached. **Scope: `read`.**
@@ -342,6 +388,10 @@ Supported `op` values:
 | `move_clip` | `clipId`, `start` | Reposition the clip on the timeline. |
 | `set_audio` | `clipId`, `volume` (0..1), `muted` (bool) | Adjust per-clip audio. |
 | `add_text` | `clipId`, `text` | Attach a burned-in text caption to a clip. |
+| `add_text_clip` | `text`, `start`, `duration`, plus style fields (`x`, `y`, `textSize`, `textColor`, `textBg`, `fadeIn`, `fadeOut`, `opacity`) | Add a standalone title on the overlay track (no asset needed). |
+| `update_clip` | `clipId` plus any clip field to change | Patch speed, fades, `filter` (`none\|mono\|sepia\|vivid\|cool\|warm\|faded`), `brightness`, `contrast`, `saturation`, `opacity`, `x`, `y`, `scale`, text style, timing. Values equal to defaults reset the field. |
+| `split_clip` | `clipId`, `at` (timeline seconds) | Split a clip in two at least 0.1s from either edge. |
+| `set_project` | `fps`?, `resolution`? | Change project frame rate or canvas size. |
 | `reorder` | `order: [clipId, clipId, ...]` | Reorder clips on the timeline. Must include every clip id exactly once. Video clips get re-spaced sequentially. |
 
 Example — append a clip:

@@ -13,10 +13,12 @@ gated behind **API keys with permission scopes** (`read`, `write`, `admin`).
 
 ## Features
 
-- Upload video / audio / image via drag-and-drop or file picker
-- Multi-track timeline (video, audio, overlay) with click-to-add
-- Trim (in/out point), reorder, per-clip volume/mute, text captions burned into output
-- Render via FFmpeg → downloadable MP4, with job polling and progress
+- **Studio editor:** live compositing preview, three-lane timeline (titles and overlays, video, audio) with drag-to-move across lanes, trim handles, snapping, zoom, audio waveforms, split, duplicate, ripple delete, undo/redo, autosave and keyboard shortcuts
+- Per-clip speed, fades, colour filters, brightness/contrast/saturation, opacity, position and scale, picture-in-picture, standalone titles with size, colour and background box
+- Upload video / audio / image via drag-and-drop or file picker (streamed, up to 2 GB by default)
+- Render via FFmpeg to a downloadable MP4, with progress and an in-app preview
+- **Developer platform** (`#/platform`): generate and revoke API keys, restrict them by expiry, rate limit, browser origin, project, and upload/render/delete rights, and set each project public or private
+- Public share page (`#/share/:id`) that shows only the latest finished render of a public project
 - Full HTTP API (`/api/...`) for programmatic use by other AI agents or scripts
 - **API keys with scopes** (`read` / `write` / `admin`) so you can grant an AI agent
   exactly the permissions it needs and revoke them later
@@ -51,6 +53,8 @@ curl -X POST http://localhost:5000/api/keys \
 - `read` — list/read/download only
 - `write` — read + upload media, edit projects, trigger renders
 - `admin` — everything, including creating & revoking other keys
+
+Keys can also carry restrictions (expiry, allowed origins, project list, requests per minute, upload/render/delete switches). Generate them from the Developer platform page or via `POST /api/keys`. Projects are private unless an admin key makes them public.
 
 For the full reference (permissions table, every endpoint, scope matrix,
 deployment, security notes) see **[docs/API.md](docs/API.md)**.
