@@ -25,9 +25,10 @@ export default function ApiKeyPage() {
     setSubmitting(true);
     setError(null);
 
-    // Validate the key by hitting a read-only endpoint.
+    // Validate the key against the identity endpoint (any valid key, any
+    // permissions) so a keys:manage-only key can still sign in.
     try {
-      const res = await fetch(`${API_BASE}/api/media`, {
+      const res = await fetch(`${API_BASE}/api/auth/whoami`, {
         headers: { Authorization: `Bearer ${trimmed}` },
       });
       if (!res.ok) {

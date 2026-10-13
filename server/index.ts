@@ -5,6 +5,9 @@ import { registerRoutes } from "./routes";
 import { registerKeyRoutes, ensureOwnerKeyExists } from "./auth";
 import { serveStatic } from "./static";
 import { createServer } from "node:http";
+import { db } from "./storage";
+import { keyUsage } from "@shared/schema";
+import { and, eq } from "drizzle-orm";
 
 const app = express();
 const httpServer = createServer(app);
@@ -69,6 +72,24 @@ app.use((req, res, next) => {
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
+      // update the in-flight usage log row (written by the auth middleware
+      // with status=0) to the ACTUAL response status code so usage logs show
+      // real 2xx/4xx/5xx, not a placeholder.
+      const key = (req as any).apiKey;
+      if (key && typeof key === "object" && typeof key.id === "string" && !key.id.startsWith("st:")) {
+        try {
+          // use drizzle's parameterized update (safe against injection)
+          db.update(keyUsage)
+            .set({ status: res.statusCode })
+            .where(and(
+              eq(keyUsage.keyId, key.id),
+              eq(keyUsage.method, req.method),
+              eq(keyUsage.path, path.split("?")[0]),
+              eq(keyUsage.status, 0)
+            ))
+            .run();
+        } catch (e) { console.error("[usage-status] update failed:", e); /* non-fatal */ }
+      }
       // strip querystring so signed media tokens never appear in logs
       const safePath = path.split("?")[0];
       let logLine = `${req.method} ${safePath} ${res.statusCode} in ${duration}ms`;

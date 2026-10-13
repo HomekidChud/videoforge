@@ -134,7 +134,8 @@ export default function DashboardPage() {
   });
 
   const updateKeyM = useMutation({
-    mutationFn: async (id: string, payload: any) => api<KeyRecord>("PUT", `/api/keys/${id}`, payload),
+    mutationFn: async (vars: { id: string; patch: any }) =>
+      api<KeyRecord>("PUT", `/api/keys/${vars.id}`, vars.patch),
     onSuccess: () => {
       setEditingKey(null);
       qc.invalidateQueries({ queryKey: ["/api/keys"] });
@@ -342,7 +343,7 @@ export default function DashboardPage() {
         <EditKeyDialog
           k={editingKey}
           onClose={() => setEditingKey(null)}
-          onSubmit={(patch) => updateKeyM.mutate(editingKey.id, patch)}
+          onSubmit={(patch) => updateKeyM.mutate({ id: editingKey.id, patch })}
           pending={updateKeyM.isPending}
           error={updateKeyM.isError ? String((updateKeyM.error as any)?.message ?? "") : null}
         />
@@ -631,7 +632,11 @@ function EditKeyDialog({
 }) {
   const [label, setLabel] = useState(k.label);
   const [perms, setPerms] = useState<string[]>(k.permissions);
-  const [expiresDays, setExpiresDays] = useState(0);
+  // expiry: "unchanged" keeps whatever is stored; "never" clears; "days" extends
+  const [expiryMode, setExpiryMode] = useState<"unchanged" | "never" | "days">(
+    k.expiresAt > 0 ? "unchanged" : "unchanged"
+  );
+  const [expiresDays, setExpiresDays] = useState(7);
   const [allowedOrigins, setAllowedOrigins] = useState(k.allowedOrigins.join("\n"));
   const [allowedIps, setAllowedIps] = useState(k.allowedIps.join(", "));
   const [rateLimit, setRateLimit] = useState(k.rateLimitPerHour);
@@ -641,12 +646,14 @@ function EditKeyDialog({
     setPerms((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
 
   const submit = () => {
-    const nowLeft = k.expiresAt > Date.now() ? (k.expiresAt - Date.now()) / (24 * 60 * 60 * 1000) : 0;
-    const newExpires = expiresDays > 0 ? Date.now() + expiresDays * 24 * 60 * 60 * 1000 : 0;
+    let expiresAt: number | undefined;
+    if (expiryMode === "never") expiresAt = 0;
+    else if (expiryMode === "days") expiresAt = Date.now() + expiresDays * 24 * 60 * 60 * 1000;
+    // "unchanged" → omit from patch
     onSubmit({
       label: label.trim(),
       permissions: perms,
-      expiresAt: expiresDays === 0 && nowLeft > 0 ? k.expiresAt : newExpires, // keep existing if untouched
+      ...(expiresAt !== undefined ? { expiresAt } : {}),
       allowedOrigins: allowedOrigins.split(/[\n,]/).map((s) => s.trim()).filter(Boolean),
       allowedIps: allowedIps.split(/[\n,]/).map((s) => s.trim()).filter(Boolean),
       rateLimitPerHour: rateLimit,
@@ -688,10 +695,26 @@ function EditKeyDialog({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs text-zinc-400 mb-1">
-              Expires in days (0 = never{k.expiresAt > 0 ? `; current: ${fmtDate(k.expiresAt)}` : ""})
-            </label>
-            <input type="number" min={0} className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm" value={expiresDays} onChange={(e) => setExpiresDays(Math.max(0, parseInt(e.target.value || "0", 10)))} />
+            <label className="block text-xs text-zinc-400 mb-1">Expiry</label>
+            <select
+              className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm"
+              value={expiryMode}
+              onChange={(e) => setExpiryMode(e.target.value as any)}
+            >
+              <option value="unchanged">
+                unchanged{k.expiresAt > 0 ? ` (${fmtDate(k.expiresAt)})` : " (never)"}
+              </option>
+              <option value="never">never expires</option>
+              <option value="days">set to N days from now</option>
+            </select>
+            {expiryMode === "days" && (
+              <input
+                type="number" min={1}
+                className="mt-1 w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-sm"
+                value={expiresDays}
+                onChange={(e) => setExpiresDays(Math.max(1, parseInt(e.target.value || "1", 10)))}
+              />
+            )}
           </div>
           <div>
             <label className="block text-xs text-zinc-400 mb-1">Rate limit (req/hour)</label>

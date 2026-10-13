@@ -22,7 +22,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { db, logKeyUsage, keyUsageStats } from "./storage";
+import { db, logKeyUsage, keyUsageStats, usageOverview } from "./storage";
 import { apiKeys, type ApiKey, type Permission, PERMISSIONS, scopeToPermissions } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
@@ -52,8 +52,13 @@ function parsePermissions(s: string): Permission[] {
 }
 
 export function keyPermissions(k: ApiKey): Permission[] {
-  const perms = parsePermissions(k.permissions);
-  if (perms.length > 0) return perms;
+  // ONLY fall back to legacy scope if the key predates the permissions
+  // column (i.e. has never had explicit permissions set). An explicitly
+  // empty permission list means the key has no permissions.
+  if (k.permissions && k.permissions !== "[]" && k.permissions.trim() !== "") {
+    return parsePermissions(k.permissions);
+  }
+  // legacy: derive from scope
   return scopeToPermissions(k.scope as Scope);
 }
 
@@ -108,17 +113,54 @@ function matchCidr(ip: string, cidr: string): boolean {
   return ((a & mask) >>> 0) === ((b & mask) >>> 0);
 }
 
-export function ipAllowed(req: Request, allowedIps: string[]): boolean {
-  if (allowedIps.length === 0) return true; // unrestricted
-  // Prefer X-Forwarded-For if present (render proxy). Fall back to socket.
-  let ip = req.socket.remoteAddress ?? "";
-  const xff = req.headers["x-forwarded-for"];
-  if (typeof xff === "string" && xff.length > 0) {
-    // Take the FIRST hop (original client) — trust only the proxy-added header
-    ip = xff.split(",")[0].trim();
+/**
+ * Client-IP determination for allowlist checks.
+ *
+ * `X-Forwarded-For` is UNTRUSTED by default: any client can send it to
+ * spoof an arbitrary IP. Only when the direct socket peer is a trusted
+ * proxy (i.e. the deployment's reverse proxy / load balancer) do we read
+ * the header. Trusted proxies are set via:
+ *   - VIDEOFORGE_TRUSTED_PROXIES env var (comma-separated IPs or CIDRs)
+ *   - defaults to an empty list (no XFF trust)
+ *   - set to "*" to trust any direct peer (NOT recommended outside a
+ *     closed network where the server is only reachable through a proxy)
+ *
+ * Express's own `req.ip` with `app.set("trust proxy", ...)` is used when
+ * configured; otherwise we fall back to the socket address.
+ */
+const TRUSTED_PROXIES = (process.env.VIDEOFORGE_TRUSTED_PROXIES ?? "")
+  .split(",").map((s) => s.trim()).filter(Boolean);
+
+export function clientIp(req: Request): string {
+  // If Express's trust proxy is set (see server/index.ts), req.ip is correct
+  if ((req as any).app?.settings?.trustProxyFn && typeof (req as any).ip === "string" && (req as any).ip.length > 0) {
+    let ip = (req as any).ip;
+    if (ip.startsWith("::ffff:")) ip = ip.slice(7);
+    if (ip === "::1") ip = "127.0.0.1";
+    return ip;
   }
+
+  let ip = req.socket.remoteAddress ?? "";
   if (ip.startsWith("::ffff:")) ip = ip.slice(7);
   if (ip === "::1") ip = "127.0.0.1";
+
+  // If we're configured to trust the direct peer as a proxy, read XFF.
+  // Take the FIRST hop (original client) — that's what the proxy recorded.
+  const trustAll = TRUSTED_PROXIES.includes("*");
+  const peerTrusted = trustAll || TRUSTED_PROXIES.some((entry) => entry === ip || matchCidr(ip, entry));
+  if (peerTrusted) {
+    const xff = req.headers["x-forwarded-for"];
+    if (typeof xff === "string" && xff.length > 0) {
+      const first = xff.split(",")[0].trim();
+      if (first) return first;
+    }
+  }
+  return ip;
+}
+
+export function ipAllowed(req: Request, allowedIps: string[]): boolean {
+  if (allowedIps.length === 0) return true; // unrestricted
+  const ip = clientIp(req);
   return allowedIps.some((entry) => entry === ip || matchCidr(ip, entry));
 }
 
@@ -341,9 +383,27 @@ function resolveBearerKey(req: Request): { key: ApiKey; raw: string } | null {
 }
 
 // Record usage (fire-and-forget)
+/**
+ * Record a usage event against a key (admission time, in auth middleware).
+ *
+ * Rate limiting / quota / display counters are all incremented here at
+ * admission time (BEFORE the response completes), so a single in-flight
+ * request is counted against its own rate limit immediately — the log row
+ * is written with status=0 ("in-flight") and the response-finish hook in
+ * server/index.ts updates it to the real status code.
+ *
+ * This means:
+ *  - each request is logged exactly once (one row per request)
+ *  - rate limit = N/hour actually blocks the (N+1)-th request
+ *  - the log row shows the real response status (2xx/4xx/5xx) after
+ *    the finish hook updates it
+ */
 function recordUsage(req: Request, key: ApiKey) {
-  logKeyUsage(key.id, req.method, req.path, 0);
+  // increment counter + lastUsedAt (for rate limit + quota + display)
   db.update(apiKeys).set({ requestsUsed: (key.requestsUsed ?? 0) + 1, lastUsedAt: Date.now() }).where(eq(apiKeys.id, key.id)).run();
+  // write a log row with status=0 ("in-flight"); the finish hook in
+  // server/index.ts will update this row to the actual response status.
+  logKeyUsage(key.id, req.method, req.path, 0);
 }
 
 function sendErr(res: Response, r: { status: number; message: string }, retryAfter = false) {
@@ -401,12 +461,16 @@ export function requireScope(scope: "read" | "write") {
  * Media-route gate: accepts EITHER a valid Bearer API key OR a signed ?st=
  * media token bound to the specific resource in the URL path. Both paths
  * enforce ALL restrictions (expiry, IP, origin, rate limit, quota).
+ * `kind` determines the required permission:
+ *   - "asset"  → media:read (raw binary + thumbnail)
+ *   - "render" → renders:download (rendered MP4)
  */
 export function requireMediaAccess(kind: "asset" | "render") {
+  const requiredPerm: Permission = kind === "asset" ? "media:read" : "renders:download";
   return function (req: Request, res: Response, next: NextFunction) {
     const authHeader = typeof req.headers.authorization === "string" ? req.headers.authorization : undefined;
 
-    // Path 1: Bearer API key — must have media:read (or project read)
+    // Path 1: Bearer API key
     if (authHeader) {
       const m = authHeader.match(/^Bearer\s+(.+)$/i);
       if (!m) return res.status(401).json({ message: "Unauthorized: Authorization header must be 'Bearer <api-key>'." });
@@ -415,9 +479,9 @@ export function requireMediaAccess(kind: "asset" | "render") {
       const check = checkRestrictions(req, key);
       if (!check.ok) { recordUsage(req, key); return sendErr(res, check, true); }
       const perms = effectivePermissions(key);
-      if (!perms.includes("media:read") && !perms.includes("projects:read")) {
+      if (!perms.includes(requiredPerm)) {
         recordUsage(req, key);
-        return res.status(403).json({ message: `Forbidden: this key lacks read access to media.` });
+        return res.status(403).json({ message: `Forbidden: this key does not have '${requiredPerm}'.` });
       }
       recordUsage(req, key);
       (req as any).apiKey = key;
@@ -432,10 +496,17 @@ export function requireMediaAccess(kind: "asset" | "render") {
       });
     }
     const resourceId = String(req.params.id);
-    if (!verifyMediaToken(st, resourceId, req)) {
-      return res.status(401).json({ message: "Unauthorized: invalid or expired media token for this resource." });
+    // verifyMediaToken now checks signature FIRST, then key restrictions + required permission
+    const tok = verifyMediaToken(st, resourceId, req);
+    // --- media token path: after verifyMediaToken succeeds, record usage ---
+  // (verifyMediaToken does NOT record usage itself — the caller does, once,
+  // so quota/rate-limit accounting is consistent between Bearer and token paths)
+  // recordUsage(req, tok.key) is called below in the `if (tok.ok)` branch
+  if (!tok.ok) {
+      return res.status(401).json({ message: `Unauthorized: ${tok.message}` });
     }
-    (req as any).apiKey = { id: `st:${resourceId}`, label: "media token", scope: "read" as Scope, revoked: 0, keyHash: "", createdAt: 0 };
+    recordUsage(req, tok.key); // only count after successful auth
+    (req as any).apiKey = tok.key;
     return next();
   };
 }
@@ -471,38 +542,26 @@ export function issueMediaToken(resourceId: string, issuingKeyId: string): { tok
 }
 
 /**
- * Verify a signed media token for a specific resource, rechecking the issuing
- * key's restrictions (revoked, expired, IP/origin, rate limit, quota) at use
- * time so a token can never bypass key-level restrictions.
+ * Verify a signed media token for a specific resource. Returns a structured
+ * result. Signature is checked FIRST (before any usage recording), so forged
+ * tokens cannot be used to exhaust a key's quota. The issuing key's
+ * restrictions (revoked, expired, IP/origin, rate limit, quota) AND its
+ * current permissions are re-checked at use time, so a token can never
+ * outlive the key's current authority.
  */
-export function verifyMediaToken(token: string, resourceId: string, req: Request): boolean {
+export function verifyMediaToken(
+  token: string,
+  resourceId: string,
+  req: Request
+): { ok: true; key: ApiKey } | { ok: false; message: string } {
   const parts = token.split(".");
-  if (parts.length !== 4) return false;
+  if (parts.length !== 4) return { ok: false, message: "malformed token" };
   const [expiresStr, boundResource, issuingKeyId, sig] = parts;
-  if (boundResource !== resourceId) return false;
+  if (boundResource !== resourceId) return { ok: false, message: "token is not valid for this resource" };
   const expiresAt = parseInt(expiresStr, 10);
-  if (!isFinite(expiresAt) || expiresAt < Date.now()) return false;
+  if (!isFinite(expiresAt) || expiresAt < Date.now()) return { ok: false, message: "token expired" };
 
-  const issuingKey = findKeyById(issuingKeyId);
-  if (!issuingKey) return false;
-  if (issuingKey.revoked) return false;
-  if (isExpired(issuingKey)) return false;
-
-  const r = keyRestrictions(issuingKey);
-  if (!ipAllowed(req, r.allowedIps)) return false;
-  if (!originAllowed(req, r.allowedOrigins)) return false;
-  if (r.rateLimitPerHour > 0) {
-    const s = keyUsageStats(issuingKey.id);
-    if (s.requestsLastHour >= r.rateLimitPerHour) return false;
-  }
-  if (r.quotaTotal > 0) {
-    const s = keyUsageStats(issuingKey.id);
-    if (s.requestsTotal >= r.quotaTotal) return false;
-  }
-
-  // record usage against the issuing key so rate limiting is consistent
-  recordUsage(req, issuingKey);
-
+  // --- signature check (before any usage recording) ---
   const payload = `read:${boundResource}:${issuingKeyId}:${expiresAt}`;
   const expected = crypto
     .createHmac("sha256", shortTokenSecret())
@@ -510,7 +569,40 @@ export function verifyMediaToken(token: string, resourceId: string, req: Request
     .digest("base64url");
   const a = Buffer.from(sig, "base64url");
   const b = Buffer.from(expected, "base64url");
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+  if (!(a.length === b.length && crypto.timingSafeEqual(a, b))) {
+    return { ok: false, message: "invalid signature" };
+  }
+
+  // --- issuing key checks ---
+  const issuingKey = findKeyById(issuingKeyId);
+  if (!issuingKey) return { ok: false, message: "issuing key deleted" };
+  if (issuingKey.revoked) return { ok: false, message: "issuing key revoked" };
+  if (isExpired(issuingKey)) return { ok: false, message: "issuing key expired" };
+
+  // --- permission re-check ---
+  const perms = effectivePermissions(issuingKey);
+  // media tokens are read-only; require the relevant read permission
+  // (media:read for asset raw/thumb; renders:download for render output)
+  // Accept either the media or render read permission since the token may
+  // be used on both kinds of resources.
+  if (!perms.includes("media:read") && !perms.includes("renders:download")) {
+    return { ok: false, message: "issuing key no longer has read access" };
+  }
+
+  // --- restriction re-check (IP/origin, rate limit, quota) ---
+  const r = keyRestrictions(issuingKey);
+  if (!ipAllowed(req, r.allowedIps)) return { ok: false, message: "request from disallowed IP" };
+  if (!originAllowed(req, r.allowedOrigins)) return { ok: false, message: "request from disallowed origin" };
+  if (r.rateLimitPerHour > 0) {
+    const s = keyUsageStats(issuingKey.id);
+    if (s.requestsLastHour >= r.rateLimitPerHour) return { ok: false, message: "rate limit exceeded" };
+  }
+  if (r.quotaTotal > 0) {
+    const s = keyUsageStats(issuingKey.id);
+    if (s.requestsTotal >= r.quotaTotal) return { ok: false, message: "quota exhausted" };
+  }
+
+  return { ok: true, key: issuingKey };
 }
 
 // ---------------------------------------------------------------------------
@@ -545,6 +637,22 @@ export function serializeKey(k: ApiKey) {
 // ---------------------------------------------------------------------------
 
 export function registerKeyRoutes(app: Express) {
+  // --- identity check (any valid key, any permissions) ---
+  // Used by the login page to validate a key without requiring any specific
+  // permission, so a keys:manage-only key can still sign in.
+  app.get("/api/auth/whoami", function (req, res) {
+    const authHeader = typeof req.headers.authorization === "string" ? req.headers.authorization : undefined;
+    if (!authHeader) return res.status(401).json({ message: "missing Authorization header" });
+    const m = authHeader.match(/^Bearer\s+(.+)$/i);
+    if (!m) return res.status(401).json({ message: "Authorization must be 'Bearer <api-key>'" });
+    const key = findKeyByHash(hashKey(m[1]));
+    if (!key) return res.status(401).json({ message: "unknown or revoked key" });
+    const check = checkRestrictions(req, key);
+    if (!check.ok) return res.status(check.status).json({ message: check.message });
+    recordUsage(req, key);
+    res.json(serializeKey(key));
+  });
+
   // Issue a short-lived (6h, capped at key expiry) read-only media token.
   app.get("/api/auth/media-token/:resourceId", requirePermission("media:read"), (req, res) => {
     const resourceId = String(req.params.resourceId);
@@ -566,12 +674,32 @@ export function registerKeyRoutes(app: Express) {
     res.json({ permissions: PERMISSIONS });
   });
 
+  // Usage overview (admin only). Registered BEFORE the :id routes so Express
+  // never tries to look up "usage-overview" as a key id.
+  app.get("/api/keys/usage-overview", requireAdmin, (_req, res) => {
+    res.json(usageOverview());
+  });
+
+  // Get the owner key plaintext (admin only) — only available before the
+  // OWNER_KEY.txt file is deleted, so the owner can always recover it.
+  app.get("/api/keys/owner", requireAdmin, (_req, res) => {
+    const pt = getOwnerKeyPlaintext();
+    if (!pt) {
+      return res.status(404).json({ message: "Owner key plaintext is no longer available in memory. Create a new key instead." });
+    }
+    res.json({ key: pt });
+  });
+
   // Get one key with recent usage.
   app.get("/api/keys/:id", requireAdmin, (req, res) => {
     const k = findKeyById(String(req.params.id));
     if (!k) return res.status(404).json({ message: "key not found" });
     res.json(serializeKey(k));
   });
+
+  // NOTE: /api/keys/usage-overview and /api/keys/owner are registered ABOVE
+  // the parameterized :id routes (see the earlier registration block), so
+  // Express never tries to look them up as a key id.
 
   app.get("/api/keys/:id/usage", requireAdmin, (req, res) => {
     const k = findKeyById(String(req.params.id));
@@ -630,7 +758,9 @@ export function registerKeyRoutes(app: Express) {
       if (keyKind(existing) === "public") {
         perms = perms.filter((p: Permission) => p === "media:read" || p === "projects:read" || p === "renders:download");
       }
-      if (perms.length > 0) patch.permissions = JSON.stringify(perms);
+      // Explicit empty list is ALLOWED (locks the key out), it's not ignored —
+      // an empty permissions array means the key has no permissions at all.
+      patch.permissions = JSON.stringify(perms);
     }
     if (typeof expiresAt === "number") patch.expiresAt = Math.max(0, Math.round(expiresAt));
     if (Array.isArray(allowedOrigins)) patch.allowedOrigins = JSON.stringify(allowedOrigins.filter((s: any) => typeof s === "string"));
@@ -675,21 +805,5 @@ export function registerKeyRoutes(app: Express) {
       key: rotated.key,
       record: serializeKey(rotated.record),
     });
-  });
-
-  // Usage overview (admin only).
-  app.get("/api/keys/usage-overview", requireAdmin, (_req, res) => {
-    const { usageOverview } = require("./storage");
-    res.json(usageOverview());
-  });
-
-  // Get the owner key plaintext (admin only) — only available before the
-  // OWNER_KEY.txt file is deleted, so the owner can always recover it.
-  app.get("/api/keys/owner", requireAdmin, (_req, res) => {
-    const pt = getOwnerKeyPlaintext();
-    if (!pt) {
-      return res.status(404).json({ message: "Owner key plaintext is no longer available in memory. Create a new key instead." });
-    }
-    res.json({ key: pt });
   });
 }

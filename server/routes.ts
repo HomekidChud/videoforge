@@ -9,7 +9,7 @@ import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import Busboy from "busboy";
 import type { Asset, Clip, Project, Timeline } from "@shared/schema";
-import { requireScope, requireMediaAccess } from "./auth";
+import { requirePermission, requireMediaAccess } from "./auth";
 
 const MEDIA_DIR = path.resolve("data/media");
 const OUTPUT_DIR = path.resolve("data/renders");
@@ -187,7 +187,9 @@ function buildFilterGraph(project: Project, assets: Map<string, Asset>): { input
       const hu = clip.hue ?? 0;
       if (b !== 1 || ct !== 1 || sa !== 1 || hu !== 0) {
         const parts: string[] = [];
-        if (b !== 1) parts.push(`eq=brightness=${(b - 1).toFixed(3)}:contrast=${ct.toFixed(3)}:saturation=${sa.toFixed(3)}`);
+        if (b !== 1 || ct !== 1 || sa !== 1) {
+          parts.push(`eq=brightness=${(b - 1).toFixed(3)}:contrast=${ct.toFixed(3)}:saturation=${sa.toFixed(3)}`);
+        }
         if (hu !== 0) parts.push(`hue=h=${(hu * Math.PI / 180).toFixed(4)}`);
         if (parts.length > 0) {
           filters.push(`${v}${parts.join(",")}[vf${i}];`);
@@ -202,13 +204,6 @@ function buildFilterGraph(project: Project, assets: Map<string, Asset>): { input
         v = `[vb${i}]`;
       }
 
-      // scale (zoom)
-      const sc = Math.max(0.05, Math.min(4, clip.scale ?? 1));
-      if (sc !== 1) {
-        filters.push(`${v}scale=iw*${sc.toFixed(4)}:ih*${sc.toFixed(4)}[vs${i}];`);
-        v = `[vs${i}]`;
-      }
-
       // rotate + flips
       const rot = clip.rotate ?? 0;
       if (clip.flipH) {
@@ -220,9 +215,10 @@ function buildFilterGraph(project: Project, assets: Map<string, Asset>): { input
         v = `[vfv${i}]`;
       }
       if (Math.abs(rot) > 0.5) {
+        // rotate filter takes RADIANS. rot is in degrees, so convert once.
         const rad = (rot * Math.PI / 180).toFixed(4);
         // rotate around center, keep same dimensions
-        filters.push(`${v}rotate=${rad}*PI/180:fillcolor=black@0:ow=iw:oh=ih[vr${i}];`);
+        filters.push(`${v}rotate=${rad}:fillcolor=black@0:ow=iw:oh=ih[vr${i}];`);
         v = `[vr${i}]`;
       }
 
@@ -240,7 +236,23 @@ function buildFilterGraph(project: Project, assets: Map<string, Asset>): { input
       filters.push(`${v}scale=${outW}:${outH}:force_original_aspect_ratio=decrease,pad=${outW}:${outH}:(ow-iw)/2:(oh-ih)/2:color=black,format=yuv420p,setsar=1[vcf${i}];`);
       v = `[vcf${i}]`;
 
-      // video fades (relative to clip's own local time — we shift the clip by start via overlay timing, so fade is on the clip's trimmed output)
+      // zoom — applied AFTER fit-to-canvas so the zoom is relative to the
+      // already-fitted frame and doesn't get cancelled by the fit step.
+      // Zooming past 1.0 crops the edges; zooming below 1.0 shows the
+      // canvas background around a shrunken frame.
+      const sc = Math.max(0.05, Math.min(4, clip.scale ?? 1));
+      if (sc !== 1) {
+        if (sc > 1) {
+          // zoom in: scale up, then center-crop back to outW x outH
+          filters.push(`${v}scale=iw*${sc.toFixed(4)}:ih*${sc.toFixed(4)},crop=${outW}:${outH}:(iw-${outW})/2:(ih-${outH})/2[vsc${i}];`);
+        } else {
+          // zoom out: scale down, then pad back to outW x outH
+          filters.push(`${v}scale=iw*${sc.toFixed(4)}:ih*${sc.toFixed(4)},pad=${outW}:${outH}:(ow-iw)/2:(oh-ih)/2:color=black[vsc${i}];`);
+        }
+        v = `[vsc${i}]`;
+      }
+
+      // video fades (relative to clip's own local time)
       const fi = Math.max(0, Math.min(vDur / 2, clip.fadeIn ?? 0));
       const fo = Math.max(0, Math.min(vDur / 2, clip.fadeOut ?? 0));
       if (fi > 0) {
@@ -251,6 +263,18 @@ function buildFilterGraph(project: Project, assets: Map<string, Asset>): { input
         filters.push(`${v}fade=t=out:st=${Math.max(0, vDur - fo).toFixed(2)}:d=${fo.toFixed(2)}[vfo${i}];`);
         v = `[vfo${i}]`;
       }
+
+      // --- CRITICAL: shift the clip's PTS so it plays at clip.start ---
+      // Without this, `overlay enable='between(t,start,start+dur)' only controls
+      // VISIBILITY — the clip's internal timestamps still play from 0, so a clip
+      // at start=4s would already be 4s into its own playback when it appears.
+      // Shifting PTS by +start (in seconds, expressed as start/TB in TB units)
+      // makes the clip's timeline align with the canvas.
+      // NOTE: use ${clip.start}/TB (start seconds expressed in TB units), NOT
+      // start*fps/TB — PTS is already in TB units, so adding start/TB adds exactly
+      // `start` seconds regardless of the codec timebase.
+      filters.push(`${v}setpts=PTS+${clip.start.toFixed(6)}/TB[vst${i}];`);
+      v = `[vst${i}]`;
 
       // overlay onto background at clip.start
       const newBg = `bg${i}`;
@@ -278,10 +302,15 @@ function buildFilterGraph(project: Project, assets: Map<string, Asset>): { input
       if (!isImage) {
         filters.push(`${a}atrim=start=${clip.inPoint.toFixed(3)}:end=${clip.outPoint.toFixed(3)},asetpts=PTS-STARTPTS[atr${i}];`);
         a = `[atr${i}]`;
-        // speed
+        // speed — atempo directly multiplies playback rate (speed=2 → atempo=2).
+        // NOTE: atempo only supports 0.5–2.0 per stage; chain if needed.
         if (speed !== 1) {
-          const at = Math.min(2, Math.max(0.5, 1 / speed));
-          filters.push(`${a}atempo=${at.toFixed(4)}[asp${i}];`);
+          const chain: string[] = [];
+          let remaining = speed;
+          while (remaining > 2) { chain.push("atempo=2.0"); remaining /= 2; }
+          while (remaining < 0.5) { chain.push("atempo=0.5"); remaining *= 2; }
+          chain.push(`atempo=${Math.min(2, Math.max(0.5, remaining)).toFixed(4)}`);
+          filters.push(`${a}${chain.join(",")}[asp${i}];`);
           a = `[asp${i}]`;
         }
       }
@@ -308,7 +337,9 @@ function buildFilterGraph(project: Project, assets: Map<string, Asset>): { input
       filters.push(`${a}adelay=${Math.round(clip.start * 1000)}|${Math.round(clip.start * 1000)}[adl${i}];`);
       a = `[adl${i}]`;
       const newBase = `amix${aMixCount}`;
-      filters.push(`[${aBase}]${a}amix=inputs=2:duration=first:dropout_transition=0,apad=whole_dur=${totalDur}[${newBase}];`);
+      // normalize=0 so amix does NOT attenuate inputs (would otherwise halve
+      // the volume of everything already mixed, each time a new clip is mixed in).
+      filters.push(`[${aBase}]${a}amix=inputs=2:duration=first:normalize=0,apad=whole_dur=${totalDur}[${newBase}];`);
       aBase = newBase;
       aMixCount++;
     }
@@ -403,7 +434,7 @@ export async function registerRoutes(
   app.get("/api/health", (_req, res) => res.json({ ok: true, service: "videoforge-api", version: 1 }));
 
   // ---------- media upload (multipart) ----------
-  app.post("/api/media/upload", requireScope("write"), (req, res) => {
+  app.post("/api/media/upload", requirePermission("media:upload"), (req, res) => {
     if (!req.headers["content-type"]?.includes("multipart/form-data")) {
       return res.status(400).json({ message: "multipart/form-data required" });
     }
@@ -461,17 +492,17 @@ export async function registerRoutes(
   });
 
   // ---------- media list / detail ----------
-  app.get("/api/media", requireScope("read"), (_req, res) => {
+  app.get("/api/media", requirePermission("media:read"), (_req, res) => {
     res.json({ assets: storage.listAssets().map(assetToJSON) });
   });
 
-  app.get("/api/media/:id", requireScope("read"), (req, res) => {
+  app.get("/api/media/:id", requirePermission("media:read"), (req, res) => {
     const a = storage.getAsset(String(req.params.id));
     if (!a) return res.status(404).json({ message: "asset not found" });
     res.json(assetToJSON(a));
   });
 
-  app.delete("/api/media/:id", requireScope("write"), (req, res) => {
+  app.delete("/api/media/:id", requirePermission("media:delete"), (req, res) => {
     const a = storage.getAsset(String(req.params.id));
     if (!a) return res.status(404).json({ message: "asset not found" });
     try { fs.unlinkSync(a.storagePath); } catch { /* ignore */ }
@@ -520,7 +551,7 @@ export async function registerRoutes(
   });
 
   // ---------- projects ----------
-  app.get("/api/projects", requireScope("read"), (_req, res) => {
+  app.get("/api/projects", requirePermission("projects:read"), (_req, res) => {
     res.json({
       projects: storage.listProjects().map((p) => ({
         id: p.id,
@@ -532,7 +563,7 @@ export async function registerRoutes(
     });
   });
 
-  app.get("/api/projects/:id", requireScope("read"), (req, res) => {
+  app.get("/api/projects/:id", requirePermission("projects:read"), (req, res) => {
     const p = storage.getProject(String(req.params.id));
     if (!p) return res.status(404).json({ message: "project not found" });
     res.json({
@@ -544,7 +575,7 @@ export async function registerRoutes(
     });
   });
 
-  app.post("/api/projects", requireScope("write"), (req, res) => {
+  app.post("/api/projects", requirePermission("projects:write"), (req, res) => {
     try {
       const { name, timeline } = req.body || {};
       if (!name || typeof name !== "string") {
@@ -579,7 +610,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/projects/:id", requireScope("write"), (req, res) => {
+  app.put("/api/projects/:id", requirePermission("projects:write"), (req, res) => {
     try {
       const p = storage.getProject(String(req.params.id));
       if (!p) return res.status(404).json({ message: "project not found" });
@@ -611,7 +642,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/projects/:id", requireScope("write"), (req, res) => {
+  app.delete("/api/projects/:id", requirePermission("projects:write"), (req, res) => {
     const ok = storage.deleteProject(String(req.params.id));
     if (!ok) return res.status(404).json({ message: "project not found" });
     res.json({ deleted: true });
@@ -619,7 +650,7 @@ export async function registerRoutes(
 
   // ---------- timeline edit (agents) ----------
   // atomic ops that operate on a project's timeline in one call
-  app.post("/api/projects/:id/timeline/ops", requireScope("write"), (req, res) => {
+  app.post("/api/projects/:id/timeline/ops", requirePermission("timeline:edit"), (req, res) => {
     const p = storage.getProject(String(req.params.id));
     if (!p) return res.status(404).json({ message: "project not found" });
     const timeline = parseTimeline(p.timelineJson);
@@ -802,7 +833,7 @@ export async function registerRoutes(
   });
 
   // ---------- render ----------
-  app.post("/api/renders", requireScope("write"), (req, res) => {
+  app.post("/api/renders", requirePermission("renders:create"), (req, res) => {
     const { projectId } = req.body || {};
     if (!projectId) return res.status(400).json({ message: "projectId required" });
     const p = storage.getProject(projectId);
@@ -823,12 +854,12 @@ export async function registerRoutes(
     res.status(201).json({ jobId, status: "queued", statusUrl: `/api/renders/${jobId}` });
   });
 
-  app.get("/api/renders", requireScope("read"), (req, res) => {
+  app.get("/api/renders", requirePermission("renders:download"), (req, res) => {
     const pid = req.query.projectId as string | undefined;
     res.json({ jobs: storage.listRenderJobs(pid) });
   });
 
-  app.get("/api/renders/:id", requireScope("read"), (req, res) => {
+  app.get("/api/renders/:id", requirePermission("renders:download"), (req, res) => {
     const j = storage.getRenderJob(String(req.params.id));
     if (!j) return res.status(404).json({ message: "job not found" });
     res.json(j);
