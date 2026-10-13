@@ -57,6 +57,7 @@ export const projects = sqliteTable("projects", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   timelineJson: text("timeline_json").notNull(),
+  visibility: text("visibility").notNull().default("private"),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
@@ -81,6 +82,8 @@ export const apiKeys = sqliteTable("api_keys", {
   label: text("label").notNull(),
   scope: text("scope").notNull(), // read | write | admin
   keyHash: text("key_hash").notNull(),
+  restrictionsJson: text("restrictions_json").notNull().default("{}"),
+  lastUsedAt: integer("last_used_at"),
   revoked: integer("revoked").notNull().default(0),
   createdAt: integer("created_at").notNull(),
 });
@@ -132,6 +135,7 @@ export const insertProjectSchema = createInsertSchema(projects).pick({
   id: true,
   name: true,
   timelineJson: true,
+  visibility: true,
   createdAt: true,
   updatedAt: true,
 });

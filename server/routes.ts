@@ -9,7 +9,7 @@ import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import Busboy from "busboy";
 import type { Asset, Clip, Project, Timeline } from "@shared/schema";
-import { requireScope, requireMediaAccess } from "./auth";
+import { requireScope, requireMediaAccess, projectAllowed, assetAllowed } from "./auth";
 
 const MEDIA_DIR = path.resolve("data/media");
 const OUTPUT_DIR = path.resolve("data/renders");
@@ -261,6 +261,24 @@ export async function registerRoutes(
   // ---------- health ----------
   app.get("/api/health", (_req, res) => res.json({ ok: true, service: "videoforge-api", version: 1 }));
 
+  // Public sharing is read-only and opt-in. Never expose source assets or keys.
+  app.get("/api/public/projects/:id", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const p = storage.getProject(String(req.params.id));
+    if (!p || p.visibility !== "public") return res.status(404).json({ message: "This project is private or unavailable." });
+    const job = storage.listRenderJobs(p.id).filter(j => j.status === "done").sort((a,b) => b.createdAt - a.createdAt)[0];
+    res.json({ id: p.id, name: p.name, updatedAt: p.updatedAt, renderUrl: job ? `/api/public/projects/${p.id}/renders/${job.id}` : null });
+  });
+  app.get("/api/public/projects/:id/renders/:jobId", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const p = storage.getProject(String(req.params.id));
+    const job = storage.getRenderJob(String(req.params.jobId));
+    if (!p || p.visibility !== "public" || !job || job.projectId !== p.id || job.status !== "done") return res.status(404).json({ message: "Render unavailable." });
+    const file = path.join(OUTPUT_DIR, `${job.id}.mp4`);
+    if (!fs.existsSync(file)) return res.status(404).json({ message: "Rendered file missing." });
+    res.sendFile(file);
+  });
+
   // ---------- media upload (multipart) ----------
   app.post("/api/media/upload", requireScope("write"), (req, res) => {
     if (!req.headers["content-type"]?.includes("multipart/form-data")) {
@@ -320,8 +338,8 @@ export async function registerRoutes(
   });
 
   // ---------- media list / detail ----------
-  app.get("/api/media", requireScope("read"), (_req, res) => {
-    res.json({ assets: storage.listAssets().map(assetToJSON) });
+  app.get("/api/media", requireScope("read"), (req, res) => {
+    res.json({ assets: storage.listAssets().filter(a => assetAllowed((req as any).apiKey, a.id)).map(assetToJSON) });
   });
 
   app.get("/api/media/:id", requireScope("read"), (req, res) => {
@@ -379,11 +397,12 @@ export async function registerRoutes(
   });
 
   // ---------- projects ----------
-  app.get("/api/projects", requireScope("read"), (_req, res) => {
+  app.get("/api/projects", requireScope("read"), (req, res) => {
     res.json({
-      projects: storage.listProjects().map((p) => ({
+      projects: storage.listProjects().filter(p => projectAllowed((req as any).apiKey, p.id)).map((p) => ({
         id: p.id,
         name: p.name,
+        visibility: p.visibility,
         timeline: parseTimeline(p.timelineJson),
         createdAt: p.createdAt,
         updatedAt: p.updatedAt,
@@ -397,6 +416,7 @@ export async function registerRoutes(
     res.json({
       id: p.id,
       name: p.name,
+      visibility: p.visibility,
       timeline: parseTimeline(p.timelineJson),
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,
@@ -429,6 +449,7 @@ export async function registerRoutes(
       res.status(201).json({
         id: p.id,
         name: p.name,
+        visibility: p.visibility,
         timeline: t,
         createdAt: p.createdAt,
         updatedAt: p.updatedAt,
@@ -444,6 +465,11 @@ export async function registerRoutes(
       if (!p) return res.status(404).json({ message: "project not found" });
       const { name, timeline } = req.body || {};
       const patch: any = { updatedAt: now() };
+      if (req.body.visibility !== undefined) {
+        if ((req as any).apiKey.scope !== "admin") return res.status(403).json({ message: "Only an admin can change project visibility." });
+        if (!["private", "public"].includes(req.body.visibility)) return res.status(400).json({ message: "Visibility must be private or public." });
+        patch.visibility = req.body.visibility;
+      }
       if (typeof name === "string") patch.name = name.slice(0, 200);
       if (timeline) {
         if (!Array.isArray(timeline.clips)) {
@@ -461,6 +487,7 @@ export async function registerRoutes(
       res.json({
         id: updated!.id,
         name: updated!.name,
+        visibility: updated!.visibility,
         timeline: parseTimeline(updated!.timelineJson),
         createdAt: updated!.createdAt,
         updatedAt: updated!.updatedAt,
@@ -572,6 +599,7 @@ export async function registerRoutes(
       res.json({
         id: updated!.id,
         name: updated!.name,
+        visibility: updated!.visibility,
         timeline,
         createdAt: updated!.createdAt,
         updatedAt: updated!.updatedAt,
@@ -605,7 +633,7 @@ export async function registerRoutes(
 
   app.get("/api/renders", requireScope("read"), (req, res) => {
     const pid = req.query.projectId as string | undefined;
-    res.json({ jobs: storage.listRenderJobs(pid) });
+    res.json({ jobs: storage.listRenderJobs(pid).filter(j => projectAllowed((req as any).apiKey, j.projectId)) });
   });
 
   app.get("/api/renders/:id", requireScope("read"), (req, res) => {

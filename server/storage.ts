@@ -64,6 +64,15 @@ sqlite.exec(`
   );
 `);
 
+// Additive migrations preserve existing projects and keys on upgrade.
+for (const [table, column, definition] of [
+  ["projects", "visibility", "TEXT NOT NULL DEFAULT 'private'"],
+  ["api_keys", "restrictions_json", "TEXT NOT NULL DEFAULT '{}'"],
+  ["api_keys", "last_used_at", "INTEGER"],
+]) {
+  const columns = sqlite.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (!columns.some(c => c.name === column)) sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
 
 export interface IStorage {
   // assets

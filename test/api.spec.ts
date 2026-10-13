@@ -322,6 +322,50 @@ async function main() {
     assert(r.status === 401, "UI cookie blocked when REQUIRE_UI_AUTH=1");
   }
 
+  // --- 16. Key restrictions, visibility, public sharing
+  console.log("16) Restrictions + public/private projects");
+  {
+    const mk = async (body: any) => (await jsonFetch("/api/keys", { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify(body) }));
+    const scoped = await mk({ label: "scoped", scope: "write", restrictions: { projectIds: [projectId], allowDelete: false, allowUpload: false } });
+    assert(scoped.status === 201, `scoped key created, got ${scoped.status}`);
+    const SC = { Authorization: `Bearer ${scoped.body.key}` } as any;
+    const other = await jsonFetch("/api/projects", { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ name: "other", timeline: { clips: [] } }) });
+    assert((await jsonFetch(`/api/projects/${projectId}`, { headers: SC })).status === 200, "restricted key reads allowed project");
+    assert((await jsonFetch(`/api/projects/${other.body.id}`, { headers: SC })).status === 403, "restricted key cannot read other project");
+    assert((await jsonFetch(`/api/projects/${projectId}`, { method: "DELETE", headers: SC })).status === 403, "delete-disabled key cannot delete");
+    assert((await jsonFetch(`/api/projects/${projectId}`, { method: "PUT", headers: SC, body: JSON.stringify({ visibility: "public" }) })).status === 403, "non-admin cannot publish");
+    const list = await jsonFetch("/api/projects", { headers: SC });
+    assert(list.body.projects.length === 1, "restricted key only lists allowed projects");
+
+    assert((await mk({ label: "past", scope: "read", restrictions: { expiresAt: Date.now() - 1000 } })).status === 400, "past expiry rejected");
+    assert((await mk({ label: "bad", scope: "read", restrictions: { allowedOrigins: ["https://x.test/path"] } })).status === 400, "origin with path rejected");
+    const adminRestricted = await mk({ label: "admin restricted", scope: "admin", restrictions: { allowDelete: false } });
+    assert(adminRestricted.status === 400, "admin keys cannot be restricted");
+
+    const limited = await mk({ label: "limited", scope: "read", restrictions: { requestsPerMinute: 2, allowedOrigins: ["https://app.example"] } });
+    const LH = { Authorization: `Bearer ${limited.body.key}` } as any;
+    assert((await jsonFetch("/api/projects", { headers: LH })).status === 403, "origin allowlist blocks missing origin");
+    const ok1 = await jsonFetch("/api/projects", { headers: { ...LH, Origin: "https://app.example" } });
+    const ok2 = await jsonFetch("/api/projects", { headers: { ...LH, Origin: "https://app.example" } });
+    const blocked = await jsonFetch("/api/projects", { headers: { ...LH, Origin: "https://app.example" } });
+    assert(ok1.status === 200 && ok2.status === 200 && blocked.status === 429, `rate limit applies, got ${ok1.status}/${ok2.status}/${blocked.status}`);
+
+    assert((await jsonFetch(`/api/public/projects/${projectId}`)).status === 404, "private project is not public");
+    const pub = await jsonFetch(`/api/projects/${projectId}`, { method: "PUT", headers: AUTH_ADMIN, body: JSON.stringify({ visibility: "public" }) });
+    assert(pub.status === 200 && pub.body.visibility === "public", "admin can publish project");
+    const shared = await jsonFetch(`/api/public/projects/${projectId}`);
+    assert(shared.status === 200 && shared.body.renderUrl?.includes(jobId), "public endpoint returns latest render");
+    assert(!JSON.stringify(shared.body).includes("assetId"), "public endpoint does not expose timeline");
+    const video = await fetch(`${H}${shared.body.renderUrl}`);
+    assert(video.status === 200 && video.headers.get("content-type")?.includes("video/mp4"), "public render streams without a key");
+    await jsonFetch(`/api/projects/${projectId}`, { method: "PUT", headers: AUTH_ADMIN, body: JSON.stringify({ visibility: "private" }) });
+    assert((await fetch(`${H}${shared.body.renderUrl}`)).status === 404, "making private revokes public render");
+
+    const revokeSelf = await jsonFetch(`/api/keys/${scoped.body.record.id}`, { method: "DELETE", headers: AUTH_ADMIN });
+    assert(revokeSelf.status === 200, "scoped key can be revoked");
+    assert((await jsonFetch(`/api/projects/${projectId}`, { headers: SC })).status === 403, "revoked scoped key blocked");
+  }
+
   console.log(`\n${passed} passed, ${failed} failed`);
   killServer();
   if (failed > 0) process.exit(1);

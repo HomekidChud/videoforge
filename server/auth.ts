@@ -18,6 +18,7 @@ import path from "node:path";
 import { storage, db } from "./storage";
 import { apiKeys, type ApiKey } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { restrictionsSchema, DEFAULT_RESTRICTIONS, type KeyRestrictions } from "@shared/policy";
 
 export type Scope = "read" | "write" | "admin";
 export const SCOPES: Scope[] = ["read", "write", "admin"];
@@ -103,12 +104,13 @@ export function listKeys(): ApiKey[] {
   return db.select().from(apiKeys).all();
 }
 
-export function createKey(label: string, scope: Scope): { key: string; record: ApiKey } {
+export function createKey(label: string, scope: Scope, restrictions: KeyRestrictions = DEFAULT_RESTRICTIONS): { key: string; record: ApiKey } {
   const key = newKey("vf_live_");
   const record = db.insert(apiKeys)
     .values({
       id: crypto.randomUUID(),
       label: label.slice(0, 200),
+      restrictionsJson: JSON.stringify(restrictions),
       scope,
       keyHash: hashKey(key),
       revoked: 0,
@@ -181,6 +183,9 @@ export function verifyMediaToken(token: string, resourceId: string): boolean {
   const issuingKey = findKeyById(issuingKeyId);
   if (!issuingKey) return false;
   if (issuingKey.revoked) return false;
+  const policy = keyRestrictions(issuingKey);
+  if (policy.expiresAt && policy.expiresAt <= Date.now()) return false;
+  if (!resourceAllowed(issuingKey, resourceId)) return false;
   if (!(["read", "write", "admin"] as Scope[]).includes(issuingKey.scope as Scope)) {
     return false;
   }
@@ -204,55 +209,82 @@ export function verifyMediaToken(token: string, resourceId: string): boolean {
  * Does NOT accept ?st= media tokens — those are only valid on specific
  * media/download routes (see requireMediaAccess).
  */
-export function requireScope(scope: "read" | "write") {
+export function keyRestrictions(key: ApiKey): KeyRestrictions {
+  return restrictionsSchema.parse(JSON.parse(key.restrictionsJson || "{}"));
+}
+export function projectAllowed(key: ApiKey, id: string): boolean {
+  const ids = keyRestrictions(key).projectIds;
+  return ids === null || ids.includes(id);
+}
+export function assetAllowed(key: ApiKey, id: string): boolean {
+  const ids = keyRestrictions(key).projectIds;
+  if (ids === null) return true;
+  return storage.listProjects().some(p => ids.includes(p.id) && JSON.parse(p.timelineJson).clips.some((c: any) => c.assetId === id));
+}
+function resourceAllowed(key: ApiKey, id: string): boolean {
+  const render = storage.getRenderJob(id);
+  return render ? projectAllowed(key, render.projectId) : assetAllowed(key, id);
+}
+export function keyMetadata(k: ApiKey) {
+  return { id: k.id, label: k.label, scope: k.scope, revoked: !!k.revoked, createdAt: k.createdAt, lastUsedAt: k.lastUsedAt, restrictions: keyRestrictions(k) };
+}
+const rateWindows = new Map<string, { start: number; count: number }>();
+function enforcePolicy(key: ApiKey, req: Request, res: Response): boolean {
+  const p = keyRestrictions(key);
+  const deny = (message: string, status = 403) => { res.status(status).json({ message }); return false; };
+  if (p.expiresAt && p.expiresAt <= Date.now()) return deny("This API key has expired.");
+  // This is a browser origin allowlist, not a substitute for server-side authentication.
+  if (p.allowedOrigins.length && (!req.headers.origin || !p.allowedOrigins.includes(req.headers.origin))) return deny("Origin is not allowed by this API key.");
+  if (req.method === "DELETE" && !p.allowDelete) return deny("Deletion is disabled for this API key.");
+  if (req.path === "/api/media/upload" && !p.allowUpload) return deny("Uploads are disabled for this API key.");
+  if (req.method === "POST" && req.path === "/api/renders" && !p.allowRender) return deny("Rendering is disabled for this API key.");
+  if (p.projectIds !== null) {
+    if ((req.path === "/api/projects" && req.method === "POST") || req.path === "/api/media/upload" || (req.path.startsWith("/api/media/") && req.method === "DELETE")) return deny("Project-restricted keys cannot create projects, upload, or delete shared media.");
+    const projectMatch = req.path.match(/^\/api\/projects\/([^/]+)/);
+    const mediaMatch = req.path.match(/^\/api\/media\/([^/]+)/);
+    const renderMatch = req.path.match(/^\/api\/renders\/([^/]+)/);
+    if (projectMatch && !projectAllowed(key, projectMatch[1])) return deny("Project is outside this API key's restrictions.");
+    if (mediaMatch && !assetAllowed(key, mediaMatch[1])) return deny("Media is outside this API key's restrictions.");
+    if (renderMatch && !projectAllowed(key, storage.getRenderJob(renderMatch[1])?.projectId || "")) return deny("Render is outside this API key's restrictions.");
+    if (req.path === "/api/renders" && req.method === "POST" && !projectAllowed(key, req.body?.projectId)) return deny("Project is outside this API key's restrictions.");
+    const tokenMatch = req.path.match(/^\/api\/auth\/media-token\/([^/]+)/);
+    if (tokenMatch && !resourceAllowed(key, tokenMatch[1])) return deny("Resource is outside this API key's restrictions.");
+    // Block injecting another project's asset via project JSON or agent ops.
+    const refs = req.body?.timeline?.clips?.map((c: any) => c.assetId).filter(Boolean) || [];
+    if (req.body?.args?.assetId) refs.push(req.body.args.assetId);
+    if (refs.some((id: string) => !assetAllowed(key, id))) return deny("Timeline contains media outside this API key's restrictions.");
+  }
+  if (p.requestsPerMinute) {
+    const now = Date.now();
+    let w = rateWindows.get(key.id);
+    if (!w || now - w.start >= 60000) {
+      // Bound memory even if many short-lived keys are issued.
+      rateWindows.forEach((old, id) => { if (now - old.start >= 60000) rateWindows.delete(id); });
+      w = { start: now, count: 0 }; rateWindows.set(key.id, w);
+    }
+    if (w.count >= p.requestsPerMinute) { res.setHeader("Retry-After", Math.ceil((60000 - (now - w.start)) / 1000)); return deny("API key rate limit exceeded.", 429); }
+    w.count++;
+  }
+  // Throttle metadata writes while keeping request-rate tracking in memory.
+  if (!key.lastUsedAt || Date.now() - key.lastUsedAt > 60000) db.update(apiKeys).set({ lastUsedAt: Date.now() }).where(eq(apiKeys.id, key.id)).run();
+  return true;
+}
+export function requireScope(scope: Scope) {
   return function (req: Request, res: Response, next: NextFunction) {
-    const authHeader = typeof req.headers.authorization === "string" ? req.headers.authorization : undefined;
-
-    if (!authHeader) {
-      return res.status(401).json({
-        message: "Unauthorized: missing Authorization header. Use 'Authorization: Bearer <api-key>'. See /#/api-docs for how to get a key.",
-      });
-    }
-
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ message: "Unauthorized: missing Authorization header. Use 'Authorization: Bearer <api-key>'." });
     const m = authHeader.match(/^Bearer\s+(.+)$/i);
-    if (!m) {
-      return res.status(401).json({ message: "Unauthorized: Authorization header must be 'Bearer <api-key>'." });
-    }
-    const hash = hashKey(m[1]);
-    const key = findKeyByHash(hash);
-    if (!key) {
-      return res.status(401).json({ message: "Unauthorized: unknown or revoked API key." });
-    }
-    if (key.revoked) {
-      return res.status(403).json({ message: "Forbidden: this key has been revoked." });
-    }
-    const required: Scope[] = scope === "read" ? ["read", "write", "admin"] : ["write", "admin"];
-    if (!required.includes(key.scope as Scope)) {
-      return res.status(403).json({
-        message: `Forbidden: this key has scope '${key.scope}' but this action requires '${scope}'.`,
-      });
-    }
+    if (!m) return res.status(401).json({ message: "Authorization must be Bearer <api-key>." });
+    const key = findKeyByHash(hashKey(m[1]));
+    if (!key) return res.status(401).json({ message: "Unknown API key." });
+    if (key.revoked) return res.status(403).json({ message: "This API key has been revoked." });
+    if (SCOPES.indexOf(key.scope as Scope) < SCOPES.indexOf(scope)) return res.status(403).json({ message: `Forbidden: this key has scope '${key.scope}' but this action requires '${scope}'.` });
+    if (!enforcePolicy(key, req, res)) return;
     (req as any).apiKey = key;
     next();
   };
 }
-
-/** Admin-only gate (used for /api/keys/*). */
-export function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  const authHeader = typeof req.headers.authorization === "string" ? req.headers.authorization : undefined;
-  if (!authHeader) {
-    return res.status(401).json({ message: "Unauthorized: missing Authorization header." });
-  }
-  const m = authHeader.match(/^Bearer\s+(.+)$/i);
-  if (!m) return res.status(401).json({ message: "Unauthorized: Authorization header must be 'Bearer <api-key>'." });
-  const key = findKeyByHash(hashKey(m[1]));
-  if (!key || key.revoked) return res.status(401).json({ message: "Unauthorized: unknown or revoked API key." });
-  if (key.scope !== "admin") {
-    return res.status(403).json({ message: `Forbidden: only admin keys can manage other keys (this key has scope '${key.scope}').` });
-  }
-  (req as any).apiKey = key;
-  next();
-}
+export const requireAdmin = requireScope("admin");
 
 // ---------------------------------------------------------------------------
 // Express route registration (admin key management)
@@ -267,19 +299,7 @@ export function requireMediaAccess(kind: "asset" | "render") {
   return function (req: Request, res: Response, next: NextFunction) {
     const authHeader = typeof req.headers.authorization === "string" ? req.headers.authorization : undefined;
 
-    // Path 1: Bearer API key (same check as requireScope("read"))
-    if (authHeader) {
-      const m = authHeader.match(/^Bearer\s+(.+)$/i);
-      if (!m) return res.status(401).json({ message: "Unauthorized: Authorization header must be 'Bearer <api-key>'." });
-      const key = findKeyByHash(hashKey(m[1]));
-      if (!key) return res.status(401).json({ message: "Unauthorized: unknown or revoked API key." });
-      if (key.revoked) return res.status(403).json({ message: "Forbidden: this key has been revoked." });
-      if (!(["read", "write", "admin"] as Scope[]).includes(key.scope as Scope)) {
-        return res.status(403).json({ message: `Forbidden: this key has scope '${key.scope}' but this action requires 'read'.` });
-      }
-      (req as any).apiKey = key;
-      return next();
-    }
+    if (authHeader) return requireScope("read")(req, res, next);
 
     // Path 2: signed ?st= media token, bound to the exact resource in the URL
     const st = typeof req.query?.st === "string" ? String(req.query.st) : undefined;
@@ -292,6 +312,8 @@ export function requireMediaAccess(kind: "asset" | "render") {
     if (!verifyMediaToken(st, resourceId)) {
       return res.status(401).json({ message: "Unauthorized: invalid or expired media token for this resource." });
     }
+    const issuingKey = findKeyById(st.split(".")[2])!;
+    if (!enforcePolicy(issuingKey, req, res)) return;
     (req as any).apiKey = { id: `st:${resourceId}`, label: "media token", scope: "read" as Scope, revoked: 0, keyHash: "", createdAt: 0 };
     return next();
   };
@@ -311,42 +333,25 @@ export function registerKeyRoutes(app: Express) {
     const issuingKeyId = String((req as any).apiKey?.id ?? "");
     res.json({ token: issueMediaToken(resourceId, issuingKeyId), expiresAt: Date.now() + SHORT_TOKEN_TTL_MS });
   });
-  // List all keys (admin only). Never returns the key itself, only metadata.
-  app.get("/api/keys", requireAdmin, (_req, res) => {
-    res.json({
-      keys: listKeys().map((k) => ({
-        id: k.id,
-        label: k.label,
-        scope: k.scope,
-        revoked: !!k.revoked,
-        createdAt: k.createdAt,
-      })),
-    });
-  });
-
-  // Create a new key with a chosen scope. Returns the plaintext ONCE.
+  app.get("/api/auth/me", requireScope("read"), (req, res) => res.json(keyMetadata((req as any).apiKey)));
+  app.get("/api/keys", requireAdmin, (_req, res) => res.json({ keys: listKeys().map(keyMetadata) }));
   app.post("/api/keys", requireAdmin, (req, res) => {
-    const { label, scope } = req.body || {};
-    if (!label || typeof label !== "string") return res.status(400).json({ message: "label (string) required" });
-    if (!SCOPES.includes(scope)) {
-      return res.status(400).json({ message: `scope must be one of: ${SCOPES.join(", ")}` });
-    }
-    const { key, record } = createKey(label, scope as Scope);
-    res.status(201).json({
-      message: "Save this key now — it is shown only once.",
-      key, // ← plaintext, shown once
-      record: {
-        id: record.id,
-        label: record.label,
-        scope: record.scope,
-        revoked: !!record.revoked,
-        createdAt: record.createdAt,
-      },
-    });
+    try {
+      const { label, scope } = req.body || {};
+      if (typeof label !== "string" || !label.trim()) return res.status(400).json({ message: "Key name is required." });
+      if (!SCOPES.includes(scope)) return res.status(400).json({ message: "Choose read, write, or admin scope." });
+      const restrictions = restrictionsSchema.parse(req.body.restrictions || {});
+      if (scope === "admin" && JSON.stringify(restrictions) !== JSON.stringify(DEFAULT_RESTRICTIONS)) return res.status(400).json({ message: "Admin keys cannot be restricted. Use read or write for restricted keys." });
+      if (restrictions.expiresAt && restrictions.expiresAt <= Date.now()) return res.status(400).json({ message: "Expiry must be in the future." });
+      if (restrictions.projectIds?.some(id => !storage.getProject(id))) return res.status(400).json({ message: "One or more projects do not exist." });
+      const { key, record } = createKey(label.trim(), scope, restrictions);
+      res.status(201).json({ message: "Save this key now — it is shown only once.", key, record: keyMetadata(record) });
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
 
   // Revoke a key.
   app.delete("/api/keys/:id", requireAdmin, (req, res) => {
+    if (String(req.params.id) === (req as any).apiKey.id) return res.status(400).json({ message: "You cannot revoke the key you are currently using. Sign in with another admin key first." });
     const ok = revokeKey(String(req.params.id));
     if (!ok) return res.status(404).json({ message: "key not found" });
     res.json({ revoked: true });
