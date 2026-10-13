@@ -34,24 +34,25 @@ export function invalidateMediaTokens(): void {
 
 /**
  * Fetch (or reuse) a scoped media token for one resource, deduplicated.
- * Captures the current credential generation so a request that started before
- * a key change never writes into the (cleared) cache.
+ * `resourceType` is "asset" or "render" and is bound into the signed token
+ * server-side so an asset token cannot be used on a render download URL.
  */
-export async function fetchMediaToken(resourceId: string): Promise<TokenEntry | null> {
-  const cached = tokenCache.get(resourceId);
+export async function fetchMediaToken(resourceType: "asset" | "render", resourceId: string): Promise<TokenEntry | null> {
+  const cacheKey = `${resourceType}:${resourceId}`;
+  const cached = tokenCache.get(cacheKey);
   if (cached && cached.expiresAt - Date.now() > RENEW_AT_MS) return cached;
 
-  const existing = inflight.get(resourceId);
+  const existing = inflight.get(cacheKey);
   if (existing) return existing;
 
   // Bound retries: don't re-attempt more than once per RETRY_MS on failure.
-  const last = lastAttempt.get(resourceId) ?? 0;
+  const last = lastAttempt.get(cacheKey) ?? 0;
   if (Date.now() - last < RETRY_MS) return null;
-  lastAttempt.set(resourceId, Date.now());
+  lastAttempt.set(cacheKey, Date.now());
 
   const myGeneration = credentialGeneration;
   const p = fetch(
-    `${API_BASE}/api/auth/media-token/${encodeURIComponent(resourceId)}`,
+    `${API_BASE}/api/auth/media-token/${resourceType}/${encodeURIComponent(resourceId)}`,
     { headers: authHeaders() },
   )
     .then(async (res) => {
@@ -64,7 +65,7 @@ export async function fetchMediaToken(resourceId: string): Promise<TokenEntry | 
       };
       // Only write if the credential hasn't changed since we started the request.
       if (credentialGeneration === myGeneration) {
-        tokenCache.set(resourceId, entry);
+        tokenCache.set(cacheKey, entry);
       }
       return entry;
     })
@@ -72,12 +73,12 @@ export async function fetchMediaToken(resourceId: string): Promise<TokenEntry | 
     .finally(() => {
       // Only clear our own in-flight slot — a newer generation's request
       // would have replaced the map entry, so don't delete theirs.
-      if (inflight.get(resourceId) === p) {
-        inflight.delete(resourceId);
+      if (inflight.get(cacheKey) === p) {
+        inflight.delete(cacheKey);
       }
     });
 
-  inflight.set(resourceId, p);
+  inflight.set(cacheKey, p);
   return p;
 }
 
@@ -88,6 +89,10 @@ export async function fetchMediaToken(resourceId: string): Promise<TokenEntry | 
  *
  *   const mediaUrl = useAuthedMediaUrl();
  *   mediaUrl("abc123", "/api/media/abc123/thumb");
+ *
+ * The resource TYPE is inferred from the URL path ("/api/media/..." → asset,
+ * "/api/renders/..." → render) so the correct token is used and an asset
+ * token cannot be replayed on a render download URL.
  *
  * The builder reads only from cache and returns "" when no token is available,
  * so callers can gate rendering and avoid requests that would 401.
@@ -106,7 +111,8 @@ export function useAuthedMediaUrl(): (resourceId: string, url: string) => string
   }, []);
 
   return useCallback((resourceId: string, url: string) => {
-    const entry = tokenCache.get(resourceId);
+    const resourceType: "asset" | "render" = url.startsWith("/api/renders") ? "render" : "asset";
+    const entry = tokenCache.get(`${resourceType}:${resourceId}`);
     // return "" for missing OR expired entries
     if (!entry || entry.expiresAt <= Date.now()) return "";
     const joiner = url.includes("?") ? "&" : "?";
@@ -118,16 +124,19 @@ export function useAuthedMediaUrl(): (resourceId: string, url: string) => string
  * Component/hook-level lifecycle: register the resources currently displayed
  * so tokens are fetched and renewed proactively via effects (not during render).
  *
- *   useMediaTokenLifecycle(["asset1", "asset2", renderJobId]);
+ *   useMediaTokenLifecycle([["asset", "asset1"], ["asset", "asset2"], ["render", renderJobId]]);
  *
  * Renewal schedules itself recursively (each successful renewal schedules the
  * next one), failures are bounded via RETRY_MS, and the effect depends on the
  * current credential version so a key change restarts the whole lifecycle
  * (timers cleared, cache re-fetched for the new credential).
  */
-export function useMediaTokenLifecycle(resourceIds: (string | null | undefined)[]): void {
+export function useMediaTokenLifecycle(resources: Array<readonly ["asset" | "render", string] | null | undefined>): void {
   // join the ids and drop nulls; recompute when the caller's ids change
-  const idsKey = resourceIds.filter(Boolean).join(",");
+  const idsKey = resources
+    .filter((r): r is readonly ["asset" | "render", string] => Array.isArray(r) && r.length === 2)
+    .map((r) => `${r[0]}:${r[1]}`)
+    .join(",");
   // depend on the current credential generation so a key change restarts us
   const [credentialVersion, setCredentialVersion] = useState(0);
 
@@ -138,26 +147,26 @@ export function useMediaTokenLifecycle(resourceIds: (string | null | undefined)[
   }, []);
 
   useEffect(() => {
-    const ids = idsKey ? idsKey.split(",") : [];
-    if (ids.length === 0) return;
+    const list = idsKey ? idsKey.split(",") : [];
+    if (list.length === 0) return;
 
     let cancelled = false;
     const timers: ReturnType<typeof setTimeout>[] = [];
 
     // fetch a token and schedule the NEXT renewal if we got one —
     // recursive so renewals chain until cancelled.
-    async function renew(id: string, depth: number = 0) {
+    async function renew(type: "asset" | "render", id: string, depth: number = 0) {
       if (cancelled) return;
       const MAX_DEPTH = 1000; // hard bound so a bug can't loop forever
       if (depth > MAX_DEPTH) return;
-      const e = await fetchMediaToken(id);
+      const e = await fetchMediaToken(type, id);
       if (cancelled) return;
       if (e) {
         window.dispatchEvent(new CustomEvent("vf-token-update"));
         const msLeft = e.expiresAt - Date.now();
         if (msLeft > RENEW_AT_MS) {
           const t = setTimeout(() => {
-            renew(id, depth + 1).catch(() => {});
+            renew(type, id, depth + 1).catch(() => {});
           }, msLeft - RENEW_AT_MS);
           timers.push(t);
         }
@@ -166,8 +175,9 @@ export function useMediaTokenLifecycle(resourceIds: (string | null | undefined)[
       // do nothing more here — the lifecycle hook re-fires on next ids/credential change
     }
 
-    for (const id of ids) {
-      renew(id).catch(() => {});
+    for (const entry of list) {
+      const [type, id] = entry.split(":") as ["asset" | "render", string];
+      renew(type, id).catch(() => {});
     }
 
     return () => {

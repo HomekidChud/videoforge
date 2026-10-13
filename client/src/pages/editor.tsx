@@ -108,8 +108,14 @@ export default function EditorPage() {
 
   const assets = assetsData?.assets ?? [];
 
-  // Token lifecycle for visible resources (thumbnails, preview, render download)
-  useMediaTokenLifecycle([...assets.map((a) => a.id), previewAssetId, renderJobId]);
+  // Token lifecycle for visible resources (thumbnails, preview, render download).
+  // Tokens are typed: assets use "asset", the render job uses "render" — a token
+  // minted for one type cannot be replayed on the other's URL.
+  useMediaTokenLifecycle([
+    ...assets.map((a) => ["asset", a.id] as const),
+    ...(previewAssetId ? [["asset", previewAssetId] as const] : []),
+    ...(renderJobId ? [["render", renderJobId] as const] : []),
+  ]);
 
   // -------------------------------------------------------------- mutations
 
@@ -251,6 +257,9 @@ export default function EditorPage() {
           data-testid="input-project-name"
         />
         <div className="flex-1" />
+        <a href="#/dashboard" className="text-xs text-zinc-400 hover:text-zinc-200 mr-2">
+          Dashboard
+        </a>
         <a href="#/api-docs" className="text-xs text-zinc-400 hover:text-zinc-200 mr-2">
           API docs
         </a>
@@ -640,6 +649,35 @@ function TimelineClipView({
   );
 }
 
+function RangeRow({
+  label, value, min, max, step, fmt, onChange, testId,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  fmt: (v: number) => string;
+  onChange: (v: number) => void;
+  testId?: string;
+}) {
+  return (
+    <div className="space-y-0.5">
+      <label className="flex justify-between text-zinc-400">
+        <span>{label}</span>
+        <span className="text-white">{fmt(value)}</span>
+      </label>
+      <input
+        type="range" min={min} max={max} step={step}
+        value={value}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+        className="w-full"
+        data-testid={testId}
+      />
+    </div>
+  );
+}
+
 function ClipInspector({
   clip,
   asset,
@@ -713,6 +751,102 @@ function ClipInspector({
           data-testid="input-start"
         />
       </div>
+
+      {/* playback speed */}
+      <div className="space-y-1">
+        <label className="block text-zinc-400">
+          speed: <span className="text-white">{(clip.speed ?? 1).toFixed(2)}x</span>
+        </label>
+        <input
+          type="range" min={0.25} max={4} step={0.05}
+          value={clip.speed ?? 1}
+          onChange={(e) => onChange({ speed: parseFloat(e.target.value) })}
+          className="w-full"
+          data-testid="input-speed"
+        />
+        <div className="flex gap-1">
+          {[0.5, 1, 1.5, 2].map((s) => (
+            <button
+              key={s}
+              className="flex-1 text-[10px] px-1 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700"
+              onClick={() => onChange({ speed: s })}
+            >
+              {s}x
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* image duration */}
+      {asset?.kind === "image" && (
+        <div className="space-y-1">
+          <label className="block text-zinc-400">
+            show for: <span className="text-white">{(clip.duration ?? 5).toFixed(1)}s</span>
+          </label>
+          <input
+            type="range" min={0.5} max={30} step={0.5}
+            value={clip.duration ?? 5}
+            onChange={(e) => onChange({ duration: parseFloat(e.target.value) })}
+            className="w-full"
+          />
+        </div>
+      )}
+
+      {/* visual filters */}
+      <details className="border border-zinc-800 rounded">
+        <summary className="px-2 py-1.5 cursor-pointer text-zinc-300">Filters & color</summary>
+        <div className="px-2 pb-2 space-y-2">
+          <RangeRow label="brightness" value={clip.brightness ?? 1} min={0} max={2} step={0.05} fmt={(v) => v.toFixed(2)} onChange={(v) => onChange({ brightness: v })} testId="input-brightness" />
+          <RangeRow label="contrast" value={clip.contrast ?? 1} min={0} max={2} step={0.05} fmt={(v) => v.toFixed(2)} onChange={(v) => onChange({ contrast: v })} />
+          <RangeRow label="saturation" value={clip.saturation ?? 1} min={0} max={2} step={0.05} fmt={(v) => v.toFixed(2)} onChange={(v) => onChange({ saturation: v })} />
+          <RangeRow label="hue" value={clip.hue ?? 0} min={-180} max={180} step={1} fmt={(v) => `${Math.round(v)}°`} onChange={(v) => onChange({ hue: v })} />
+          <RangeRow label="blur" value={clip.blur ?? 0} min={0} max={10} step={0.1} fmt={(v) => v.toFixed(1)} onChange={(v) => onChange({ blur: v })} />
+          <button className="w-full text-[10px] px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700" onClick={() => onChange({ brightness: 1, contrast: 1, saturation: 1, hue: 0, blur: 0 })}>Reset filters</button>
+        </div>
+      </details>
+
+      {/* transform */}
+      <details className="border border-zinc-800 rounded">
+        <summary className="px-2 py-1.5 cursor-pointer text-zinc-300">Transform</summary>
+        <div className="px-2 pb-2 space-y-2">
+          <RangeRow label="scale (zoom)" value={clip.scale ?? 1} min={0.1} max={4} step={0.05} fmt={(v) => `${v.toFixed(2)}x`} onChange={(v) => onChange({ scale: v })} />
+          <RangeRow label="rotate" value={clip.rotate ?? 0} min={-180} max={180} step={1} fmt={(v) => `${Math.round(v)}°`} onChange={(v) => onChange({ rotate: v })} />
+          <div className="flex gap-2">
+            <button className={`flex-1 text-[10px] px-2 py-1 rounded ${clip.flipH ? "bg-blue-600" : "bg-zinc-800"} hover:bg-zinc-700`} onClick={() => onChange({ flipH: !clip.flipH })}>
+              Flip H
+            </button>
+            <button className={`flex-1 text-[10px] px-2 py-1 rounded ${clip.flipV ? "bg-blue-600" : "bg-zinc-800"} hover:bg-zinc-700`} onClick={() => onChange({ flipV: !clip.flipV })}>
+              Flip V
+            </button>
+          </div>
+          <button className="w-full text-[10px] px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700" onClick={() => onChange({ scale: 1, rotate: 0, flipH: false, flipV: false })}>Reset transform</button>
+        </div>
+      </details>
+
+      {/* crop */}
+      <details className="border border-zinc-800 rounded">
+        <summary className="px-2 py-1.5 cursor-pointer text-zinc-300">Crop</summary>
+        <div className="px-2 pb-2 space-y-2">
+          <RangeRow label="top" value={clip.cropTop ?? 0} min={0} max={0.45} step={0.01} fmt={(v) => `${Math.round(v * 100)}%`} onChange={(v) => onChange({ cropTop: v })} />
+          <RangeRow label="bottom" value={clip.cropBottom ?? 0} min={0} max={0.45} step={0.01} fmt={(v) => `${Math.round(v * 100)}%`} onChange={(v) => onChange({ cropBottom: v })} />
+          <RangeRow label="left" value={clip.cropLeft ?? 0} min={0} max={0.45} step={0.01} fmt={(v) => `${Math.round(v * 100)}%`} onChange={(v) => onChange({ cropLeft: v })} />
+          <RangeRow label="right" value={clip.cropRight ?? 0} min={0} max={0.45} step={0.01} fmt={(v) => `${Math.round(v * 100)}%`} onChange={(v) => onChange({ cropRight: v })} />
+          <button className="w-full text-[10px] px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700" onClick={() => onChange({ cropTop: 0, cropBottom: 0, cropLeft: 0, cropRight: 0 })}>Reset crop</button>
+        </div>
+      </details>
+
+      {/* fades */}
+      <details className="border border-zinc-800 rounded">
+        <summary className="px-2 py-1.5 cursor-pointer text-zinc-300">Fades</summary>
+        <div className="px-2 pb-2 space-y-2">
+          <div className="text-[10px] text-zinc-500 uppercase">video</div>
+          <RangeRow label="fade in" value={clip.fadeIn ?? 0} min={0} max={Math.min(5, dur / 2)} step={0.1} fmt={(v) => `${v.toFixed(1)}s`} onChange={(v) => onChange({ fadeIn: v })} />
+          <RangeRow label="fade out" value={clip.fadeOut ?? 0} min={0} max={Math.min(5, dur / 2)} step={0.1} fmt={(v) => `${v.toFixed(1)}s`} onChange={(v) => onChange({ fadeOut: v })} />
+          <div className="text-[10px] text-zinc-500 uppercase pt-1">audio</div>
+          <RangeRow label="audio fade in" value={clip.audioFadeIn ?? 0} min={0} max={Math.min(5, dur / 2)} step={0.1} fmt={(v) => `${v.toFixed(1)}s`} onChange={(v) => onChange({ audioFadeIn: v })} />
+          <RangeRow label="audio fade out" value={clip.audioFadeOut ?? 0} min={0} max={Math.min(5, dur / 2)} step={0.1} fmt={(v) => `${v.toFixed(1)}s`} onChange={(v) => onChange({ audioFadeOut: v })} />
+        </div>
+      </details>
 
       {/* audio */}
       {clip.track !== "overlay" && (

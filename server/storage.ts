@@ -2,6 +2,8 @@ import {
   mediaAssets,
   projects,
   renderJobs,
+  apiKeys,
+  keyUsage,
   type Asset,
   type Project,
   type RenderJob,
@@ -11,7 +13,7 @@ import {
 } from '@shared/schema';
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
-import { eq } from "drizzle-orm";
+import { eq, sql, desc, and, gte } from "drizzle-orm";
 import { mkdirSync } from "node:fs";
 
 mkdirSync("data/media", { recursive: true });
@@ -19,11 +21,19 @@ mkdirSync("data/media", { recursive: true });
 const sqlite = new Database("data.db");
 sqlite.pragma("journal_mode = WAL");
 
-export const db = drizzle(sqlite);
+// ---------------------------------------------------------------------------
+// Migrations (idempotent — add columns if missing on existing deployments)
+// ---------------------------------------------------------------------------
 
-// Ensure all tables exist (so a fresh clone works without `npm run db:push`).
-sqlite.exec(`
-  CREATE TABLE IF NOT EXISTS media_assets (
+function addColumnIfMissing(table: string, column: string, ddl: string) {
+  const cols = (sqlite.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name);
+  if (!cols.includes(column)) {
+    sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+  }
+}
+
+function migrate() {
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS media_assets (
     id TEXT PRIMARY KEY,
     filename TEXT NOT NULL,
     kind TEXT NOT NULL,
@@ -36,15 +46,13 @@ sqlite.exec(`
     storage_path TEXT NOT NULL,
     thumb_path TEXT,
     created_at INTEGER NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS projects (
+  ); CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     timeline_json TEXT NOT NULL,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS render_jobs (
+  ); CREATE TABLE IF NOT EXISTS render_jobs (
     id TEXT PRIMARY KEY,
     project_id TEXT NOT NULL,
     status TEXT NOT NULL,
@@ -53,17 +61,48 @@ sqlite.exec(`
     error TEXT,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS api_keys (
+  ); CREATE TABLE IF NOT EXISTS api_keys (
     id TEXT PRIMARY KEY,
     label TEXT NOT NULL,
     scope TEXT NOT NULL,
     key_hash TEXT NOT NULL,
     revoked INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL
-  );
-`);
+  ); CREATE TABLE IF NOT EXISTS key_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    key_id TEXT NOT NULL,
+    method TEXT NOT NULL,
+    path TEXT NOT NULL,
+    status INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+  );`);
 
+  addColumnIfMissing("api_keys", "kind", "TEXT NOT NULL DEFAULT 'private'");
+  // permissions defaults to NULL so the migration below can distinguish
+  // "legacy key, never had explicit permissions" (NULL) from "key that was
+  // explicitly set to no permissions" ('[]'). A NULL value is a one-time
+  // migration trigger; afterwards it is always set to a concrete array.
+  addColumnIfMissing("api_keys", "permissions", "TEXT");
+  addColumnIfMissing("api_keys", "expires_at", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing("api_keys", "allowed_origins", "TEXT NOT NULL DEFAULT '[]'");
+  addColumnIfMissing("api_keys", "allowed_ips", "TEXT NOT NULL DEFAULT '[]'");
+  addColumnIfMissing("api_keys", "rate_limit_per_hour", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing("api_keys", "quota_total", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing("api_keys", "requests_used", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing("api_keys", "last_used_at", "INTEGER NOT NULL DEFAULT 0");
+
+  // ONE-TIME migration: legacy keys (permissions IS NULL) get permissions
+  // derived from their legacy scope. After this runs, every row has a concrete
+  // permissions array, so an explicit '[]' (locked out) is never overwritten.
+  sqlite.exec(`UPDATE api_keys SET permissions = CASE scope
+    WHEN 'admin' THEN '[\"media:read\",\"media:upload\",\"media:delete\",\"projects:read\",\"projects:write\",\"timeline:edit\",\"renders:create\",\"renders:download\",\"keys:manage\"]'
+    WHEN 'write'  THEN '[\"media:read\",\"media:upload\",\"media:delete\",\"projects:read\",\"projects:write\",\"timeline:edit\",\"renders:create\",\"renders:download\"]'
+    ELSE '[\"media:read\",\"projects:read\",\"renders:download\"]'
+  END WHERE permissions IS NULL`);
+}
+migrate();
+
+export const db = drizzle(sqlite);
 
 export interface IStorage {
   // assets
@@ -136,3 +175,78 @@ export class DatabaseStorage implements IStorage {
 }
 
 export const storage = new DatabaseStorage();
+
+// ---------------------------------------------------------------------------
+// Key usage logging + stats
+// ---------------------------------------------------------------------------
+
+/**
+ * Log a usage event for a key. Returns the inserted row ID so the
+ * response-finish hook can update ONLY that row's status code (prevents
+ * concurrent requests sharing a key/method/path from having their statuses
+ * corrupted together).
+ */
+export function logKeyUsage(keyId: string, method: string, path: string, status: number): number {
+  const r = db.insert(keyUsage).values({ keyId, method, path: path.split("?")[0], status, createdAt: Date.now() }).returning({ id: keyUsage.id }).get();
+  return r.id;
+}
+
+/** Update a specific usage row's status code (called from the finish hook). */
+export function updateKeyUsageStatus(rowId: number, status: number) {
+  db.update(keyUsage).set({ status }).where(eq(keyUsage.id, rowId)).run();
+}
+
+export function keyUsageStats(keyId: string) {
+  const hourAgo = Date.now() - 60 * 60 * 1000;
+  const lastHour = db.select({ count: sql<number>`count(*)` })
+    .from(keyUsage)
+    .where(and(eq(keyUsage.keyId, keyId), gte(keyUsage.createdAt, hourAgo)))
+    .get();
+  const total = db.select({ count: sql<number>`count(*)` })
+    .from(keyUsage)
+    .where(eq(keyUsage.keyId, keyId))
+    .get();
+  const lastUsed = db.select({ last: sql<number>`max(created_at)` })
+    .from(keyUsage)
+    .where(eq(keyUsage.keyId, keyId))
+    .get();
+  return {
+    requestsLastHour: lastHour?.count ?? 0,
+    requestsTotal: total?.count ?? 0,
+    lastUsedAt: lastUsed?.last ?? 0,
+  };
+}
+
+export function keyUsageRecent(keyId: string, limit = 100) {
+  return db.select().from(keyUsage)
+    .where(eq(keyUsage.keyId, keyId))
+    .orderBy(desc(keyUsage.createdAt))
+    .limit(limit)
+    .all();
+}
+
+export function usageOverview() {
+  const hourAgo = Date.now() - 60 * 60 * 1000;
+  const lastHour = db.select({ count: sql<number>`count(*)` }).from(keyUsage)
+    .where(gte(keyUsage.createdAt, hourAgo)).get();
+  const total = db.select({ count: sql<number>`count(*)` }).from(keyUsage).get();
+  const byKey = db.select({
+    keyId: keyUsage.keyId,
+    count: sql<number>`count(*)`,
+  }).from(keyUsage).groupBy(keyUsage.keyId).all();
+  const recent = db.select().from(keyUsage)
+    .orderBy(desc(keyUsage.createdAt))
+    .limit(200).all();
+  return {
+    requestsLastHour: lastHour?.count ?? 0,
+    requestsTotal: total?.count ?? 0,
+    byKey,
+    recent,
+  };
+}
+
+export function trimKeyUsage() {
+  // keep last 30 days
+  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  db.delete(keyUsage).where(sql`${keyUsage.createdAt} < ${cutoff}`).run();
+}

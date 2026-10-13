@@ -8,6 +8,7 @@ import NotFound from "@/pages/not-found";
 import EditorPage from "@/pages/editor";
 import ApiDocsPage from "@/pages/api-docs";
 import ApiKeyPage from "@/pages/api-key";
+import DashboardPage from "@/pages/dashboard";
 import { useApiKey, ApiKeyProvider, setKeyChangeNotifier } from "@/lib/apiKey";
 import { invalidateMediaTokens } from "@/lib/mediaUrl";
 
@@ -32,6 +33,7 @@ function AppRouter() {
   return (
     <Switch>
       <Route path="/api-key" component={ApiKeyPage} />
+      <Route path="/dashboard" component={DashboardPage} />
       <Route path="/api-docs" component={ApiDocsPage} />
       <Route path="/">
         {() => (

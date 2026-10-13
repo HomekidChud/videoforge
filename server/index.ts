@@ -7,6 +7,15 @@ import { serveStatic } from "./static";
 import { createServer } from "node:http";
 
 const app = express();
+// trust proxy configuration for IP allowlists (clientIp()).
+// VIDEOFORGE_TRUST_PROXY can be "true", a number of hops, or a specific
+// proxy IP/CIDR. If unset, Express ignores X-Forwarded-For entirely
+// (spoofed headers cannot satisfy an IP allowlist).
+if (process.env.VIDEOFORGE_TRUST_PROXY) {
+  const tp = process.env.VIDEOFORGE_TRUST_PROXY.trim();
+  if (/^\d+$/.test(tp)) app.set("trust proxy", parseInt(tp, 10));
+  else app.set("trust proxy", tp); // "true", IP, or CIDR
+}
 const httpServer = createServer(app);
 
 declare module "http" {
@@ -69,6 +78,20 @@ app.use((req, res, next) => {
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
+      // update the in-flight usage log row (written by the auth middleware
+      // with status=0) to the ACTUAL response status code so usage logs show
+      // real 2xx/4xx/5xx, not a placeholder.
+      const key = (req as any).apiKey;
+      const usageRowId = (req as any).vfUsageRowId;
+      if (key && typeof key === "object" && typeof key.id === "string" && !key.id.startsWith("st:") && typeof usageRowId === "number") {
+        try {
+          // update ONLY the specific row for this request (prevents concurrent
+          // requests sharing a key/method/path from having their statuses
+          // corrupted together)
+          const { updateKeyUsageStatus } = require("./storage");
+          updateKeyUsageStatus(usageRowId, res.statusCode);
+        } catch (e) { console.error("[usage-status] update failed:", e); /* non-fatal */ }
+      }
       // strip querystring so signed media tokens never appear in logs
       const safePath = path.split("?")[0];
       let logLine = `${req.method} ${safePath} ${res.statusCode} in ${duration}ms`;
