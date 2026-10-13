@@ -421,6 +421,8 @@ Animatable properties: `x`, `y`, `scale`, `rotation`, `opacity`, `volume`, `brig
 
 | Op | Arguments | What it does |
 |----|-----------|--------------|
+| `set_transition` | `clipId`, `type` (`none`, `dissolve`, `wipe-left`, `wipe-right`), `duration`? (0.1 to 3, default 0.6), `join`? (default true) | Overlaps a video-track clip with the one before it. With `join` the clip first moves to touch the previous clip; later video clips move up by the overlap. `none` removes the transition and restores the gap-free layout. Rendered with an alpha ramp, plus an audio crossfade. Wipes reveal the incoming clip from the left or the right. |
+| `remove_clips` | `clipIds[]` | Delete several clips in one step. |
 | `shift_clips` | `delta`, `from`?, `track`?, `clipIds`? | Slide clips later or earlier. `from` limits it to clips starting at or after that time. |
 | `close_gaps` | `track`? (default `video`) | Pack a track's clips end to end in their current order. |
 | `update_clips` | `patch`, `clipIds`? or `track`? | Apply one patch to many clips, for example a filter or fade on every clip of a track. |
@@ -629,3 +631,22 @@ Admin keys can watch any project as it is edited. Watching is strictly view-only
 | `POST /api/live/:id/publish` | write | Used by the studio about ten times a second to share its working copy. It is not counted against `requestsPerMinute` and never writes to the saved project. Replies with `{ watchers }`. |
 
 API edits, saves and exports also appear in the feed, so an admin sees agent activity live. In the studio, the editor sees a "watching" badge while an admin has the project open. Presence and the feed are in memory only.
+
+
+## Presence: live cursors and Follow
+
+Everyone in a project can see each other. The studio shows colored cursors on the timeline and the preview, each person's playhead, and a colored outline on the clips they have selected. Click a person's avatar in the studio bar to Follow them: your playhead, playback and selection track theirs. Seeking, playing or selecting something yourself stops Follow.
+
+| Endpoint | Who | Purpose |
+|----------|-----|---------|
+| `POST /api/projects/:id/presence` | read, write or admin | Body `{cid, time?, playing?, selectedIds?, cursor?, leave?}`. `cid` is a client id you choose (4 to 40 letters, digits, `-` or `_`), one per browser tab or agent. `cursor` is `{area:"timeline", t, lane}` or `{area:"preview", x, y}` with x and y from 0 to 1. The response lists everyone else: `{peers:[{cid, name, color, time, playing, selectedIds, cursor}]}`. Call it every 150 ms or so; entries expire after 4 seconds without a call. It is not counted against `requestsPerMinute`. |
+| `GET /api/live/:id` | admin | The `peers` array is included, so master admins see cursors while watching. |
+
+Presence lives in memory only. A client id belongs to the key that first used it; another key gets 409.
+
+## Multi-select and transitions in the studio
+
+- Shift-click or Ctrl-click toggles clips in the selection. Drag on an empty part of the timeline to box-select; hold Shift to add. Ctrl+A selects everything, Escape clears.
+- Dragging any selected clip moves the whole group. Delete, Duplicate, copy and paste work on the group and keep relative offsets.
+- The inspector for a group offers align starts and ends, join end to end, space evenly, delete and close gaps, a transition between every selected video clip, and shared look and sound settings.
+- Effects apply to every selected clip. Drop a Transitions chip onto a video clip, or use the Transition in section of the clip inspector.

@@ -30,6 +30,10 @@ function parseCursor(c: any): Cursor | null {
   if (c.area === "preview") return { area: "preview", x: num(c.x, 0, 1), y: num(c.y, 0, 1) };
   return null;
 }
+function nameDupes<T extends { label: string }>(peers: T[]) {
+  const seen = new Map<string, number>();
+  return peers.map((p) => { const n = (seen.get(p.label) ?? 0) + 1; seen.set(p.label, n); return { ...p, name: n > 1 ? `${p.label} (${n})` : p.label }; });
+}
 function livePeers(s: LiveSession) {
   const now = Date.now(); s.peers.forEach((p, k) => { if (now - p.at > PEER_MS) s.peers.delete(k); });
   return Array.from(s.peers.values());
@@ -140,8 +144,7 @@ export function registerLiveRoutes(app: Express) {
     }
     const peers = livePeers(s);
     if (JSON.stringify(peers.map(({ at, ...p }) => p)) !== before) s.rev++;
-    const seen = new Map<string, number>();
-    const named = peers.filter((p) => p.cid !== cid).map(({ at, ...p }) => { const n = (seen.get(p.label) ?? 0) + 1; seen.set(p.label, n); return { ...p, name: n > 1 ? `${p.label} (${n})` : p.label }; });
+    const named = nameDupes(peers).filter((p) => p.cid !== cid).map(({ at, ...p }) => p);
     res.setHeader("Cache-Control", "no-store");
     res.json({ self: { cid, color: colorOf(cid) }, peers: named });
   });
@@ -171,7 +174,7 @@ export function registerLiveRoutes(app: Express) {
     const since = Number(req.query.since ?? -1), tsince = Number(req.query.tsince ?? -1);
     const base = { rev: s.rev, timelineRev: s.timelineRev, live: isLive(s), now: Date.now() };
     if (since === s.rev) return res.json({ ...base, changed: false });
-    res.json({ ...base, changed: true, name: s.name, time: s.time, selectedId: s.selectedId, playing: s.playing, actor: s.actor?.label ?? null, source: s.source, updatedAt: s.updatedAt, watchers: watchers(s), peers: livePeers(s).map(({ at, ...p }) => ({ ...p, name: p.label })),
+    res.json({ ...base, changed: true, name: s.name, time: s.time, selectedId: s.selectedId, playing: s.playing, actor: s.actor?.label ?? null, source: s.source, updatedAt: s.updatedAt, watchers: watchers(s), peers: nameDupes(livePeers(s)).map(({ at, ...p }) => p),
       timeline: tsince === s.timelineRev ? undefined : s.timeline, activity: s.activity.slice(-80) });
   });
 }

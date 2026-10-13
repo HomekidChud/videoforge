@@ -27,6 +27,10 @@ gated behind **API keys with permission scopes** (`read`, `write`, `admin`).
 
 The studio supports keyframes on position, scale, rotation, opacity, volume and colour, with a value graph and draggable bezier tween slopes, motion presets, on-canvas move and scale handles, markers, track mute and hide, title presets, copy and paste, and a background colour. Everything is exposed through the timeline ops API (batches, keyframes, frame previews, state evaluation and a capabilities endpoint). See [docs/API.md](docs/API.md).
 
+## Cursors, Follow, multi-select and transitions
+
+Everyone with a key that can read a project sees colored live cursors on the timeline and preview, plus each other's playheads and selections. Click a person's avatar to Follow them. Shift-click or drag a box to select several clips, move or edit them together, and add dissolves and wipes between video clips from the Effects tab or the inspector. Details are in [docs/API.md](docs/API.md).
+
 ## Live watching
 
 Master admins get a Live page that lists every project and opens any of them in a view-only mode. It follows the editor's unsaved timeline, playhead, selection and animated values, refreshed ten times a second, with an activity feed that also shows API and agent edits. See the live section of [docs/API.md](docs/API.md).
