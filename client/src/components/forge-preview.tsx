@@ -19,7 +19,7 @@ export function envelope(c:Clip,time:number) {
 }
 // Geometry mirrors the FFmpeg renderer: video fits the frame, overlays are a fraction of frame width.
 export function layerTransform(c:Clip) {
-  const x=c.x??.5,y=c.y??(!c.assetId?.length?.82:.5),scale=c.scale??(c.assetId&&c.track==="overlay"?.35:1);
+  const x=c.x??.5,y=c.y??(!c.assetId?.length&&!c.shape?.82:.5),scale=c.scale??(c.assetId&&c.track==="overlay"?.35:1);
   return {x,y,scale,transform:`translate(-50%,-50%) rotate(${c.rotation??0}deg) scale(${c.flipX?-1:1},${c.flipY?-1:1})`};
 }
 
@@ -91,10 +91,20 @@ export default function ForgePreview({timeline,assets,time,playing,selectedId,re
     const up=()=>{window.removeEventListener("pointermove",move);window.removeEventListener("pointerup",up);gesture.end();};
     window.addEventListener("pointermove",move);window.addEventListener("pointerup",up);
   };
-  const texts=ordered.filter(c=>c.text&&time>=c.start&&time<clipEnd(c)&&!hiddenTrack(c));
+  const texts=timeline.clips.filter(c=>c.text&&time>=c.start&&time<clipEnd(c)&&!hiddenTrack(c));
   return <div className={`preview-area ${dropHot?"drop-hot":""}`} ref={area} onDragOver={e=>{if(onDropEffect&&!readOnly&&e.dataTransfer.types.includes("application/x-vf-effect")){e.preventDefault();e.dataTransfer.dropEffect="copy";setDropHot(true);}}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node|null))setDropHot(false);}} onDrop={e=>{setDropHot(false);if(!onDropEffect||readOnly)return;try{const effect=JSON.parse(e.dataTransfer.getData("application/x-vf-effect"));e.preventDefault();e.stopPropagation();onDropEffect(effect);}catch{/* not an effect */}}}>
     <div className="preview-stage" ref={stage} style={{width:size.width,height:size.height,background:timeline.background??"#000"}} data-testid="preview-stage" onPointerMove={e=>{if(!onCursor)return;const r=e.currentTarget.getBoundingClientRect();onCursor({area:"preview",x:Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),y:Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))});}} onPointerLeave={()=>onCursor?.(null)}>
       {ordered.map(c=>{const a=assets.find(x=>x.id===c.assetId);return a?<MediaLayer key={c.id} timeline={timeline} clip={c} asset={a} time={time} playing={playing} hidden={hiddenTrack(c)} muted={!!muted||!!timeline.tracks?.[c.track]?.muted} source={mediaUrl(a.id,`/api/media/${a.id}/raw`)} onError={onError}/>:null;})}
+      {timeline.clips.filter(c=>c.shape&&time>=c.start&&time<clipEnd(c)&&!hiddenTrack(c)).map(c=>{
+        const ev=evaluateClip(c,time),g=layerTransform(ev),s=c.shape!;
+        return <div key={c.id} data-layer={c.id} data-testid={`shape-layer-${c.id}`} style={{
+          position:"absolute",boxSizing:"border-box",left:`${g.x*100}%`,top:`${g.y*100}%`,
+          width:Math.max(2,Math.round(size.width*s.width/2)*2),height:Math.max(2,Math.round(size.height*s.height/2)*2),
+          background:s.fill,border:`${s.strokeWidth*size.width/timeline.resolution.width}px solid ${s.stroke}`,
+          borderRadius:s.type==="ellipse"?"50%":s.radius*size.width/timeline.resolution.width,
+          opacity:(ev.opacity??1)*envelope(c,time),transform:`${g.transform} scale(${g.scale})`,filter:previewFilter(ev,size.width/timeline.resolution.width),
+        }}/>;
+      })}
       {texts.map(c=>{const ev=evaluateClip(c,time),g=layerTransform(c.assetId?{...c,assetId:"",x:.5,y:.82,rotation:0,scale:1,keyframes:undefined}:ev);return <div key={`${c.id}-text`} data-layer={c.assetId?undefined:c.id} className="preview-caption" style={{left:`${g.x*100}%`,top:`${g.y*100}%`,fontSize:Math.round(size.height*(c.textSize??6)/100*g.scale),color:c.textColor??"#ffffff",background:c.textBg?"rgba(0,0,0,.55)":undefined,padding:c.textBg?".25em .35em":0,opacity:(c.assetId?1:(ev.opacity??1))*envelope(c,time),transform:g.transform,filter:c.blur?`blur(${c.blur*.6}px)`:undefined,textShadow:c.textBg?"none":"0 1px 3px #000"}}>{c.text}</div>;})}
       {box&&!playing&&<div className="selection-frame" style={{left:box.l,top:box.t,width:box.w,height:box.h}} onPointerDown={e=>startDrag(e,"move")} data-testid="selection-frame"><span className="scale-handle" onPointerDown={e=>startDrag(e,"scale")} aria-label="Drag to scale"/></div>}
       {peers&&<PreviewCursors peers={peers}/>}

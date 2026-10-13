@@ -46,7 +46,7 @@ export function normalizeKeyframes(raw: any, duration: number): Keyframes {
 }
 export function baseValue(c: Clip, p: AnimationProperty): number {
   if (p === "scale") return c.scale ?? (c.assetId && c.track === "overlay" ? .35 : 1);
-  if (p === "y") return c.y ?? (!c.assetId ? .82 : .5);
+  if (p === "y") return c.y ?? (!c.assetId && !c.shape ? .82 : .5);
   return (c as any)[p] ?? ANIMATABLE[p].default;
 }
 export function easingCurve(e: Easing | undefined): Bezier { return Array.isArray(e) ? e : EASINGS[e === "hold" ? "linear" : e ?? "linear"]; }

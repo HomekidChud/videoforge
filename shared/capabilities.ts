@@ -1,11 +1,14 @@
 import { ANIMATABLE, EASINGS } from "./animation";
 import { FILTERS, MAX_CLIPS, RESOLUTIONS } from "./timeline";
 import { MOTION_PRESETS, TITLE_PRESETS } from "./presets";
+import { MOTION_TEMPLATES, SHAPE_TYPES, GRAPHICS_SCHEMA } from "./graphics";
 
 /** Machine-readable description of what the editor and API can do. Served at GET /api/capabilities. */
 export function capabilities() {
   return {
-    version: 3,
+    version: 4,
+    graphics: { shapeTypes: SHAPE_TYPES, templates: MOTION_TEMPLATES, shapeSchema: GRAPHICS_SCHEMA, units: "shape width/height are canvas fractions; strokeWidth/radius are output pixels. All primitives use existing transform keyframes." },
+    batch: { dryRun: "true validates and returns the proposed timeline without saving", expectedUpdatedAt: "optional timestamp from GET project; stale writes return 409", createdClipIds: "IDs of clips added by this batch, in creation order" },
     overview: "Timeline coordinates are seconds. Keyframe time is relative to the clip start. Layer order: video track, overlay track, then text. Use ops with ops[] for atomic batches, GET /frame to look at the result, and GET /state to read animated values.",
     limits: { maxClips: MAX_CLIPS, maxKeyframesPerProperty: 64, maxOpsPerRequest: 100, maxSpeed: 4, minSpeed: .25, minClipSeconds: .1 },
     tracks: { video: "full-frame footage and images, fitted into the canvas", overlay: "picture-in-picture clips and titles above the video", audio: "music and voice-over" },
@@ -24,6 +27,9 @@ export function capabilities() {
     motionPresets: MOTION_PRESETS,
     titlePresets: TITLE_PRESETS,
     ops: {
+      add_shape_clip: "shape: {type,width?,height?,fill?,stroke?,strokeWidth?,radius?}, id?, start?, duration?, x?, y?, plus transform/keyframe fields",
+      add_motion_template: "template (lower-third|title-card|callout|kinetic-type|countdown), title?, subtitle?, color?, start?, duration? (0.5..60)",
+      stagger_clips: "clipIds: [id...] in desired order, delay (0..60 seconds), start?",
       add_clip: "assetId, track?, start?, inPoint?, outPoint?, plus any clip field",
       add_text_clip: "text, start?, duration?, plus text and transform fields",
       remove_clip: "clipId", ripple_delete: "clipId", duplicate_clip: "clipId, start?",
@@ -46,6 +52,9 @@ export function capabilities() {
       remove_clips: "clipIds[] - delete several clips in one step",
     },
     endpoints: {
+      "GET /api/graphics/schema": "JSON Schema for asset-free shape primitives",
+      "GET /api/motion/templates": "Editable motion-template catalog",
+      "POST /api/projects/:id/timeline/validate": "{timeline} normalizes and checks a proposed timeline and its media references without saving",
       "GET /api/projects/:id/frame?t=SECONDS&width=960": "PNG of the composed frame",
       "GET /api/projects/:id/state?t=SECONDS": "evaluated animated values for clips active at t",
       "POST /api/projects/:id/timeline/ops": "{op,args} or {ops:[...]}",

@@ -13,6 +13,7 @@ import { normalizeTimeline, clipEnd, timelineDuration, type Timeline } from "@sh
 import { applyTimelineOp } from "@shared/editing";
 import { animatedValues } from "@shared/animation";
 import { capabilities } from "@shared/capabilities";
+import { GRAPHICS_SCHEMA, MOTION_TEMPLATES } from "@shared/graphics";
 import { buildRenderPlan, runFfmpeg } from "./render";
 import { requireScope, requireMediaAccess, projectAllowed, assetAllowed, keyRestrictions } from "./auth";
 import { actorOf, syncTimeline, logEvent, renameLive, dropLive, registerLiveRoutes } from "./live";
@@ -418,10 +419,12 @@ export async function registerRoutes(
     const id = String(req.params.id);
     const p = storage.getProject(id);
     if (!p) return res.status(404).json({ message: "project not found" });
+    if (req.body?.expectedUpdatedAt !== undefined && req.body.expectedUpdatedAt !== p.updatedAt) return res.status(409).json({ message: "Project changed. Fetch its latest state before retrying.", code: "REVISION_CONFLICT", updatedAt: p.updatedAt });
     const list = Array.isArray(req.body?.ops) ? req.body.ops : req.body?.op ? [{ op: req.body.op, args: req.body.args }] : [];
     if (!list.length) return res.status(400).json({ message: "op or ops required" });
     if (list.length > 100) return res.status(400).json({ message: "at most 100 ops per request" });
     let timeline = parseTimeline(p.timelineJson);
+    const oldIds = new Set(timeline.clips.map(c => c.id));
     for (let i = 0; i < list.length; i++) {
       try {
         timeline = applyTimelineOp(timeline, list[i], (assetId) => storage.getAsset(assetId));
@@ -429,9 +432,24 @@ export async function registerRoutes(
         return res.status(422).json({ message: `${list.length > 1 ? `op ${i + 1} (${list[i]?.op}): ` : ""}${e.message || "op failed"}`, failedIndex: i });
       }
     }
-    const updated = storage.updateProject(id, { timelineJson: JSON.stringify(timeline), updatedAt: now() })!;
+    const createdClipIds = timeline.clips.filter(c => !oldIds.has(c.id)).map(c => c.id);
+    if (req.body?.dryRun === true) return res.json({ id, timeline, applied: list.length, dryRun: true, createdClipIds, updatedAt: p.updatedAt });
+    const updated = storage.updateProject(id, { timelineJson: JSON.stringify(timeline), updatedAt: Math.max(now(), p.updatedAt + 1) })!;
     syncTimeline(id, actorOf(req), timeline, "api", `API ${list.length > 1 ? `batch of ${list.length} ops` : "op"}: ${Array.from(new Set(list.map((o: any) => o?.op))).slice(0, 6).join(", ")}`);
-    res.json({ id: updated.id, name: updated.name, visibility: updated.visibility, timeline, applied: list.length, createdAt: updated.createdAt, updatedAt: updated.updatedAt });
+    res.json({ id: updated.id, name: updated.name, visibility: updated.visibility, timeline, applied: list.length, createdClipIds, createdAt: updated.createdAt, updatedAt: updated.updatedAt });
+  });
+
+  app.get("/api/graphics/schema", requireScope("read"), (_req, res) => res.json(GRAPHICS_SCHEMA));
+  app.get("/api/motion/templates", requireScope("read"), (_req, res) => res.json({ templates: MOTION_TEMPLATES }));
+  app.post("/api/projects/:id/timeline/validate", requireScope("read"), (req, res) => {
+    const p = storage.getProject(String(req.params.id));
+    if (!p || !projectAllowed((req as any).apiKey, p.id)) return res.status(404).json({ message: "project not found" });
+    try {
+      const timeline = normalizeTimeline(req.body?.timeline);
+      const missing = timeline.clips.filter(c => c.assetId && !storage.getAsset(c.assetId)).map(c => c.assetId);
+      if (missing.length) return res.status(422).json({ valid: false, message: "Missing media assets", missingAssetIds: Array.from(new Set(missing)) });
+      return res.json({ valid: true, timeline, duration: timelineDuration(timeline), clipCount: timeline.clips.length });
+    } catch (e: any) { return res.status(422).json({ valid: false, message: e.message }); }
   });
 
   // Evaluate every animated value at a time, so an agent can verify keyframes without rendering.

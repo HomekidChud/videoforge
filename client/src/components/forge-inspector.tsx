@@ -30,9 +30,9 @@ export function ClipInspector({ clip, asset, readOnly, gesture, time, fps, patch
   const [tab, setTab] = useState<"edit" | "motion">("edit");
   const [textDraft, setTextDraft] = useState(clip.text ?? "");
   useEffect(() => setTextDraft(clip.text ?? ""), [clip.id]);
-  const isText = !clip.assetId, audioOnly = !isText && (asset?.kind === "audio" || clip.track === "audio");
-  const hasAudio = !isText && asset?.kind !== "image" && (asset?.kind === "audio" || (asset as any)?.hasAudio !== false);
-  const visual = !audioOnly, media = !isText && asset?.kind !== "image", ps = (p: Partial<Clip>) => patch(p, true);
+  const isText = !clip.assetId && !clip.shape, audioOnly = clip.track === "audio";
+  const hasAudio = !!clip.assetId && asset?.kind !== "image" && (asset?.kind === "audio" || (asset as any)?.hasAudio !== false);
+  const visual = !audioOnly, media = !!clip.assetId && asset?.kind !== "image", ps = (p: Partial<Clip>) => patch(p, true);
   const dur = clipDuration(clip), local = clamp(time - clip.start, 0, dur);
   const pct = (v: number) => `${Math.round(v * 100)}%`;
   const anim = (prop: AnimationProperty, label: string, format: (v: number) => string, min = ANIMATABLE[prop].min, max = ANIMATABLE[prop].max, disabled = false) => {
@@ -41,10 +41,19 @@ export function ClipInspector({ clip, asset, readOnly, gesture, time, fps, patch
       keyframe={<button type="button" className={`key-btn ${frames.length ? "animated" : ""} ${atKey ? "at-key" : ""}`} disabled={readOnly} aria-label={`${atKey ? "Remove" : "Add"} ${label} keyframe at playhead`} aria-pressed={atKey} title={atKey ? "Remove keyframe" : "Keyframe at playhead"} onClick={() => toggleKey(prop)} data-testid={`key-${prop}`}><Diamond size={11} /></button>} />;
   };
   return <div className="inspector-body" data-testid="clip-inspector">
-    <div className="inspector-title"><div className="thumb-chip">{isText ? "T" : <Film size={15} />}</div><div><b title={isText ? clip.text : asset?.filename}>{isText ? "Title" : asset?.filename ?? "Missing media"}</b><span className="muted mono">{timecode(dur)} · {clip.track}</span></div></div>
+    <div className="inspector-title"><div className="thumb-chip">{isText ? "T" : <Film size={15} />}</div><div><b title={clip.label ?? asset?.filename}>{clip.shape ? clip.label ?? `${clip.shape.type} shape` : isText ? "Title" : asset?.filename ?? "Missing media"}</b><span className="muted mono">{timecode(dur)} · {clip.track}</span></div></div>
     <div className="action-row"><button className="secondary-btn" disabled={readOnly} onClick={onSplit} data-testid="button-split"><Scissors size={15} />Split</button><button className="secondary-btn" disabled={readOnly} onClick={onDuplicate}><Copy size={15} />Duplicate</button><button className="icon-btn danger" disabled={readOnly} aria-label="Delete clip" title="Delete (Del)" onClick={onDelete} data-testid="button-delete-clip"><Trash2 size={16} /></button></div>
     <div className="inspector-tabs" role="tablist"><button role="tab" aria-selected={tab === "edit"} className={tab === "edit" ? "active" : ""} onClick={() => setTab("edit")} data-testid="tab-edit">Edit</button><button role="tab" aria-selected={tab === "motion"} className={tab === "motion" ? "active" : ""} onClick={() => setTab("motion")} data-testid="tab-motion">Motion{Object.keys(clip.keyframes ?? {}).length ? <i className="tab-dot" /> : null}</button></div>
     {tab === "motion" ? <ForgeMotion clip={clip} time={time} fps={fps} audioOnly={audioOnly} readOnly={readOnly} patch={patch} seek={seek} gesture={gesture} /> : <>
+      {clip.shape && <Section title="Shape">
+        <label className="field">Primitive<select aria-label="Shape type" disabled={readOnly} value={clip.shape.type} onChange={e=>patch({shape:{...clip.shape!,type:e.target.value as "rectangle"|"ellipse"|"line"}})}><option value="rectangle">Rectangle</option><option value="ellipse">Ellipse</option><option value="line">Line</option></select></label>
+        <Slider label="Shape width" value={clip.shape.width} min={.01} max={1} step={.01} format={pct} onGesture={gesture} onChange={v=>ps({shape:{...clip.shape!,width:v}})} disabled={readOnly}/>
+        <Slider label="Shape height" value={clip.shape.height} min={.002} max={1} step={.002} format={pct} onGesture={gesture} onChange={v=>ps({shape:{...clip.shape!,height:v}})} disabled={readOnly}/>
+        <div className="inline-fields">{(["fill","stroke"] as const).map(k=><label className="color-field" key={k}>{k}<input type="color" aria-label={`Shape ${k}`} disabled={readOnly} value={clip.shape![k]==="transparent"?"#ffffff":clip.shape![k]} onChange={e=>patch({shape:{...clip.shape!,[k]:e.target.value}})}/></label>)}</div>
+        <label className="check-field"><input type="checkbox" disabled={readOnly} checked={clip.shape.fill==="transparent"} onChange={e=>patch({shape:{...clip.shape!,fill:e.target.checked?"transparent":"#f6a447"}})}/>Transparent fill</label>
+        <Slider label="Stroke width" value={clip.shape.strokeWidth} min={0} max={40} step={1} onGesture={gesture} onChange={v=>ps({shape:{...clip.shape!,strokeWidth:v}})} disabled={readOnly}/>
+        <Slider label="Corner radius" value={clip.shape.radius} min={0} max={200} step={1} onGesture={gesture} onChange={v=>ps({shape:{...clip.shape!,radius:v}})} disabled={readOnly}/>
+      </Section>}
       {isText && <Section title="Text"><textarea rows={3} value={textDraft} disabled={readOnly} aria-label="Title text" maxLength={500} placeholder="Type your title" onChange={(e) => { setTextDraft(e.target.value); if (e.target.value.trim()) patch({ text: e.target.value }, true); }} onFocus={gesture.begin} onBlur={gesture.end} data-testid="input-title-text" />
         <Slider label="Size" value={clip.textSize ?? 6} min={2} max={20} step={0.5} format={(v) => `${v}%`} onGesture={gesture} onChange={(v) => ps({ textSize: v })} disabled={readOnly} />
         <div className="inline-fields"><label className="color-field">Color<input type="color" aria-label="Text color" disabled={readOnly} value={clip.textColor ?? "#ffffff"} onChange={(e) => patch({ textColor: e.target.value })} /></label><label className="check-field"><input type="checkbox" disabled={readOnly} checked={!!clip.textBg} onChange={(e) => patch({ textBg: e.target.checked })} />Background box</label></div></Section>}

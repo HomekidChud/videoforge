@@ -250,7 +250,8 @@ function enforcePolicy(key: ApiKey, req: Request, res: Response): boolean {
     const tokenMatch = req.path.match(/^\/api\/auth\/media-token\/([^/]+)/);
     if (tokenMatch && !resourceAllowed(key, tokenMatch[1])) return deny("Resource is outside this API key's restrictions.");
     // Block injecting another project's asset via project JSON or agent ops.
-    const refs = req.body?.timeline?.clips?.map((c: any) => c.assetId).filter(Boolean) || [];
+    const rawClips = req.body?.timeline?.clips;
+    const refs = Array.isArray(rawClips) ? rawClips.map((c: any) => c?.assetId).filter(Boolean) : [];
     if (req.body?.args?.assetId) refs.push(req.body.args.assetId);
     if (Array.isArray(req.body?.ops)) req.body.ops.forEach((o: any) => { if (o?.args?.assetId) refs.push(o.args.assetId); });
     if (refs.some((id: string) => !assetAllowed(key, id))) return deny("Timeline contains media outside this API key's restrictions.");

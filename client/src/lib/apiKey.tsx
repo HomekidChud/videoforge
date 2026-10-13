@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useState } from "react";
 
 // NOTE: intentionally NOT importing queryClient to avoid a circular import.
 // Sign-in / sign-out callers should clear the query cache explicitly.
@@ -8,8 +8,7 @@ export function setKeyChangeNotifier(fn: (() => void) | null) {
 }
 
 /**
- * Fires whenever the API key changes (sign-in / sign-out / cross-tab storage
- * event) so caches can be invalidated.
+ * Fires whenever the session API key changes so caches can be invalidated.
  */
 function notifyKeyChange() {
   onKeyChange?.();
@@ -17,37 +16,22 @@ function notifyKeyChange() {
 }
 
 // ---------------------------------------------------------------------------
-// API key storage. Key is kept in localStorage and exposed via a React
-// context so all fetches can attach it as a Bearer token.
+// Key is held in memory and exposed via React context. Never persist credentials
+// in browser storage; a page reload requires signing in again.
 // ---------------------------------------------------------------------------
 
-const STORAGE_KEY = "vf_api_key";
 let sessionKey: string | null = null;
 
 export function loadStoredKey(): string | null {
-  try {
-    return sessionKey ?? window.localStorage.getItem(STORAGE_KEY);
-  } catch {
-    return sessionKey;
-  }
+  return sessionKey;
 }
 
 export function storeKey(key: string): void {
   sessionKey = key;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, key);
-  } catch {
-    /* localStorage unavailable — key only lives for this session */
-  }
 }
 
 export function clearStoredKey(): void {
   sessionKey = null;
-  try {
-    window.localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    /* ignore */
-  }
 }
 
 type ApiKeyCtx = {
@@ -60,19 +44,6 @@ const ApiKeyContext = createContext<ApiKeyCtx | null>(null);
 
 export function ApiKeyProvider({ children }: { children: React.ReactNode }) {
   const [apiKey, setApiKeyState] = useState<string | null>(() => loadStoredKey());
-
-  useEffect(() => {
-    // keep listeners in sync if the key changes elsewhere (e.g. another tab)
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY) {
-        sessionKey = e.newValue;
-        setApiKeyState(loadStoredKey());
-        notifyKeyChange();
-      }
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, []);
 
   const setApiKey = useCallback((key: string) => {
     storeKey(key);

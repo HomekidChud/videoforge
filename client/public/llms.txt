@@ -1,0 +1,75 @@
+# VideoForge
+
+> Self-hosted video editing, asset-free motion graphics and FFmpeg rendering.
+> The browser Studio and agent API use the same timeline. No agent-supplied code is executed.
+
+## Documentation
+
+- [Introduction](./#/docs/introduction)
+- [First composition](./#/docs/quickstart)
+- [Agent workflow](./#/docs/agent-workflow)
+- [Motion graphics](./#/docs/motion-graphics)
+- [Shapes](./#/docs/shapes)
+- [Keyframes](./#/docs/keyframes)
+- [Safe batches](./#/docs/batch-operations)
+- [HTTP reference](./#/docs/api-reference)
+- [Repository reference](https://github.com/HomekidChud/videoforge/blob/main/docs/API.md)
+
+## Discovery
+
+Use Authorization: Bearer <scoped-key>. BASE is the user's API server, which may
+be different from this frontend's origin. Read-capable keys can GET:
+
+- /api/capabilities: limits, property ranges, ops, templates and shape schema
+- /api/motion/templates: template catalog
+- /api/graphics/schema: JSON Schema for shapes
+
+## Creative loop
+
+1. Discover capabilities; never invent operation names.
+2. POST /api/projects with {name,timeline:{clips:[]}}.
+3. GET /api/projects/:id; retain updatedAt.
+4. POST /api/projects/:id/timeline/ops with {ops:[...],dryRun:true,expectedUpdatedAt}.
+5. Submit the same batch without dryRun, retaining expectedUpdatedAt.
+6. Use committed createdClipIds to refine layers.
+7. Inspect GET /api/projects/:id/state?t=1 and /frame?t=1&width=640.
+8. POST /api/renders with {projectId}; poll /api/renders/:jobId.
+9. Download /api/renders/:jobId/download only when status is done.
+
+All mutating operations require write scope or higher. Keys/visibility/live-watch
+management require admin. Keep owner keys out of agent prompts and client code.
+
+## Motion graphics
+
+add_motion_template args:
+{template:"lower-third",title:"Ada Lovelace",subtitle:"Pioneer of computing",
+ color:"#f6a447",start:0,duration:4}
+
+Templates: lower-third, title-card, callout, kinetic-type, countdown.
+Duration: 0.5..60 seconds. Kinetic type: up to 8 words.
+Templates compile to editable clips. Text uses an aspect-ratio-aware fit estimate;
+inspect long text in rendered frames.
+
+add_shape_clip args:
+{id:"badge",start:0,duration:4,x:0.5,y:0.5,
+ shape:{type:"rectangle",width:0.35,height:0.2,fill:"#f6a447",
+ stroke:"#ffffff",strokeWidth:2,radius:24}}
+
+Shape types: rectangle, ellipse, line.
+Dimensions: fractions of the canvas. strokeWidth/radius: output pixels.
+Colors: #rrggbb or transparent. Shape geometry and colors are static.
+Transform animation: x, y, scale, rotation, opacity using clip-local keyframes.
+
+stagger_clips args:
+{clipIds:["a","b","c"],start:0,delay:0.15}
+
+## Safety and limits
+
+- Up to 100 ops per atomic batch, 200 clips per timeline, 64 keys per property.
+- On any failed op, nothing in the batch is persisted (422, failedIndex).
+- On a stale guarded ops write, fetch/re-plan (409, REVISION_CONFLICT).
+- POST /api/projects/:id/timeline/validate with {timeline} checks without saving.
+- Dry-run generated IDs are provisional. Committed createdClipIds are final.
+- Media draws first, shapes next, text last. There is no general z-index.
+- No arbitrary SVG paths, Lottie, expressions, 3D, nested scenes or motion blur.
+- Inspect actual rendered frames: font metrics and sampled easing can vary.
