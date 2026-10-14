@@ -6,7 +6,7 @@ import { MOTION_PRESETS, motionPreset } from "@shared/presets";
 import { round } from "@/lib/editor-model";
 import type { TimelineGesture } from "./forge-timeline";
 
-type Props={clip:Clip;time:number;fps:number;audioOnly:boolean;readOnly:boolean;patch:(p:Partial<Clip>,live?:boolean)=>void;seek:(t:number)=>void;gesture:TimelineGesture};
+type Props={clip:Clip;time:number;fps:number;audioOnly:boolean;readOnly:boolean;patch:(p:Partial<Clip>,live?:boolean)=>void;seek:(t:number)=>void;gesture:TimelineGesture;focusKey?:{property:AnimationProperty;time:number}};
 
 function useCanvas(draw:(ctx:CanvasRenderingContext2D,w:number,h:number)=>void,deps:unknown[]) {
   const ref=useRef<HTMLCanvasElement>(null);
@@ -60,7 +60,12 @@ function BezierEditor({value,onChange,gesture,disabled}:{value:Easing|undefined;
 }
 export default function ForgeMotion(props:Props) {
   const {clip,time,readOnly,patch,seek}=props;
-  const [property,setProperty]=useState<AnimationProperty>(props.audioOnly?"volume":"x"),[selected,setSelected]=useState(0);
+  const [property,setProperty]=useState<AnimationProperty>(()=>props.audioOnly?"volume":(Object.keys(clip.keyframes??{}) as AnimationProperty[]).find(p=>clip.keyframes?.[p]?.length)??"x"),[selected,setSelected]=useState(0);
+  useEffect(()=>{
+    if(!props.focusKey)return;
+    setProperty(props.focusKey.property);
+    setSelected(Math.max(0,(clip.keyframes?.[props.focusKey.property]??[]).findIndex(k=>Math.abs(k.time-props.focusKey!.time)<.001)));
+  },[props.focusKey,clip.id]);
   const frames=clip.keyframes?.[property]??[],dur=clipDuration(clip),local=round(clamp(time-clip.start,0,dur)),meta=ANIMATABLE[property],point=frames[selected];
   const allowed=(Object.keys(ANIMATABLE) as AnimationProperty[]).filter(p=>props.audioOnly?p==="volume":p!=="volume"||!!clip.assetId);
   const replace=(list:Keyframe[],live=false)=>patch({keyframes:{...clip.keyframes,[property]:list}},live);

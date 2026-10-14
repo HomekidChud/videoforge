@@ -54,15 +54,15 @@ function MediaLayer({clip,asset,time,playing,source,hidden,muted,onError,timelin
   return <video {...common} ref={el=>{media.current=el;}} src={source} crossOrigin="anonymous" preload="auto" playsInline className="preview-media" style={style} onLoadedMetadata={sync} onError={fail}/>;
 }
 
-type PreviewProps={timeline:Timeline;assets:AssetDTO[];time:number;playing:boolean;selectedId:string|null;readOnly:boolean;gesture:TimelineGesture;mediaUrl:(id:string,url:string)=>string;onError:(message:string)=>void;onValues:(id:string,values:Record<string,number>,live:boolean)=>void;muted?:boolean;onDropEffect?:(effect:any)=>void;peers?:Peer[];onCursor?:(c:{area:"preview";x:number;y:number}|null)=>void};
-export default function ForgePreview({timeline,assets,time,playing,selectedId,readOnly,gesture,mediaUrl,onError,onValues,muted,onDropEffect,peers,onCursor}:PreviewProps) {
+type PreviewProps={timeline:Timeline;assets:AssetDTO[];time:number;playing:boolean;selectedId:string|null;readOnly:boolean;gesture:TimelineGesture;mediaUrl:(id:string,url:string)=>string;onError:(message:string)=>void;onValues:(id:string,values:Record<string,number>,live:boolean)=>void;onSelect?:(id:string|null,mode?:"replace"|"toggle")=>void;muted?:boolean;onDropEffect?:(effect:any)=>void;peers?:Peer[];onCursor?:(c:{area:"preview";x:number;y:number}|null)=>void};
+export default function ForgePreview({timeline,assets,time,playing,selectedId,readOnly,gesture,mediaUrl,onError,onValues,onSelect,muted,onDropEffect,peers,onCursor}:PreviewProps) {
   const [dropHot,setDropHot]=useState(false);
   const area=useRef<HTMLDivElement>(null),stage=useRef<HTMLDivElement>(null);
   const [size,setSize]=useState({width:640,height:360}),[box,setBox]=useState<{l:number;t:number;w:number;h:number}|null>(null);
   const ratio=timeline.resolution.width/timeline.resolution.height;
   useEffect(()=>{
     const el=area.current;if(!el)return;
-    const resize=()=>{const w=Math.max(100,el.clientWidth-48),h=Math.max(100,el.clientHeight-48);setSize({width:Math.min(w,h*ratio),height:Math.min(h,w/ratio)});};
+    const resize=()=>{const w=Math.max(32,el.clientWidth-24),h=Math.max(32,el.clientHeight-40);setSize({width:Math.min(w,h*ratio),height:Math.min(h,w/ratio)});};
     resize();const ro=new ResizeObserver(resize);ro.observe(el);return()=>ro.disconnect();
   },[ratio]);
   const hiddenTrack=(c:Clip)=>!!timeline.tracks?.[c.track]?.hidden;
@@ -80,6 +80,7 @@ export default function ForgePreview({timeline,assets,time,playing,selectedId,re
     setBox(prev=>prev&&Math.abs(prev.l-next.l)<.5&&Math.abs(prev.t-next.t)<.5&&Math.abs(prev.w-next.w)<.5&&Math.abs(prev.h-next.h)<.5?prev:next);
   });
   const startDrag=(e:React.PointerEvent,mode:"move"|"scale")=>{
+    if(mode==="move"&&e.shiftKey&&selected&&onSelect){e.preventDefault();e.stopPropagation();onSelect(selected.id,"toggle");return;}
     if(readOnly||!selected||!stage.current)return;e.preventDefault();e.stopPropagation();(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     const rect=stage.current.getBoundingClientRect(),start=evaluateClip(selected,time),g=layerTransform(start);
     const center={x:rect.left+g.x*rect.width,y:rect.top+g.y*rect.height},d0=Math.max(8,Math.hypot(e.clientX-center.x,e.clientY-center.y)),p0={x:e.clientX,y:e.clientY};
@@ -93,7 +94,14 @@ export default function ForgePreview({timeline,assets,time,playing,selectedId,re
   };
   const texts=timeline.clips.filter(c=>c.text&&time>=c.start&&time<clipEnd(c)&&!hiddenTrack(c));
   return <div className={`preview-area ${dropHot?"drop-hot":""}`} ref={area} onDragOver={e=>{if(onDropEffect&&!readOnly&&e.dataTransfer.types.includes("application/x-vf-effect")){e.preventDefault();e.dataTransfer.dropEffect="copy";setDropHot(true);}}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node|null))setDropHot(false);}} onDrop={e=>{setDropHot(false);if(!onDropEffect||readOnly)return;try{const effect=JSON.parse(e.dataTransfer.getData("application/x-vf-effect"));e.preventDefault();e.stopPropagation();onDropEffect(effect);}catch{/* not an effect */}}}>
-    <div className="preview-stage" ref={stage} style={{width:size.width,height:size.height,background:timeline.background??"#000"}} data-testid="preview-stage" onPointerMove={e=>{if(!onCursor)return;const r=e.currentTarget.getBoundingClientRect();onCursor({area:"preview",x:Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),y:Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))});}} onPointerLeave={()=>onCursor?.(null)}>
+    <div className={`preview-stage ${onSelect?"selectable-stage":""}`} ref={stage} style={{width:size.width,height:size.height,background:timeline.background??"#000"}} data-testid="preview-stage"
+      onPointerDown={e=>{
+        if(!onSelect||playing||e.button!==0)return;
+        const layer=(e.target as HTMLElement).closest<HTMLElement>("[data-layer]");
+        if(layer){e.stopPropagation();onSelect(layer.dataset.layer??null,e.shiftKey?"toggle":"replace");}
+        else if(e.target===e.currentTarget)onSelect(null);
+      }}
+      onPointerMove={e=>{if(!onCursor)return;const r=e.currentTarget.getBoundingClientRect();onCursor({area:"preview",x:Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),y:Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))});}} onPointerLeave={()=>onCursor?.(null)}>
       {ordered.map(c=>{const a=assets.find(x=>x.id===c.assetId);return a?<MediaLayer key={c.id} timeline={timeline} clip={c} asset={a} time={time} playing={playing} hidden={hiddenTrack(c)} muted={!!muted||!!timeline.tracks?.[c.track]?.muted} source={mediaUrl(a.id,`/api/media/${a.id}/raw`)} onError={onError}/>:null;})}
       {timeline.clips.filter(c=>c.shape&&time>=c.start&&time<clipEnd(c)&&!hiddenTrack(c)).map(c=>{
         const ev=evaluateClip(c,time),g=layerTransform(ev),s=c.shape!;

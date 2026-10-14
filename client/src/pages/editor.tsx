@@ -18,6 +18,8 @@ import ForgeEffects, { type Effect } from "@/components/forge-effects";
 import ForgeGraphics, { applyGraphics } from "@/components/forge-graphics";
 import ForgeComposition from "@/components/forge-composition";
 import { applyTimelineOp } from "@shared/editing";
+import { WorkspaceDivider } from "@/components/forge-workspace";
+import ForgeMotion from "@/components/forge-motion";
 
 type SaveState = "empty" | "saved" | "dirty" | "saving" | "error" | "readonly";
 type Me = { id: string; scope: "read" | "write" | "admin" };
@@ -319,10 +321,11 @@ export default function EditorPage() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if(e.defaultPrevented)return;
       const el = e.target as HTMLElement, typing = ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) && (el as HTMLInputElement).type !== "range" && (el as HTMLInputElement).type !== "checkbox";
       if (typing || el.isContentEditable) return;
       const mod = e.metaKey || e.ctrlKey, key = e.key.toLowerCase();
-      if (key === " " && el.tagName !== "BUTTON") { e.preventDefault(); togglePlay(); }
+      if (key === " " && !["BUTTON","SUMMARY","A"].includes(el.tagName) && el.getAttribute("role")!=="separator") { e.preventDefault(); togglePlay(); }
       else if (mod && key === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); }
       else if (mod && key === "y") { e.preventDefault(); redo(); }
       else if (mod && key === "d") { e.preventDefault(); duplicate(); }
@@ -363,6 +366,16 @@ export default function EditorPage() {
   };
   const copyPublicLink = async () => { try { await navigator.clipboard.writeText(`${location.href.split("#")[0]}#/share/${projectId}`); toast("Public link copied"); } catch { toast("Couldn’t access the clipboard.", "error"); } };
   const setProjectSettings = (p: { fps?: number; resolution?: { width: number; height: number }; background?: string }) => mutate((t) => ({ ...t, ...p }));
+  const [workspace, setWorkspace] = useState<"edit" | "animate">("edit");
+  const [focusedKey,setFocusedKey]=useState<{clipId:string;property:AnimationProperty;time:number}|undefined>();
+  const [libraryOpen, setLibraryOpen] = useState(true), [inspectorOpen, setInspectorOpen] = useState(true);
+  const [libraryWidth, setLibraryWidth] = useState(264), [inspectorWidth, setInspectorWidth] = useState(300), [timelineHeight, setTimelineHeight] = useState(300);
+  const [viewportWidth,setViewportWidth]=useState(window.innerWidth);
+  useEffect(()=>{
+    const fitPanels=()=>{const w=window.innerWidth;setViewportWidth(w);if(w<=860)return;setLibraryWidth(v=>Math.min(v,Math.max(220,Math.floor(w*.3))));setInspectorWidth(v=>Math.min(v,Math.max(260,Math.floor(w*.34))));};
+    window.addEventListener("resize",fitPanels);return()=>window.removeEventListener("resize",fitPanels);
+  },[]);
+  const [mobilePanel, setMobilePanel] = useState<"timeline" | "library" | "inspector">("timeline");
 
   const render = renderQ.data, renderUrl = render?.status === "done" && renderJobId ? mediaUrl(renderJobId, `/api/renders/${renderJobId}/download`) : "";
   const saveLabel = { empty: "Not saved yet", saved: "All changes saved", dirty: "Unsaved changes", saving: "Saving…", error: "Save failed", readonly: "Read-only key" }[saveState];
@@ -377,18 +390,36 @@ export default function EditorPage() {
           {followed && <span className="follow-chip" style={{ borderColor: followed.color }} data-testid="follow-chip">Following {followed.name}<button className="ghost-link" onClick={stopFollow}>Stop</button></span>}</div>}
         {watchers > 0 && <span className="watch-badge" title="A master admin is watching this project live. They cannot edit it."><Eye size={13} />{watchers} watching</span>}</div>
       <div className="studio-actions">
-        <button className="secondary-btn hide-sm" onClick={()=>setCompositionOpen(true)} data-testid="button-composition">JSON</button>
+        <div className="workspace-switch" aria-label="Workspace">
+          <button className={workspace==="edit"?"active":""} aria-pressed={workspace==="edit"} onClick={()=>setWorkspace("edit")} data-testid="workspace-edit">Edit</button>
+          <button className={workspace==="animate"?"active":""} aria-pressed={workspace==="animate"} onClick={()=>{setWorkspace("animate");setTimelineHeight(h=>Math.max(h,400));}} data-testid="workspace-animate"><Sparkles size={13}/>Animate</button>
+        </div>
+        <details className="studio-tools"><summary data-testid="button-studio-tools">Tools<ChevronDown size={13}/></summary><div className="studio-tools-menu">
+          <button onClick={()=>setCompositionOpen(true)} data-testid="button-composition">Composition JSON</button>
+          <button aria-pressed={libraryOpen} onClick={()=>setLibraryOpen(v=>!v)} data-testid="toggle-library">{libraryOpen?"Hide":"Show"} library</button>
+          <button aria-pressed={inspectorOpen} onClick={()=>setInspectorOpen(v=>!v)} data-testid="toggle-inspector">{inspectorOpen?"Hide":"Show"} inspector</button>
+          <button onClick={()=>{setLibraryOpen(true);setInspectorOpen(true);setLibraryWidth(264);setInspectorWidth(300);setTimelineHeight(300);}} data-testid="reset-workspace">Reset layout</button>
+          <button className="mobile-tool" disabled={!future.current.length||readOnly} onClick={redo} data-testid="mobile-redo">Redo</button>
+          <button className="mobile-tool" aria-pressed={snapping} onClick={()=>setSnapping(v=>!v)} data-testid="mobile-snapping">Snapping: {snapping?"on":"off"}</button>
+          <button className="mobile-tool" disabled={readOnly} onClick={()=>addTitle()} data-testid="mobile-add-title">Add title</button>
+          <a href="#/docs/introduction">Documentation</a><a href="#/platform">Developer platform</a>
+          {canPublish&&<a href="#/live">Live monitor</a>}
+        </div></details>
         {selectedIds.length>1&&<button className="secondary-btn hide-sm" disabled={readOnly} onClick={()=>{try{const next=applyTimelineOp(tlRef.current,{op:"stagger_clips",args:{clipIds:selectedIds,delay:.15,start:timeRef.current}},id=>byId.get(id));mutate(()=>next);toast("Selection staggered by 0.15s");}catch(e:any){toast(e.message,"error");}}} data-testid="button-stagger">Stagger</button>}
         <button className="icon-btn" onClick={undo} disabled={!past.current.length || readOnly} aria-label="Undo" title="Undo (Ctrl+Z)" data-testid="button-undo"><Undo2 size={17} /></button>
-        <button className="icon-btn" onClick={redo} disabled={!future.current.length || readOnly} aria-label="Redo" title="Redo (Ctrl+Shift+Z)"><Redo2 size={17} /></button>
+        <button className="icon-btn mobile-hide-action" onClick={redo} disabled={!future.current.length || readOnly} aria-label="Redo" title="Redo (Ctrl+Shift+Z)"><Redo2 size={17} /></button>
         <span className="divider" />
-        <button className={`icon-btn ${snapping ? "active accent" : ""}`} aria-pressed={snapping} onClick={() => setSnapping(!snapping)} aria-label="Toggle snapping" title="Snapping"><Magnet size={17} /></button>
+        <button className={`icon-btn mobile-hide-action ${snapping ? "active accent" : ""}`} aria-pressed={snapping} onClick={() => setSnapping(!snapping)} aria-label="Toggle snapping" title="Snapping"><Magnet size={17} /></button>
         <div className="menu-wrap hide-sm"><button className="secondary-btn" onClick={() => addTitle()} disabled={readOnly} data-testid="button-add-title"><Type size={15} />Add title</button><button className="icon-btn menu-caret" aria-label="Title styles" aria-expanded={titleMenu} disabled={readOnly} onClick={() => setTitleMenu(!titleMenu)} data-testid="button-title-menu"><ChevronDown size={14} /></button>{titleMenu && <div className="menu-pop" role="menu">{TITLE_PRESETS.map((p) => <button key={p.id} role="menuitem" onClick={() => addTitle(p)} data-testid={`title-${p.id}`}>{p.label}</button>)}</div>}</div>
-        <button className="secondary-btn hide-sm" onClick={() => setSelectedId(null)} title="Project settings and sharing"><Share2 size={15} />{visibility === "public" ? "Public" : "Share"}</button>
+        <button className="secondary-btn hide-sm" onClick={() => {setSelectedId(null);setInspectorOpen(true);setMobilePanel("inspector");}} title="Project settings and sharing" data-testid="button-project-settings"><Share2 size={15} />Project</button>
         <button className="primary-btn" onClick={() => startRender.mutate()} disabled={!timeline.clips.length || startRender.isPending || (readOnly && false)} data-testid="button-export">{startRender.isPending ? <Loader2 size={15} className="spin" /> : <Download size={15} />}Export</button>
       </div></div>
 
-    <div className="studio-grid">
+    <div className="mobile-workspace-tabs" aria-label="Editor panels">
+      {(["timeline","library","inspector"] as const).map(p=><button key={p} className={mobilePanel===p?"active":""} aria-pressed={mobilePanel===p} onClick={()=>{setMobilePanel(p);if(p==="library")setLibraryOpen(true);if(p==="inspector")setInspectorOpen(true);}} data-testid={`mobile-panel-${p}`}>{p}</button>)}
+    </div>
+    <div className={`studio-grid workspace-${workspace} ${libraryOpen?"":"library-collapsed"} ${inspectorOpen?"":"inspector-collapsed"} mobile-show-${mobilePanel}`}
+      style={{"--library-width":`${libraryOpen?libraryWidth:0}px`,"--inspector-width":`${inspectorOpen?inspectorWidth:0}px`,"--timeline-height":`${timelineHeight}px`} as React.CSSProperties}>
       <aside className="library" aria-label="Library">
         <div className="panel-tabs"><button className={panel === "media" ? "active" : ""} onClick={() => setPanel("media")}>Media</button><button className={panel === "effects" ? "active" : ""} onClick={() => setPanel("effects")} data-testid="tab-effects">Effects</button><button className={panel === "graphics" ? "active" : ""} onClick={() => setPanel("graphics")} data-testid="tab-graphics">Graphics</button><button className={panel === "projects" ? "active" : ""} onClick={() => setPanel("projects")}>Projects</button></div>
         {panel === "graphics" ? <ForgeGraphics disabled={readOnly} onApply={op=>{if(readOnly)return;try{const t=tlRef.current,next=applyGraphics(t,op,timeRef.current),ids=next.clips.filter(c=>!t.clips.some(o=>o.id===c.id)).map(c=>c.id);mutate(()=>next);setSel(ids);toast(`Added ${ids.length} editable graphics clip${ids.length===1?"":"s"}`);}catch(e:any){toast(e.message,"error");}}}/> : panel === "effects" ? <ForgeEffects disabled={readOnly} onApply={(e) => applyEffect(e)} /> : panel === "media" ? <>
@@ -406,17 +437,25 @@ export default function EditorPage() {
           {(projectsQ.data?.projects ?? []).map((p) => <div className={`project-card ${p.id === projectId ? "current" : ""}`} key={p.id}><button onClick={() => openProject(p)} data-testid={`button-load-project-${p.id}`}><FolderOpen size={16} /><span><b>{p.name}</b><small className="muted">{p.timeline.clips.length} clips · {p.visibility === "public" ? "Public" : "Private"}</small></span>{p.visibility === "public" ? <Globe size={14} /> : <Lock size={14} />}</button><button className="icon-btn danger" disabled={readOnly} aria-label={`Delete ${p.name}`} onClick={() => { if (confirm(`Delete “${p.name}”? This cannot be undone.`)) deleteProject.mutate(p.id); }}><Trash2 size={14} /></button></div>)}
           {!projectsQ.isLoading && !projectsQ.data?.projects.length && <div className="library-empty"><FolderOpen size={24} /><b>No saved projects</b><p>Projects save automatically as you edit.</p></div>}</div>}
       </aside>
+      {libraryOpen&&<div className="library-divider"><WorkspaceDivider axis="horizontal" label="Library width" value={libraryWidth} min={220} max={Math.min(400,Math.max(220,viewportWidth-(inspectorOpen?inspectorWidth:0)-272))} onChange={setLibraryWidth}/></div>}
 
-      <main className="monitor"><ForgePreview timeline={timeline} assets={assets} time={time} playing={playing} selectedId={selectedId} readOnly={readOnly} gesture={gesture} mediaUrl={mediaUrl} peers={peers} onCursor={onCursor} onError={(m) => toast(m, "error")} onValues={(id, v, live) => setValues(id, v, live)} onDropEffect={(effect) => applyEffect(effect)} />
+      <main className="monitor"><div className="monitor-heading"><span>Program <span className="muted">/ {projectName}</span></span><span className="monitor-hint">{workspace==="animate"?"Animate selected clip below":"Click an object to select · Shift to multi-select"}</span></div><ForgePreview timeline={timeline} assets={assets} time={time} playing={playing} selectedId={selectedId} readOnly={readOnly} gesture={gesture} mediaUrl={mediaUrl} peers={peers} onCursor={onCursor} onSelect={onSelect} onError={(m) => toast(m, "error")} onValues={(id, v, live) => setValues(id, v, live)} onDropEffect={(effect) => applyEffect(effect)} />
         <div className="transport"><button className="icon-btn" aria-label="Jump to start" onClick={() => seek(0)}><SkipBack size={17} /></button><button className="play-btn" onClick={togglePlay} disabled={!duration} aria-label={playing ? "Pause" : "Play"} data-testid="button-play">{playing ? <Pause size={20} /> : <Play size={20} />}</button><button className="icon-btn" aria-label="Jump to end" onClick={() => seek(duration)}><SkipForward size={17} /></button>
           <span className="mono time-big">{timecode(time, timeline.fps)}</span><div className="flex-spacer" /><button className="secondary-btn" onClick={split} disabled={readOnly || !timeline.clips.length} title="Split at playhead (S)"><Scissors size={15} />Split</button></div></main>
 
       <aside className="inspector" aria-label="Inspector">{selectedIds.length > 1 ? <MultiInspector clips={timeline.clips.filter((c) => selectedIds.includes(c.id))} readOnly={readOnly} onPatch={(p) => patchClips(selectedIds, p)} onDuplicate={duplicate} onDelete={() => remove(false)} onRippleDelete={() => remove(true)} onAlign={alignClips} onTransitions={transitionSelected} onClear={() => setSel([])} />
         : selected ? <ClipInspector transition={incomingTransition(timeline, selected)} onTransition={(type, d) => applyTransition(selected.id, type, d)} key={selected.id} clip={selected} asset={byId.get(selected.assetId)} readOnly={readOnly} gesture={gesture} time={time} fps={timeline.fps} patch={(p, live) => patchClip(selected.id, p, live)} setValues={(v, live) => setValues(selected.id, v, live)} toggleKey={(p) => toggleKey(selected.id, p)} seek={seek} onSplit={split} onDuplicate={duplicate} onDelete={() => remove(false)} />
         : <ProjectInspector name={projectName} onName={setProjectName} timeline={timeline} setProject={setProjectSettings} readOnly={readOnly} canPublish={canPublish} projectId={projectId} visibility={visibility} onVisibility={toggleVisibility} onCopyLink={copyPublicLink} seek={seek} addMarker={addMarker} removeMarker={removeMarker} />}</aside>
+      {inspectorOpen&&<div className="inspector-divider"><WorkspaceDivider axis="horizontal" label="Inspector width" value={inspectorWidth} min={260} max={Math.min(440,Math.max(260,viewportWidth-(libraryOpen?libraryWidth:0)-272))} onChange={setInspectorWidth}/></div>}
+      <div className="timeline-divider"><WorkspaceDivider axis="vertical" label="Timeline height" value={timelineHeight} min={180} max={480} onChange={setTimelineHeight}/></div>
 
       <section className="timeline-panel" aria-label="Timeline">
-        <ForgeTimeline timeline={timeline} assets={assets} selectedId={selectedId} selectedIds={selectedIds} peers={peers} follow={!!followId} onSelectMany={onSelectMany} onCursor={onCursor} time={time} playing={playing} pps={pps} snapping={snapping} readOnly={readOnly} mediaUrl={mediaUrl} onTrack={setTrack} onFit={fitTimeline} onAddMarker={addMarker} onSelect={onSelect} onSeek={seek} onZoom={setPps} gesture={gesture} onDropAsset={(id, track, start) => { const a = byId.get(id); if (a) addAsset(a, track, start); }} onDropEffect={(effect, target) => applyEffect(effect, target)} onDropFiles={(files, track, start) => importFiles(files, { track, start })} onMoveMarker={moveMarker} />
+        <div className="sequence-heading"><b>Sequence</b><span className="muted">{timeline.clips.length} clips · {timeline.fps} fps</span><div className="flex-spacer"/><span className="muted">{selectedIds.length?`${selectedIds.length} selected`:"S split · M marker · Space play"}</span></div>
+        <div className="sequence-workspace"><div className="sequence-timeline">
+        <ForgeTimeline animationMode={workspace==="animate"} onKeyframeFocus={(clipId,property,time)=>setFocusedKey({clipId,property,time})} timeline={timeline} assets={assets} selectedId={selectedId} selectedIds={selectedIds} peers={peers} follow={!!followId} onSelectMany={onSelectMany} onCursor={onCursor} time={time} playing={playing} pps={pps} snapping={snapping} readOnly={readOnly} mediaUrl={mediaUrl} onTrack={setTrack} onFit={fitTimeline} onAddMarker={addMarker} onSelect={onSelect} onSeek={seek} onZoom={setPps} gesture={gesture} onDropAsset={(id, track, start) => { const a = byId.get(id); if (a) addAsset(a, track, start); }} onDropEffect={(effect, target) => applyEffect(effect, target)} onDropFiles={(files, track, start) => importFiles(files, { track, start })} onMoveMarker={moveMarker} />
+        </div>{workspace==="animate"&&<aside className="animation-workspace" aria-label="Animation workspace" data-testid="animation-workspace"><div className="animation-heading"><b>Animation</b><span className="muted">{selected?.label??selected?.text??"Select a clip"}</span></div>
+          {selected?<ForgeMotion key={selected.id} clip={selected} focusKey={focusedKey?.clipId===selected.id?focusedKey:undefined} time={time} fps={timeline.fps} audioOnly={selected.track==="audio"} readOnly={readOnly} patch={(p,live)=>patchClip(selected.id,p,live)} seek={seek} gesture={gesture}/>:<div className="animation-empty"><Sparkles size={22}/><b>Give your story motion</b><p>Select a clip in the canvas or timeline to edit property keyframes, easing and motion presets.</p></div>}
+        </aside>}</div>
       </section></div>
 
     {compositionOpen&&<ForgeComposition timeline={timeline} disabled={readOnly} assetIds={new Set(assets.map(a=>a.id))} onClose={()=>setCompositionOpen(false)} onApply={t=>{mutate(()=>t);setSel([]);seek(0);toast("Composition imported");}}/>}
