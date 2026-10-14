@@ -231,23 +231,28 @@ export function keyMetadata(k: ApiKey) {
 const rateWindows = new Map<string, { start: number; count: number }>();
 function enforcePolicy(key: ApiKey, req: Request, res: Response): boolean {
   const p = keyRestrictions(key);
+  // Express routes are case-insensitive and tolerate trailing slashes by default.
+  // Normalize the path so /API/... or /api/.../ cannot bypass these checks.
+  // Lowercase the whole path and strip one trailing slash.
+  const trimmed = req.path.length > 1 && req.path.endsWith("/") ? req.path.slice(0, -1) : req.path;
+  const normPath = trimmed.toLowerCase();
   const deny = (message: string, status = 403) => { res.status(status).json({ message }); return false; };
   if (p.expiresAt && p.expiresAt <= Date.now()) return deny("This API key has expired.");
   // This is a browser origin allowlist, not a substitute for server-side authentication.
   if (p.allowedOrigins.length && (!req.headers.origin || !p.allowedOrigins.includes(req.headers.origin))) return deny("Origin is not allowed by this API key.");
   if (req.method === "DELETE" && !p.allowDelete) return deny("Deletion is disabled for this API key.");
-  if (req.path === "/api/media/upload" && !p.allowUpload) return deny("Uploads are disabled for this API key.");
-  if (req.method === "POST" && req.path === "/api/renders" && !p.allowRender) return deny("Rendering is disabled for this API key.");
+  if (normPath === "/api/media/upload" && !p.allowUpload) return deny("Uploads are disabled for this API key.");
+  if (req.method === "POST" && normPath === "/api/renders" && !p.allowRender) return deny("Rendering is disabled for this API key.");
   if (p.projectIds !== null) {
-    if ((req.path === "/api/projects" && req.method === "POST") || req.path === "/api/media/upload" || (req.path.startsWith("/api/media/") && req.method === "DELETE")) return deny("Project-restricted keys cannot create projects, upload, or delete shared media.");
-    const projectMatch = req.path.match(/^\/api\/(?:projects|live)\/([^/]+)/);
-    const mediaMatch = req.path.match(/^\/api\/media\/([^/]+)/);
-    const renderMatch = req.path.match(/^\/api\/renders\/([^/]+)/);
+    if ((normPath === "/api/projects" && req.method === "POST") || normPath === "/api/media/upload" || (normPath.startsWith("/api/media/") && req.method === "DELETE")) return deny("Project-restricted keys cannot create projects, upload, or delete shared media.");
+    const projectMatch = normPath.match(/^\/api\/(?:projects|live)\/([^/]+)/);
+    const mediaMatch = normPath.match(/^\/api\/media\/([^/]+)/);
+    const renderMatch = normPath.match(/^\/api\/renders\/([^/]+)/);
     if (projectMatch && !projectAllowed(key, projectMatch[1])) return deny("Project is outside this API key's restrictions.");
     if (mediaMatch && !assetAllowed(key, mediaMatch[1])) return deny("Media is outside this API key's restrictions.");
     if (renderMatch && !projectAllowed(key, storage.getRenderJob(renderMatch[1])?.projectId || "")) return deny("Render is outside this API key's restrictions.");
-    if (req.path === "/api/renders" && req.method === "POST" && !projectAllowed(key, req.body?.projectId)) return deny("Project is outside this API key's restrictions.");
-    const tokenMatch = req.path.match(/^\/api\/auth\/media-token\/([^/]+)/);
+    if (normPath === "/api/renders" && req.method === "POST" && !projectAllowed(key, req.body?.projectId)) return deny("Project is outside this API key's restrictions.");
+    const tokenMatch = normPath.match(/^\/api\/auth\/media-token\/([^/]+)/);
     if (tokenMatch && !resourceAllowed(key, tokenMatch[1])) return deny("Resource is outside this API key's restrictions.");
     // Block injecting another project's asset via project JSON or agent ops.
     const rawClips = req.body?.timeline?.clips;
@@ -257,7 +262,7 @@ function enforcePolicy(key: ApiKey, req: Request, res: Response): boolean {
     if (refs.some((id: string) => !assetAllowed(key, id))) return deny("Timeline contains media outside this API key's restrictions.");
   }
   // Editors publish live state about ten times a second; that heartbeat is not metered.
-  if (p.requestsPerMinute && !/^\/api\/(?:live\/[^/]+\/publish|projects\/[^/]+\/presence)$/.test(req.path)) {
+  if (p.requestsPerMinute && !/^\/api\/(?:live\/[^/]+\/publish|projects\/[^/]+\/presence)$/.test(normPath)) {
     const now = Date.now();
     let w = rateWindows.get(key.id);
     if (!w || now - w.start >= 60000) {

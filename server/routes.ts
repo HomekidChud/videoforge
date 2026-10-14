@@ -433,7 +433,27 @@ export async function registerRoutes(
       }
     }
     const createdClipIds = timeline.clips.filter(c => !oldIds.has(c.id)).map(c => c.id);
-    if (req.body?.dryRun === true) return res.json({ id, timeline, applied: list.length, dryRun: true, createdClipIds, updatedAt: p.updatedAt });
+    if (req.body?.dryRun === true) {
+      // Additive change summary (compared against the stored timeline as it was on entry).
+      const prev = parseTimeline(p.timelineJson);
+      const prevById = new Map(prev.clips.map(c => [c.id, c]));
+      const added = timeline.clips.filter(c => !prevById.has(c.id)).map(c => c.id);
+      const removed = Array.from(oldIds).filter(id => !timeline.clips.some(c => c.id === id));
+      const changed: string[] = [];
+      for (const c of timeline.clips) {
+        const old = prevById.get(c.id);
+        if (old && JSON.stringify(old) !== JSON.stringify(c)) changed.push(c.id);
+      }
+      const timelineDiff = {
+        fps: prev.fps !== timeline.fps ? { from: prev.fps, to: timeline.fps } : undefined,
+        background: prev.background !== timeline.background ? { from: prev.background, to: timeline.background } : undefined,
+        resolution: JSON.stringify(prev.resolution) !== JSON.stringify(timeline.resolution) ? { from: prev.resolution, to: timeline.resolution } : undefined,
+        tracks: JSON.stringify(prev.tracks ?? {}) !== JSON.stringify(timeline.tracks ?? {}) ? { from: prev.tracks, to: timeline.tracks } : undefined,
+        markers: JSON.stringify(prev.markers ?? []) !== JSON.stringify(timeline.markers ?? []) ? { from: prev.markers, to: timeline.markers } : undefined,
+      };
+      const summary = { addedClipIds: added, changedClipIds: changed, removedClipIds: removed, timelineDiff };
+      return res.json({ id, timeline, applied: list.length, dryRun: true, createdClipIds, summary, updatedAt: p.updatedAt });
+    }
     const updated = storage.updateProject(id, { timelineJson: JSON.stringify(timeline), updatedAt: Math.max(now(), p.updatedAt + 1) })!;
     syncTimeline(id, actorOf(req), timeline, "api", `API ${list.length > 1 ? `batch of ${list.length} ops` : "op"}: ${Array.from(new Set(list.map((o: any) => o?.op))).slice(0, 6).join(", ")}`);
     res.json({ id: updated.id, name: updated.name, visibility: updated.visibility, timeline, applied: list.length, createdClipIds, createdAt: updated.createdAt, updatedAt: updated.updatedAt });

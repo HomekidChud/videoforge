@@ -1,6 +1,6 @@
 import { setTransition } from "./transitions";
 import { normalizeClip, normalizeTimeline, clipDuration, clipEnd, TRACKS, type Clip, type Timeline, type TrackName } from "./timeline";
-import { normalizeKeyframes, isProperty, sliceKeyframes, type AnimationProperty } from "./animation";
+import { normalizeKeyframes, isProperty, sliceKeyframes, type AnimationProperty, type Keyframe } from "./animation";
 import { motionPreset } from "./presets";
 import { templateClips } from "./graphics";
 const uid = () => Math.random().toString(36).slice(2,14);
@@ -129,6 +129,59 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
           c.keyframes = parts[0]; right.keyframes = parts[1];
           c.outPoint = srcSplit;
           clips.push(right);
+          break;
+        }
+        case "swap_asset": {
+          const { clipId, assetId, duration, inPoint, outPoint, keepKeyframes } = args || {};
+          const c = find(clipId);
+          if (typeof assetId !== "string" || !assetId.trim()) throw new Error("assetId required");
+          if (c.assetId === "") throw new Error("swap_asset only applies to media clips (assetId set); text and shape clips cannot become media");
+          // Preserve clip identity, placement, style, and playback speed. Only the source
+          // and trim window change. Speed is NOT reset — the displayed duration follows
+          // from (outPoint - inPoint) / speed exactly as before.
+          const patch: Partial<Clip> = { assetId };
+          if (typeof inPoint === "number") patch.inPoint = Math.max(0, inPoint);
+          const src = getAsset(assetId);
+          if (!src) throw new Error(`asset ${assetId} not found`);
+          const newIn = (patch.inPoint as number | undefined) ?? c.inPoint;
+          const oldSpeed = c.assetId ? c.speed ?? 1 : 1;
+          const oldDisplayed = clipDuration(c);
+          // Source-window length that preserves the displayed duration at the same speed.
+          const defaultSrcSpan = Math.max(0.1, oldDisplayed * oldSpeed);
+          if (src.kind === "image") {
+            // Images have no in/out semantics. Only honour an explicit outPoint or
+            // duration; otherwise keep the existing window untouched.
+            if (typeof outPoint === "number") patch.outPoint = Math.max(newIn + 0.1, outPoint);
+            else if (typeof duration === "number" && duration > 0) patch.outPoint = newIn + duration;
+            // else: keep c.outPoint as-is
+          } else {
+            const maxOut = src.duration || Infinity;
+            if (newIn > maxOut - 0.1) throw new Error(`inPoint ${newIn} is beyond the end of this asset (duration ${src.duration})`);
+            // `duration` and `outPoint` are in SOURCE seconds (inPoint/outPoint space).
+            const desiredSpan = (typeof duration === "number" && duration > 0 ? duration : null) ?? defaultSrcSpan;
+            const explicit = typeof outPoint === "number" && outPoint > newIn ? outPoint : null;
+            patch.outPoint = Math.min(maxOut, explicit ?? Math.max(newIn + 0.1, newIn + desiredSpan));
+          }
+          // Keyframes: default = proportionally stretch the original curves to the new
+          // displayed duration (so a shortened clip still ends at its original final
+          // values). keepKeyframes:true preserves the original arrays verbatim — even
+          // beyond the new window — which normalization may then clamp.
+          if (keepKeyframes === true) {
+            clips[clips.indexOf(c)] = patchWithAnimation({ ...c, ...patch }, { keyframes: c.keyframes } as any);
+          } else {
+            const base = { ...c, ...patch };
+            const newDisplayed = clipDuration(base);
+            const scale = newDisplayed > 0 && oldDisplayed > 0 ? newDisplayed / oldDisplayed : 1;
+            let scaled: typeof c.keyframes = undefined;
+            if (c.keyframes) {
+              scaled = {} as typeof c.keyframes;
+              for (const p of Object.keys(c.keyframes) as AnimationProperty[]) {
+                const arr = c.keyframes[p]!;
+                (scaled as any)[p] = arr.map(f => ({ ...f, time: scale === 1 ? f.time : Math.round(Math.min(f.time * scale, newDisplayed) * 1000) / 1000 }));
+              }
+            }
+            clips[clips.indexOf(c)] = patchWithAnimation(base, { ...(patch as any), keyframes: scaled } as any);
+          }
           break;
         }
         case "set_project": {

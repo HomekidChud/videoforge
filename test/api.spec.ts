@@ -333,6 +333,26 @@ async function main() {
     const other = await jsonFetch("/api/projects", { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ name: "other", timeline: { clips: [] } }) });
     assert((await jsonFetch(`/api/projects/${projectId}`, { headers: SC })).status === 200, "restricted key reads allowed project");
     assert((await jsonFetch(`/api/projects/${other.body.id}`, { headers: SC })).status === 403, "restricted key cannot read other project");
+    // Case-insensitive route matching means /API/... and /api/.../ must be treated identically.
+    assert((await jsonFetch(`/API/projects/${other.body.id}`, { headers: SC })).status === 403, "uppercase path cannot bypass project allowlist");
+    assert((await jsonFetch(`/api/projects/${other.body.id}/`, { headers: SC })).status === 403, "trailing slash cannot bypass project allowlist");
+    assert((await jsonFetch(`/API/projects/${other.body.id}/timeline/ops`, { method: "POST", headers: SC, body: JSON.stringify({ ops: [{ op: "add_text_clip", args: { text: "x" } }] }) })).status === 403, "uppercase path cannot bypass ops");
+    assert((await jsonFetch(`/API/projects`, { method: "POST", headers: SC, body: JSON.stringify({ name: "bad" }) })).status === 403, "restricted key cannot create project via uppercase path");
+    assert((await jsonFetch(`/api/projects/${projectId}`, { headers: SC })).status === 200, "project allowlist unaffected by fix");
+
+    // Alternate-case paths must respect allowUpload / allowRender too
+    const noUp = await mk({ label: "no-upload", scope: "write", restrictions: { allowUpload: false } });
+    const UP = { Authorization: `Bearer ${noUp.body.key}` } as any;
+    const upLower = await fetch(`${H}/api/media/upload`, { method: "POST", headers: UP });
+    const upUpper = await fetch(`${H}/API/media/upload`, { method: "POST", headers: UP });
+    const upSlash = await fetch(`${H}/api/media/upload/`, { method: "POST", headers: UP });
+    assert(upLower.status === 403 && upUpper.status === 403 && upSlash.status !== 201, `allowUpload enforced on every casing, got ${upLower.status}/${upUpper.status}/${upSlash.status}`);
+    const noRn = await mk({ label: "no-render", scope: "write", restrictions: { allowRender: false } });
+    const RN = { Authorization: `Bearer ${noRn.body.key}` } as any;
+    const rnLower = await jsonFetch("/api/renders", { method: "POST", headers: RN, body: JSON.stringify({ projectId }) });
+    const rnUpper = await jsonFetch("/API/renders", { method: "POST", headers: RN, body: JSON.stringify({ projectId }) });
+    const rnSlash = await jsonFetch("/api/renders/", { method: "POST", headers: RN, body: JSON.stringify({ projectId }) });
+    assert(rnLower.status === 403 && rnUpper.status === 403 && rnSlash.status !== 201, `allowRender enforced on every casing, got ${rnLower.status}/${rnUpper.status}/${rnSlash.status}`);
     assert((await jsonFetch(`/api/projects/${projectId}`, { method: "DELETE", headers: SC })).status === 403, "delete-disabled key cannot delete");
     assert((await jsonFetch(`/api/projects/${projectId}`, { method: "PUT", headers: SC, body: JSON.stringify({ visibility: "public" }) })).status === 403, "non-admin cannot publish");
     const list = await jsonFetch("/api/projects", { headers: SC });
@@ -423,13 +443,17 @@ async function main() {
   // --- 18. Keyframes, easing, batch ops, state, frame preview, capabilities
   console.log("18) Keyframes and agent tooling");
   {
+    const png2 = path.join(ROOT, "data", "test_img.png");
+    const fd2 = new FormData(); fd2.append("files", new File([fs.readFileSync(png2)], "img2.png", { type: "image/png" }));
+    const img2 = (await (await fetch(`${H}/api/media/upload`, { method: "POST", headers: AUTH_ADMIN, body: fd2 })).json()).assets[0];
+    const imageAssetId = img2.id;
     const caps = await jsonFetch("/api/capabilities", { headers: AUTH_ADMIN });
     assert(caps.status === 200 && caps.body.animatableProperties.rotation && caps.body.ops.upsert_keyframe, "capabilities describe animatable properties and ops");
     const proj = await jsonFetch("/api/projects", { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ name: "anim", timeline: { resolution: { width: 640, height: 360 }, clips: [] } }) });
     const pid = proj.body.id, ops = `/api/projects/${pid}/timeline/ops`;
     const batch = await jsonFetch(ops, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ ops: [
       { op: "add_clip", args: { id: "a1", assetId, track: "video", start: 0, inPoint: 0, outPoint: 4 } },
-      { op: "add_text_clip", args: { text: "100% ready", start: 0, duration: 4, textSize: 8 } },
+      { op: "add_text_clip", args: { id: "t1", text: "100% ready", start: 0, duration: 4, textSize: 8 } },
       { op: "set_keyframes", args: { clipId: "a1", property: "scale", keyframes: [{ time: 0, value: 1, easing: "ease-in-out" }, { time: 4, value: 1.4 }] } },
       { op: "upsert_keyframe", args: { clipId: "a1", property: "opacity", time: 0, value: 0, easing: [0.2, 0, 0.1, 1.4] } },
       { op: "upsert_keyframe", args: { clipId: "a1", property: "opacity", time: 1, value: 1 } },
@@ -437,6 +461,10 @@ async function main() {
     assert(batch.status === 200 && batch.body.applied === 5, `batch applied atomically, got ${batch.status} ${batch.body.message || ""}`);
     const a1 = batch.body.timeline.clips.find((c: any) => c.id === "a1");
     assert(a1.keyframes.scale.length === 2 && a1.keyframes.opacity[0].easing.length === 4, "keyframes and custom bezier persist");
+    const realTextId = batch.body.timeline.clips.find((c: any) => c.text === "100% ready")?.id;
+    assert(!!realTextId, `text clip exists with a real id, got ${realTextId}`);
+    const swappedText = await jsonFetch(ops, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ op: "swap_asset", args: { clipId: realTextId, assetId: imageAssetId } }) });
+    assert(swappedText.status === 422 && /text and shape clips/i.test(String(swappedText.body.message || "")), `swap_asset on a text clip rejected with the right reason, got ${swappedText.status} ${swappedText.body.message || ""}`);
     const failed = await jsonFetch(ops, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ ops: [{ op: "move_clip", args: { clipId: "a1", start: 9 } }, { op: "set_keyframes", args: { clipId: "a1", property: "volume", keyframes: [{ time: 99, value: 1 }] } }] }) });
     assert(failed.status === 422 && failed.body.failedIndex === 1, "failing batch reports index");
     assert((await jsonFetch(`/api/projects/${pid}`, { headers: AUTH_ADMIN })).body.timeline.clips.find((c: any) => c.id === "a1").start === 0, "failed batch is rolled back");
@@ -461,6 +489,47 @@ async function main() {
       const j = await jsonFetch(`/api/renders/${render.body.jobId}`, { headers: AUTH_ADMIN }); status = j.body.status; err = j.body.error || "";
     }
     assert(status === "done", `animated render finished: ${status} ${err}`);
+
+    // --- swap_asset: change media source while preserving id, style, placement
+    // (imageAssetId is only used to prove that swap works with any media kind; keyframe
+    //  and trim assertions use the video asset, which has in/out semantics)
+    const swap = await jsonFetch(ops, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ op: "swap_asset", args: { clipId: "a1", assetId: imageAssetId, keepKeyframes: true } }) });
+    assert(swap.status === 200, `swap_asset to an image succeeded, got ${swap.status} ${swap.body.message || ""}`);
+    const swapped = swap.body.timeline.clips.find((c: any) => c.id === "a1");
+    assert(swapped.assetId === imageAssetId && swapped.keyframes?.scale?.length >= 1, "swap_asset preserves id, keyframes, and style");
+    assert((await jsonFetch(ops, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ op: "swap_asset", args: { clipId: "a1", assetId: "missing" } }) })).status === 422, "swap_asset to unknown asset rejected");
+    const swappedBack = await jsonFetch(ops, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ op: "swap_asset", args: { clipId: "a1", assetId, inPoint: 1, duration: 2 } }) });
+    assert(swappedBack.status === 200, `swap back to video succeeded, got ${swappedBack.status} ${swappedBack.body.message || ""}`);
+    const sb = swappedBack.body.timeline.clips.find((c: any) => c.id === "a1");
+    assert(sb.outPoint === 3 && sb.start === 0 && sb.track === "video", `swap_asset with an explicit trim window works, got outPoint ${sb.outPoint}`);
+    assert((sb.keyframes?.scale?.length ?? 0) >= 1, `swap_asset preserves keyframes when duration matches, got ${JSON.stringify(sb.keyframes)}`);
+    // swap to a shorter window: default keyframes must be rescaled (not dropped)
+    const short = await jsonFetch(ops, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ op: "swap_asset", args: { clipId: "a1", assetId, duration: 1 } }) });
+    assert(short.status === 200, `short swap succeeded, got ${short.status} ${short.body.message || ""}`);
+    const sh = short.body.timeline.clips.find((c: any) => c.id === "a1");
+    assert(Math.abs(sh.outPoint - (sh.inPoint + 1)) < 1e-3, `explicit duration applied in source seconds, got outPoint ${sh.outPoint}`);
+    assert(sh.keyframes?.opacity?.length === 2 && sh.keyframes.opacity.every((f: any) => f.time <= 1.01), `keyframes rescaled to the new displayed window, got ${JSON.stringify(sh.keyframes)}`);
+    assert((await jsonFetch(ops, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ op: "swap_asset", args: { clipId: "a1", assetId, inPoint: 9999 } }) })).status === 422, "inPoint beyond the replacement source duration rejected");
+    // keepKeyframes:true preserves the original curves verbatim (identity, not rescaled)
+    const keep = await jsonFetch(ops, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ op: "swap_asset", args: { clipId: "a1", assetId, duration: 2, keepKeyframes: true } }) });
+    assert(keep.status === 200, `keepKeyframes swap succeeded, got ${keep.status} ${keep.body.message || ""}`);
+    const kk = keep.body.timeline.clips.find((c: any) => c.id === "a1");
+    const pre = short.body.timeline.clips.find((c: any) => c.id === "a1").keyframes;
+    assert(JSON.stringify(kk.keyframes) === JSON.stringify(pre), `keepKeyframes preserves curves verbatim even beyond the new window, got ${JSON.stringify(kk.keyframes)} vs ${JSON.stringify(pre)}`);
+
+    // --- dryRun summary: report what would change
+    const before = (await jsonFetch(`/api/projects/${pid}`, { headers: AUTH_ADMIN })).body;
+    const beforeTxtId = before.timeline.clips.find((c: any) => c.text === "100% ready").id;
+    const dry = await jsonFetch(ops, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ dryRun: true, ops: [
+      { op: "add_text_clip", args: { text: "dry", start: 0, duration: 1 } },
+      { op: "move_clip", args: { clipId: "a1", start: 1 } },
+      { op: "remove_clip", args: { clipId: beforeTxtId } },
+    ] }) });
+    assert(dry.status === 200 && dry.body.dryRun === true, `dry run succeeds, got ${dry.status} ${dry.body.message || ""}`);
+    const sdry = dry.body.summary || {};
+    assert(sdry.addedClipIds?.length === 1 && sdry.removedClipIds?.length === 1 && sdry.changedClipIds?.includes("a1"), `dry run summary is correct, got ${JSON.stringify(sdry)}`);
+    assert((await jsonFetch(`/api/projects/${pid}`, { headers: AUTH_ADMIN })).body.timeline.clips.find((c: any) => c.id === "a1").start === 0, "dry run left timeline unchanged");
+    assert((await jsonFetch(`/api/projects/${pid}`, { headers: AUTH_ADMIN })).body.timeline.clips.find((c: any) => c.id === beforeTxtId), "dry run left removed clip in place");
   }
 
   // --- 19. Live sessions (view-only admin watching), new ops, storyboard

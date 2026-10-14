@@ -35,6 +35,7 @@ export function capabilities() {
       remove_clip: "clipId", ripple_delete: "clipId", duplicate_clip: "clipId, start?",
       trim_clip: "clipId, inPoint?, outPoint?", move_clip: "clipId, start?, track?",
       split_clip: "clipId, at (timeline seconds)", update_clip: "clipId plus any clip field",
+      swap_asset: "clipId, assetId, duration?, inPoint?, outPoint?, keepKeyframes? — replaces the media source of an existing clip (kept id, style, and placement). not supported on text/shape clips.",
       set_audio: "clipId, volume?, muted?", add_text: "clipId, text",
       set_keyframes: "clipId, property, keyframes: [{time,value,easing?}] replaces that property; [] clears it",
       upsert_keyframe: "clipId, property, time, value, easing?", remove_keyframe: "clipId, property, time",

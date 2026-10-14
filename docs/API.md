@@ -104,6 +104,7 @@ Templates: `lower-third`, `title-card`, `callout`, `kinetic-type`, `countdown`. 
 ```
 
 - `dryRun:true` validates all ops and returns the proposed timeline without persisting it, advancing its revision or publishing live activity. Write scope is still required.
+- Successful dry runs also return a `summary` alongside `createdClipIds`, describing the changes the batch would make: `{addedClipIds, changedClipIds, removedClipIds, timelineDiff}`. `timelineDiff` reports changed top-level fields (fps, resolution, background, tracks, markers) with `{from,to}` values. Use this to plan and verify without mutating. A dry run also reports `createdClipIds` in creation order, including template-generated layers.
 - `expectedUpdatedAt` optionally compares the timestamp returned by GET project. A stale write returns HTTP 409 with `{message,code:"REVISION_CONFLICT",updatedAt}`. Fetch again and re-plan. This guard applies to the ops route, not full-timeline PUT.
 - Successful ops responses add `createdClipIds` in creation order, including the generated layers of templates. Dry-run generated IDs are provisional; use the committed response for final IDs. Explicit shape IDs allow stable same-batch references and duplicates are rejected.
 - A failed op returns HTTP 422 with zero-based `failedIndex`; no operations in the batch are saved. Maximum 100 ops and 200 clips still apply.
@@ -111,6 +112,10 @@ Templates: `lower-third`, `title-card`, `callout`, `kinetic-type`, `countdown`. 
 ### Validate and inspect
 
 `POST /api/projects/:id/timeline/validate` accepts `{timeline}` with read scope or higher. It checks structure, keyframes, shape bounds and missing asset references without writing. Success: `{valid:true,timeline,duration,clipCount}`. Failure: HTTP 422 with `{valid:false,message,missingAssetIds?}`. The timeline is normalized; legacy fields may be clamped, but shape fields are strictly validated.
+
+### Swap media source without rebuilding the clip
+
+`swap_asset` takes `{clipId, assetId, duration?, inPoint?, outPoint?, keepKeyframes?}`. It re-points an existing media clip at a new asset while keeping its id, track, start, transform, style, and text. The trim window can be reset with `inPoint`/`outPoint`/`duration` in source seconds. By default, clip-local keyframes are rescaled to the new duration; `keepKeyframes:true` preserves them verbatim. Not supported on text or shape clips (those have `assetId: ""`). The referenced asset must be readable by the key (project-restricted keys cannot swap to an asset outside their allowlist).
 
 Inspect via `GET /api/projects/:id/state`, `GET /api/projects/:id/frame?t=1`, or a storyboard before queueing an MP4. Composition families draw media first, shapes next, text last; there is no general z-index or nested scene graph. Preview and export can differ slightly in font metrics, edge antialiasing and cubic easing approximation. SVG/Lottie import, arbitrary paths, 3D, motion blur, nested compositions and expressions are not implemented.
 
