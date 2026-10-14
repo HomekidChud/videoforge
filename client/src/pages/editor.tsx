@@ -170,6 +170,9 @@ export default function EditorPage() {
   // Restore the last working copy on mount. If the tab was closed mid-edit,
   // the unsaved timeline is still here, along with the playhead position and
   // selection. This is the browser-local scratchpad, not a cloud save.
+  // The restored document is genuinely dirty: savedRevision stays behind so the
+  // next autosave tick or Ctrl+S persists it to the server, and a failed save is
+  // not silently dropped.
   const didRestoreDraft = useRef(false);
   useEffect(() => {
     if (didRestoreDraft.current) return;
@@ -183,6 +186,10 @@ export default function EditorPage() {
       setTime(Math.max(0, draft.time ?? 0));
       setSaveState(draft.saveState === "error" ? "error" : "dirty");
       setSaveError(draft.saveError || "");
+      // Genuinely dirty: push the restored copy to the back of the history so
+      // Ctrl+Z steps back to the empty document, and force autosave to run.
+      savedRevision.current = revisionRef.current - 1;
+      setRevision((r) => r + 1);
       toast("Restored an unsaved local draft. Nothing was lost.");
     } else {
       loadDocument(EMPTY_TIMELINE(), null, "Untitled project", "private");
@@ -436,20 +443,6 @@ export default function EditorPage() {
   const draftsWithoutCurrent = localDrafts.filter((d) => !(d.projectId === projectId && d.saveState === "saved"));
 
   return <div className="forge-app studio" onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragOver(true); } }} onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }} onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); setDragOver(false); importFiles(e.dataTransfer.files); } }}>
-    {draftsPanelOpen && <div className="export-panel" role="dialog" aria-label="Local drafts">
-      <div className="modal-head"><h3>Local drafts</h3><button className="icon-btn" aria-label="Close drafts panel" onClick={()=>setUiPanel(null)}><X size={16} /></button></div>
-      <p className="muted" style={{margin:"0 16px"}}>Drafts saved on this device for tab crashes and refreshes. They are not cloud saves — the server DB is the durable copy.</p>
-      <div style={{padding:"8px 16px"}}>
-        {draftsWithoutCurrent.length === 0 && <div className="library-empty"><FolderOpen size={22} /><b>No local drafts</b><p>Unsaved edits are kept on this device if the tab is closed or refreshed.</p></div>}
-        {draftsWithoutCurrent.map((d) => <div key={d.key} className="project-card" data-testid={`draft-${d.key}`}>
-          <button onClick={() => { const s = readLocalSave(d.projectId); if (s) loadDocument(normalizeTimeline(s.timeline), s.projectId, s.name, "private"); setUiPanel(null); }}>
-            <FolderOpen size={16} /><span><b>{d.name}</b><small className="muted">{d.saveState === "saved" ? "saved" : d.saveState === "dirty" ? "unsaved changes" : d.saveState}{d.savedAt ? ` · ${new Date(d.savedAt).toLocaleTimeString()}` : ""}</small></span>
-          </button>
-          <button className="icon-btn danger" aria-label={`Delete ${d.name} draft`} onClick={() => { clearLocalSave(d.projectId); toast("Draft deleted"); }}><Trash2 size={14} /></button>
-        </div>)}
-      </div>
-      <div className="modal-actions"><button className="secondary-btn" onClick={() => { draftsWithoutCurrent.forEach((d) => clearLocalSave(d.projectId)); setUiPanel(null); toast("All local drafts cleared"); }}>Clear all drafts</button></div>
-    </div>}
     <ForgeNav active="editor" />
     <div className="studio-bar">
       <div className="project-title"><input aria-label="Project name" className="title-input" value={projectName} disabled={readOnly} maxLength={200} onChange={(e) => setProjectName(e.target.value)} data-testid="input-project-title" />

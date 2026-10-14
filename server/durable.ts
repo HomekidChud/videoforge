@@ -58,6 +58,10 @@ export function saveManifest(manifest: Omit<SaveManifest, "updatedAt" | "version
  * Restore from the manifest. Reads every table, only writes what is missing.
  * Never overwrites newer rows — an existing project key is not clobbered if
  * it is newer than the manifest. Returns true if anything was restored.
+ * SAFETY: this is NOT called on boot. A manifest is a point-in-time backup
+ * snapshot, and merging it blindly on every boot would resurrect projects
+ * the user just deleted or reactivate a key they just revoked. It is exposed
+ * as an explicit, opt-in rebuild-recovery helper for `npm run durable:restore`.
  */
 export function restoreFromManifest(db: { prepare: (sql: string) => { run: (...args: unknown[]) => void; get: (...args: unknown[]) => any; all: (...args: unknown[]) => any[] } }): { restored: boolean; counts: Record<string, number> } {
   const m = loadManifest();
@@ -78,7 +82,12 @@ export function restoreFromManifest(db: { prepare: (sql: string) => { run: (...a
   return { restored: Object.values(counts).some((n) => n > 0), counts };
 }
 
-/** Build a manifest from the current DB. Call this on every save-trigger. */
+/**
+ * Build a manifest from the current DB. Call this on every save-trigger.
+ * Note: `visibility` lives in the projects table; render `outPath` is preserved
+ * verbatim so restoring produces the same URL. This is a point-in-time backup
+ * snapshot, not a live mirror.
+ */
 export function manifestFromDb(db: { prepare: (sql: string) => { run: (...args: unknown[]) => void; get: (...args: unknown[]) => any; all: (...args: unknown[]) => any[] } }): Omit<SaveManifest, "updatedAt" | "version"> {
   const mediaAssets = (db.prepare("SELECT id, filename, kind, mime, duration, has_audio as hasAudio, width, height, size_bytes as sizeBytes, created_at as createdAt FROM media_assets").all() as any[]).map((r) => ({
     id: r.id, filename: r.filename, kind: r.kind, mime: r.mime, duration: r.duration, width: r.width, height: r.height, sizeBytes: r.sizeBytes, hasAudio: r.hasAudio, createdAt: r.createdAt,

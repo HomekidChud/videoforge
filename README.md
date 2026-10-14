@@ -161,21 +161,26 @@ VideoForge now has three layers of save, so nothing is ever silently lost:
 1. **Server DB (source of truth).** `VIDEOFORGE_DB` points at SQLite on the
    persistent disk (Render: `/var/lib/videoforge/data/data.db`). Every project,
    asset and render job lives here.
-2. **Save manifest on the persistent disk.** Set `VIDEOFORGE_SYNC_DIR` to a
-   writable path on the same disk. The server writes a JSON manifest of every
-   DB row (never a plaintext key, only hashes) and, on boot, restores anything
-   missing from the manifest so a rebuild or redeploy does not leave you with
-   an empty project list. It is only written if a row is missing on restore,
-   so it never overwrites newer DB rows.
+2. **Save manifest on the persistent disk (backup only).** Set
+   `VIDEOFORGE_SYNC_DIR` to a writable path on the same disk. The server writes
+   a JSON manifest of every DB row (never a plaintext key, only hashes). This
+   is a point-in-time backup, not a mirror: it is **not** merged back on boot,
+   because a stale manifest would resurrect a project you deleted or reactivate
+   a key you revoked. If a rebuild loses the DB, restore by hand with the
+   explicit `npm run durable:restore` (it merges only rows that are missing
+   from the live DB and never overwrites an existing row).
 3. **Browser-local drafts.** The editor keeps a debounced (300 ms) snapshot of
    the working copy in `localStorage` under `vf.local.v1.*`. It includes the
    unsaved timeline, selection, playhead, zoom and last panel, so a tab close,
    a refresh or a network blip never takes your project with you. On mount the
-   editor restores the draft automatically. A "Local drafts" entry in the
-   Tools menu lists every draft on the device, with a delete and a clear-all.
+   editor restores the draft automatically and marks it genuinely dirty so the
+   next autosave persists it. A "Local drafts" entry in the Tools menu lists
+   every draft on the device, with a delete and a clear-all.
 
 The durable paths are opt-in via env vars, so a default local dev run is
-unchanged. On Render:
+unchanged. On Render (needs a persistent disk mounted at
+`/var/lib/videoforge/data` — without it, media and the DB reset on every
+restart on the free tier):
 
 ```
 VIDEOFORGE_DB=/var/lib/videoforge/data/data.db

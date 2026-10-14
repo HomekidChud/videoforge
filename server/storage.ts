@@ -17,30 +17,39 @@ import path from "node:path";
 import { manifestFromDb, restoreFromManifest, saveManifest } from "./durable";
 
 const DATA_ROOT = path.dirname(path.resolve(process.env.VIDEOFORGE_DB || "data.db"));
-mkdirSync(path.join(DATA_ROOT, "media"), { recursive: true });
-process.env.VIDEOFORGE_MEDIA_DIR ??= path.join(DATA_ROOT, "media");
+// Preserve the original default media dir (data/media) so existing asset paths
+// keep working; VIDEOFORGE_MEDIA_DIR / VIDEOFORGE_RENDER_DIR are only opt-in.
+const DEFAULT_MEDIA_DIR = path.resolve("data/media");
+mkdirSync(DEFAULT_MEDIA_DIR, { recursive: true });
 
 const sqlite = new Database(process.env.VIDEOFORGE_DB || "data.db");
 sqlite.pragma("journal_mode = WAL");
 
 export const db = drizzle(sqlite);
 
-// ---- durability: sync the DB into a JSON manifest on a persistent disk. ----
-// Restore on boot, then re-save whenever something meaningful changes so a
-// rebuild is never left with the previous manifest.
+// ---- durability: write a save manifest to a persistent disk (backup only). ----
+//
+// This is a BACKUP, not a mirror. It is never merged back into the live DB on
+// boot: a manifest is a point-in-time snapshot and merging it blindly could
+// resurrect a project the user just deleted, or reactivate a key they revoked.
+// It is written continuously (as the DB changes) so the snapshot stays fresh,
+// and can be restored by hand via `npm run durable:restore` if a rebuild loses
+// the DB. It never contains a plaintext key — only hashes, same as the DB.
 if (process.env.VIDEOFORGE_SYNC_DIR) {
   const raw = sqlite;
-  const didRestore = restoreFromManifest(raw as never);
-  if (didRestore.restored) console.log(`[durable] restored from save manifest:`, didRestore.counts);
   const lastSave: { [key: string]: string } = {};
   const touch = () => {
-    const m = manifestFromDb(raw as never);
-    const fingerprint = `${m.mediaAssets.length}/${m.projects.length}/${m.renderJobs.length}/${m.apiKeyHashes.length}`;
-    if (fingerprint === lastSave.f) return;
-    lastSave.f = fingerprint;
-    saveManifest(m);
+    try {
+      const m = manifestFromDb(raw as never);
+      const fingerprint = JSON.stringify(m);
+      if (fingerprint === lastSave.f) return;
+      lastSave.f = fingerprint;
+      saveManifest(m);
+    } catch { /* backup is best-effort, never fatal */ }
   };
-  // an immediate snapshot, then every save via a timer keeps it fresh
+  // Immediate snapshot, then every 5s. On a truly fresh DB the tables do not
+  // exist yet at import time, so the first touch is a no-op; the interval
+  // writes the first manifest as soon as any row exists.
   touch();
   setInterval(touch, 5000).unref?.();
 }
