@@ -153,3 +153,36 @@ npm run build
 ```
 
 `test/graphics.spec.ts` covers normalization, templates, staggered sequencing and actual FFmpeg output (pixel checks, rounded/outlined shapes, animated positions, every template and MP4 export). `test/api.spec.ts` covers authentication, restrictions, safe batches, discovery and validation. FFmpeg and ffprobe are required for rendering tests.
+
+## Save data and durability
+
+VideoForge now has three layers of save, so nothing is ever silently lost:
+
+1. **Server DB (source of truth).** `VIDEOFORGE_DB` points at SQLite on the
+   persistent disk (Render: `/var/lib/videoforge/data/data.db`). Every project,
+   asset and render job lives here.
+2. **Save manifest on the persistent disk.** Set `VIDEOFORGE_SYNC_DIR` to a
+   writable path on the same disk. The server writes a JSON manifest of every
+   DB row (never a plaintext key, only hashes) and, on boot, restores anything
+   missing from the manifest so a rebuild or redeploy does not leave you with
+   an empty project list. It is only written if a row is missing on restore,
+   so it never overwrites newer DB rows.
+3. **Browser-local drafts.** The editor keeps a debounced (300 ms) snapshot of
+   the working copy in `localStorage` under `vf.local.v1.*`. It includes the
+   unsaved timeline, selection, playhead, zoom and last panel, so a tab close,
+   a refresh or a network blip never takes your project with you. On mount the
+   editor restores the draft automatically. A "Local drafts" entry in the
+   Tools menu lists every draft on the device, with a delete and a clear-all.
+
+The durable paths are opt-in via env vars, so a default local dev run is
+unchanged. On Render:
+
+```
+VIDEOFORGE_DB=/var/lib/videoforge/data/data.db
+VIDEOFORGE_SYNC_DIR=/var/lib/videoforge/data/restore
+VIDEOFORGE_MEDIA_DIR=/var/lib/videoforge/data/media
+VIDEOFORGE_RENDER_DIR=/var/lib/videoforge/data/renders
+```
+
+Nothing here ever stores a plaintext API key — only the SHA-256 hash, same as
+the DB.

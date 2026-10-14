@@ -13,13 +13,38 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
 import { mkdirSync } from "node:fs";
+import path from "node:path";
+import { manifestFromDb, restoreFromManifest, saveManifest } from "./durable";
 
-mkdirSync("data/media", { recursive: true });
+const DATA_ROOT = path.dirname(path.resolve(process.env.VIDEOFORGE_DB || "data.db"));
+mkdirSync(path.join(DATA_ROOT, "media"), { recursive: true });
+process.env.VIDEOFORGE_MEDIA_DIR ??= path.join(DATA_ROOT, "media");
 
 const sqlite = new Database(process.env.VIDEOFORGE_DB || "data.db");
 sqlite.pragma("journal_mode = WAL");
 
 export const db = drizzle(sqlite);
+
+// ---- durability: sync the DB into a JSON manifest on a persistent disk. ----
+// Restore on boot, then re-save whenever something meaningful changes so a
+// rebuild is never left with the previous manifest.
+if (process.env.VIDEOFORGE_SYNC_DIR) {
+  const raw = sqlite;
+  const didRestore = restoreFromManifest(raw as never);
+  if (didRestore.restored) console.log(`[durable] restored from save manifest:`, didRestore.counts);
+  const lastSave: { [key: string]: string } = {};
+  const touch = () => {
+    const m = manifestFromDb(raw as never);
+    const fingerprint = `${m.mediaAssets.length}/${m.projects.length}/${m.renderJobs.length}/${m.apiKeyHashes.length}`;
+    if (fingerprint === lastSave.f) return;
+    lastSave.f = fingerprint;
+    saveManifest(m);
+  };
+  // an immediate snapshot, then every save via a timer keeps it fresh
+  touch();
+  setInterval(touch, 5000).unref?.();
+}
+
 
 // Ensure all tables exist (so a fresh clone works without `npm run db:push`).
 sqlite.exec(`

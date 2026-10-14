@@ -18,8 +18,8 @@ import { buildRenderPlan, runFfmpeg } from "./render";
 import { requireScope, requireMediaAccess, projectAllowed, assetAllowed, keyRestrictions } from "./auth";
 import { actorOf, syncTimeline, logEvent, renameLive, dropLive, registerLiveRoutes } from "./live";
 
-const MEDIA_DIR = path.resolve("data/media");
-const OUTPUT_DIR = path.resolve("data/renders");
+const MEDIA_DIR = path.resolve(process.env.VIDEOFORGE_MEDIA_DIR || "data/media");
+const OUTPUT_DIR = path.resolve(process.env.VIDEOFORGE_RENDER_DIR || "data/renders");
 fs.mkdirSync(MEDIA_DIR, { recursive: true });
 fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 

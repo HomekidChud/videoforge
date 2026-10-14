@@ -51,3 +51,75 @@ export function clampClipPatch(c:Clip,patch:Partial<Clip>,asset?:AssetDTO):Clip 
   if(asset?.kind==="image") adjusted.speed=undefined;
   return patchWithAnimation(c,adjusted);
 }
+
+// ---------------------------------------------------------------------------
+// Local browser save-data layer.
+//
+// This is the browser-local scratchpad ONLY. It is not cloud storage — the
+// durable source of truth is the server's SQLite database and the save
+// manifest on the persistent disk. This exists so that if you close the tab
+// or hit an offline moment, the working copy (including the unsaved timeline
+// and selection state) is right there when you come back, and so that a
+// refresh never takes your project with it. It never stores your API key.
+// ---------------------------------------------------------------------------
+export type LocalSave = {
+  savedAt: number;
+  projectId: string | null;
+  name: string;
+  timeline: Timeline;
+  selection: string[];
+  time: number;
+  pps: number;
+  panel: string;
+  saveState: "empty" | "saved" | "dirty" | "saving" | "error" | "readonly";
+  saveError: string;
+  durability: "draft";
+};
+
+const LOCAL_PREFIX = "vf.local.v1.";
+const keyOf = (projectId: string | null) => `${LOCAL_PREFIX}${projectId ?? "draft"}`;
+
+export function writeLocalSave(s: LocalSave) {
+  try { localStorage.setItem(keyOf(s.projectId), JSON.stringify(s)); }
+  catch { /* full or disabled — local drafts are best-effort, not required */ }
+}
+
+export function readLocalSave(projectId: string | null): LocalSave | null {
+  try {
+    const raw = localStorage.getItem(keyOf(projectId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as LocalSave;
+    if (typeof parsed?.timeline?.clips !== "object") return null;
+    return parsed;
+  } catch { return null; }
+}
+
+export function clearLocalSave(projectId: string | null) {
+  try { localStorage.removeItem(keyOf(projectId)); } catch { /* fine */ }
+}
+
+/** List every local draft key, newest first. */
+export function listLocalSaves(): { key: string; savedAt: number; projectId: string | null; name: string; saveState: LocalSave["saveState"] }[] {
+  const out: { key: string; savedAt: number; projectId: string | null; name: string; saveState: LocalSave["saveState"] }[] = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i) ?? "";
+      if (!k.startsWith(LOCAL_PREFIX)) continue;
+      try {
+        const parsed = JSON.parse(localStorage.getItem(k) ?? "") as LocalSave;
+        if (!parsed?.timeline) continue;
+        out.push({ key: k.slice(LOCAL_PREFIX.length), savedAt: parsed.savedAt, projectId: parsed.projectId, name: parsed.name, saveState: parsed.saveState });
+      } catch { /* skip broken entries */ }
+    }
+  } catch { /* fine */ }
+  return out.sort((a, b) => b.savedAt - a.savedAt);
+}
+
+/** Debounce: write the local save at most once per `ms` so keystrokes do not thrash the disk. */
+export function debounceLocalWrite(fn: (s: LocalSave) => void, ms: number) {
+  let t: ReturnType<typeof setTimeout> | null = null;
+  return (s: LocalSave) => {
+    if (t) clearTimeout(t);
+    t = setTimeout(() => fn(s), ms);
+  };
+}

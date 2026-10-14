@@ -7,7 +7,7 @@ import { TITLE_PRESETS, motionPreset } from "@shared/presets";
 import { api, API_BASE } from "@/lib/api";
 import { loadStoredKey } from "@/lib/apiKey";
 import { useAuthedMediaUrl, useMediaTokenLifecycle } from "@/lib/mediaUrl";
-import { EMPTY_TIMELINE, clampClipPatch, duplicateClip, newClip, rippleDelete, round, sameTimeline, snapshot, splitClip, timecode, uid, type AssetDTO, type ProjectDTO, type RenderDTO } from "@/lib/editor-model";
+import { EMPTY_TIMELINE, clampClipPatch, duplicateClip, newClip, rippleDelete, round, sameTimeline, snapshot, splitClip, timecode, uid, writeLocalSave, readLocalSave, clearLocalSave, listLocalSaves, debounceLocalWrite, type LocalSave, type AssetDTO, type ProjectDTO, type RenderDTO } from "@/lib/editor-model";
 import { ForgeNav } from "@/components/forge-shell";
 import ForgePreview from "@/components/forge-preview";
 import ForgeTimeline, { type TimelineGesture } from "@/components/forge-timeline";
@@ -119,6 +119,10 @@ export default function EditorPage() {
   // ---------------------------------------------------------------- persistence
   const saving = useRef<Promise<void> | null>(null), savedRevision = useRef(0), idRef = useRef<string | null>(null), nameRef = useRef(projectName);
   idRef.current = projectId; nameRef.current = projectName;
+  const localWrite = useRef(debounceLocalWrite(writeLocalSave, 300)).current;
+  const saveErrorRef = useRef("");
+  saveErrorRef.current = saveError;
+
   const saveNow = useCallback(async (): Promise<void> => {
     if (readOnly) return;
     while (saving.current) await saving.current;
@@ -139,6 +143,51 @@ export default function EditorPage() {
   const revisionRef = useRef(0); revisionRef.current = revision;
   useEffect(() => { if (readOnly) { setSaveState("readonly"); return; } if (!revision || revision === savedRevision.current) return; setSaveState((s) => (s === "saving" ? s : "dirty")); const t = setTimeout(() => { saveNow(); }, 1400); return () => clearTimeout(t); }, [revision, readOnly, saveNow, projectName]);
   useEffect(() => { const h = (e: BeforeUnloadEvent) => { if (saveState === "dirty" || saveState === "saving" || saveState === "error") { e.preventDefault(); e.returnValue = ""; } }; window.addEventListener("beforeunload", h); return () => window.removeEventListener("beforeunload", h); }, [saveState]);
+
+  // Local browser save-data: a debounced snapshot of the working copy (including the
+  // unsaved timeline, selection, playhead, zoom and panel) so a tab close or
+  // an offline moment does not take your project with you. This is NOT cloud
+  // storage — the server DB and the save manifest on the persistent disk are the
+  // durable source of truth. This is just the scratchpad so nothing is lost on a
+  // refresh. Debounced at 300ms so keystrokes do not thrash localStorage.
+  useEffect(() => {
+    const draft: LocalSave = {
+      savedAt: Date.now(),
+      projectId: idRef.current,
+      name: projectName,
+      timeline: tlRef.current,
+      selection: selIdsRef.current,
+      time,
+      pps,
+      panel,
+      saveState: saveState === "readonly" ? "saved" : saveState,
+      saveError: saveErrorRef.current,
+      durability: "draft",
+    };
+    localWrite(draft);
+  }, [timeline, time, saveState, projectName, projectId, pps, panel]);
+
+  // Restore the last working copy on mount. If the tab was closed mid-edit,
+  // the unsaved timeline is still here, along with the playhead position and
+  // selection. This is the browser-local scratchpad, not a cloud save.
+  const didRestoreDraft = useRef(false);
+  useEffect(() => {
+    if (didRestoreDraft.current) return;
+    didRestoreDraft.current = true;
+    const draft = readLocalSave(null);
+    if (draft && draft.timeline.clips.length > 0) {
+      loadDocument(draft.timeline, null, draft.name || "Untitled project", "private");
+      setPps(draft.pps || 64);
+      setPanel((draft.panel as "media" | "effects" | "graphics" | "projects") || "media");
+      setSel(draft.selection ?? []);
+      setTime(Math.max(0, draft.time ?? 0));
+      setSaveState(draft.saveState === "error" ? "error" : "dirty");
+      setSaveError(draft.saveError || "");
+      toast("Restored an unsaved local draft. Nothing was lost.");
+    } else {
+      loadDocument(EMPTY_TIMELINE(), null, "Untitled project", "private");
+    }
+  }, []);
 
   // Replace the whole document (open / new project) and mark it as already saved.
   function loadDocument(t: Timeline, id: string | null, name: string, vis: "private" | "public") {
@@ -380,7 +429,27 @@ export default function EditorPage() {
   const render = renderQ.data, renderUrl = render?.status === "done" && renderJobId ? mediaUrl(renderJobId, `/api/renders/${renderJobId}/download`) : "";
   const saveLabel = { empty: "Not saved yet", saved: "All changes saved", dirty: "Unsaved changes", saving: "Saving…", error: "Save failed", readonly: "Read-only key" }[saveState];
 
+  // ---------------------------------------------------------------- editor UI
+  const [uiPanel, setUiPanel] = useState<"drafts" | null>(null);
+  const localDrafts = listLocalSaves();
+  const draftsPanelOpen = uiPanel === "drafts";
+  const draftsWithoutCurrent = localDrafts.filter((d) => !(d.projectId === projectId && d.saveState === "saved"));
+
   return <div className="forge-app studio" onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragOver(true); } }} onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }} onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); setDragOver(false); importFiles(e.dataTransfer.files); } }}>
+    {draftsPanelOpen && <div className="export-panel" role="dialog" aria-label="Local drafts">
+      <div className="modal-head"><h3>Local drafts</h3><button className="icon-btn" aria-label="Close drafts panel" onClick={()=>setUiPanel(null)}><X size={16} /></button></div>
+      <p className="muted" style={{margin:"0 16px"}}>Drafts saved on this device for tab crashes and refreshes. They are not cloud saves — the server DB is the durable copy.</p>
+      <div style={{padding:"8px 16px"}}>
+        {draftsWithoutCurrent.length === 0 && <div className="library-empty"><FolderOpen size={22} /><b>No local drafts</b><p>Unsaved edits are kept on this device if the tab is closed or refreshed.</p></div>}
+        {draftsWithoutCurrent.map((d) => <div key={d.key} className="project-card" data-testid={`draft-${d.key}`}>
+          <button onClick={() => { const s = readLocalSave(d.projectId); if (s) loadDocument(normalizeTimeline(s.timeline), s.projectId, s.name, "private"); setUiPanel(null); }}>
+            <FolderOpen size={16} /><span><b>{d.name}</b><small className="muted">{d.saveState === "saved" ? "saved" : d.saveState === "dirty" ? "unsaved changes" : d.saveState}{d.savedAt ? ` · ${new Date(d.savedAt).toLocaleTimeString()}` : ""}</small></span>
+          </button>
+          <button className="icon-btn danger" aria-label={`Delete ${d.name} draft`} onClick={() => { clearLocalSave(d.projectId); toast("Draft deleted"); }}><Trash2 size={14} /></button>
+        </div>)}
+      </div>
+      <div className="modal-actions"><button className="secondary-btn" onClick={() => { draftsWithoutCurrent.forEach((d) => clearLocalSave(d.projectId)); setUiPanel(null); toast("All local drafts cleared"); }}>Clear all drafts</button></div>
+    </div>}
     <ForgeNav active="editor" />
     <div className="studio-bar">
       <div className="project-title"><input aria-label="Project name" className="title-input" value={projectName} disabled={readOnly} maxLength={200} onChange={(e) => setProjectName(e.target.value)} data-testid="input-project-title" />
@@ -404,6 +473,7 @@ export default function EditorPage() {
           <button className="mobile-tool" disabled={readOnly} onClick={()=>addTitle()} data-testid="mobile-add-title">Add title</button>
           <a href="#/docs/introduction">Documentation</a><a href="#/platform">Developer platform</a>
           {canPublish&&<a href="#/live">Live monitor</a>}
+          <button onClick={()=>setUiPanel(v=>v===null?"drafts":null)} data-testid="drafts-toggle">Local drafts</button>
         </div></details>
         {selectedIds.length>1&&<button className="secondary-btn hide-sm" disabled={readOnly} onClick={()=>{try{const next=applyTimelineOp(tlRef.current,{op:"stagger_clips",args:{clipIds:selectedIds,delay:.15,start:timeRef.current}},id=>byId.get(id));mutate(()=>next);toast("Selection staggered by 0.15s");}catch(e:any){toast(e.message,"error");}}} data-testid="button-stagger">Stagger</button>}
         <button className="icon-btn" onClick={undo} disabled={!past.current.length || readOnly} aria-label="Undo" title="Undo (Ctrl+Z)" data-testid="button-undo"><Undo2 size={17} /></button>
@@ -464,6 +534,20 @@ export default function EditorPage() {
       {render?.status === "error" ? <div className="error-box">Export failed: {render.error}</div> : render?.status === "done" ? <>{renderUrl ? <video src={renderUrl} controls crossOrigin="anonymous" className="export-video" data-testid="video-render-result" /> : <div className="muted">Preparing preview…</div>}<div className="modal-actions"><a className="primary-btn" href={renderUrl || undefined} download aria-disabled={!renderUrl}><Download size={15} />Download MP4</a></div></> : <div><div className="progress" role="progressbar" aria-valuenow={Math.round((render?.progress ?? 0) * 100)} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${Math.max(4, (render?.progress ?? 0) * 100)}%` }} /></div><p className="muted" data-testid="text-render-status">{render?.status === "rendering" ? `Rendering ${Math.round(render.progress * 100)}%` : "Queued…"}</p></div>}
     </div>}
     {dragOver && <div className="drop-overlay"><Upload size={36} /><h2>Drop to import</h2><p>Video, audio and images are added to your media library.</p></div>}
+    {draftsPanelOpen && <div className="export-panel" role="dialog" aria-label="Local drafts">
+      <div className="modal-head"><h3>Local drafts</h3><button className="icon-btn" aria-label="Close drafts panel" onClick={()=>setUiPanel(null)}><X size={16} /></button></div>
+      <p className="muted" style={{margin:"0 16px"}}>Drafts saved on this device for tab crashes and refreshes. They are not cloud saves — the server DB is the durable copy.</p>
+      <div style={{padding:"8px 16px"}}>
+        {draftsWithoutCurrent.length === 0 && <div className="library-empty"><FolderOpen size={22} /><b>No local drafts</b><p>Unsaved edits are kept on this device if the tab is closed or refreshed.</p></div>}
+        {draftsWithoutCurrent.map((d) => <div key={d.key} className="project-card" data-testid={`draft-${d.key}`}>
+          <button onClick={() => { const s = readLocalSave(d.projectId); if (s) loadDocument(normalizeTimeline(s.timeline), s.projectId, s.name, "private"); setUiPanel(null); }}>
+            <FolderOpen size={16} /><span><b>{d.name}</b><small className="muted">{d.saveState === "saved" ? "saved" : d.saveState === "dirty" ? "unsaved changes" : d.saveState}{d.savedAt ? ` · ${new Date(d.savedAt).toLocaleTimeString()}` : ""}</small></span>
+          </button>
+          <button className="icon-btn danger" aria-label={`Delete ${d.name} draft`} onClick={() => { clearLocalSave(d.projectId); setUiPanel(v=>v==="drafts"?null:null); toast("Draft deleted"); }}><Trash2 size={14} /></button>
+        </div>)}
+      </div>
+      <div className="modal-actions"><button className="secondary-btn" onClick={() => { draftsWithoutCurrent.forEach((d) => clearLocalSave(d.projectId)); setUiPanel(null); toast("All local drafts cleared"); }}>Clear all drafts</button></div>
+    </div>}
     {notice && <div className={`forge-toast ${notice.tone}`} role={notice.tone === "error" ? "alert" : "status"} data-testid="toast">{notice.tone === "error" ? <AlertCircle size={15} /> : <Check size={15} />}{notice.text}<button className="icon-btn" aria-label="Dismiss" onClick={() => setNotice(null)}><X size={14} /></button></div>}
   </div>;
 }

@@ -143,3 +143,48 @@
   .studio:not(.live-watch) .graphics-template-list { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
 @media(prefers-reduced-motion:reduce) { .studio:not(.live-watch) .workspace-divider:after { transition:none; } }
+
+/* ============================================================================
+   Save data and local drafts panel — richer look for the durability feature.
+   The drafts panel rides the export-panel modal so it inherits the dark,
+   glassy surface, but gets its own accent treatment so it reads as "your
+   working copy" rather than "a cloud save".
+   ============================================================================ */
+.studio .export-panel[role="dialog"][aria-label="Local drafts"] {
+  display: flex; flex-direction: column; gap: 8px;
+  max-height: min(70dvh, 560px);
+  padding-block: 12px;
+}
+.studio .export-panel[role="dialog"][aria-label="Local drafts"] .modal-head { padding-inline: 16px; }
+.studio .export-panel[role="dialog"][aria-label="Local drafts"] .modal-head h3 {
+  font-size: var(--text-sm); font-weight: 600; color: var(--forge-text);
+}
+.studio .export-panel[role="dialog"][aria-label="Local drafts"] .modal-head .icon-btn {
+  color: var(--forge-muted);
+}
+.studio .export-panel[role="dialog"][aria-label="Local drafts"] .project-card {
+  background: transparent;
+}
+.studio .export-panel[role="dialog"][aria-label="Local drafts"] .project-card > button {
+  border-radius: 6px;
+  padding: 10px 12px;
+  transition: background var(--transition-interactive, 180ms cubic-bezier(0.16, 1, 0.3, 1));
+}
+.studio .export-panel[role="dialog"][aria-label="Local drafts"] .project-card > button:hover {
+  background: #2c2c31;
+}
+.studio .export-panel[role="dialog"][aria-label="Local drafts"] .project-card b {
+  color: var(--forge-text); font-size: var(--text-sm); font-weight: 500;
+}
+.studio .export-panel[role="dialog"][aria-label="Local drafts"] .library-empty svg { color: var(--forge-accent); }
+.studio .export-panel[role="dialog"][aria-label="Local drafts"] .library-empty p { font-size: var(--text-sm); }
+.studio .export-panel[role="dialog"][aria-label="Local drafts"] .modal-actions {
+  padding-inline: 16px; margin-top: 4px;
+}
+.studio .export-panel[role="dialog"][aria-label="Local drafts"] .modal-actions .secondary-btn {
+  width: 100%;
+}
+/* Tools menu entry: subtle accent so users can find the drafts entry. */
+.studio .studio-tools-menu button[data-testid="drafts-toggle"] {
+  color: var(--forge-accent);
+}
