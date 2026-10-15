@@ -4,6 +4,7 @@ import { evaluateClip } from "@shared/animation";
 import { normalizeClip, type Clip } from "@shared/timeline";
 import { type Timeline } from "@shared/timeline";
 import { applyTimelineOp } from "@shared/editing";
+import { revealClip } from "./forge-preview";
 
 function TemplatePreview({ template, color }: { template: string; color: string }) {
   const [hovered, setHovered] = useState(false);
@@ -27,8 +28,8 @@ function TemplatePreview({ template, color }: { template: string; color: string 
       return <span key={c.id} style={{ position: "absolute", left: `${(ev.x ?? .5)*100}%`, top: `${(ev.y ?? .5)*100}%`,
         transform: `translate(-50%,-50%) scale(${ev.scale ?? 1}) rotate(${ev.rotation ?? 0}deg)`,
         opacity: ev.opacity ?? 1, width: c.shape ? `${c.shape.width*100}%` : undefined,
-        height: c.shape ? `${c.shape.height*100}%` : undefined, background: c.shape?.fill,
-        borderRadius: c.shape ? c.shape.radius/10 : undefined, color: c.textColor ?? "#fff",
+        height: c.shape ? `${c.shape.height*100}%` : undefined, background: c.shape?.fill, border: c.shape && c.shape.stroke !== "transparent" ? `${Math.max(1, c.shape.strokeWidth/6)}px solid ${c.shape.stroke}` : undefined, boxSizing: "border-box", clipPath: revealClip(ev.reveal),
+        borderRadius: c.shape ? (c.shape.type === "ellipse" ? "50%" : c.shape.radius/10) : undefined, color: c.textColor ?? "#fff",
         fontSize: c.text ? `${(c.textSize ?? 6)*1.1}px` : undefined, whiteSpace: "nowrap", fontWeight: 700 }}>{c.text}</span>;
     })}
   </span>;
@@ -38,7 +39,7 @@ export default function ForgeGraphics({disabled,onApply}:{disabled:boolean;onApp
   const [title,setTitle]=useState("Make your next move"),[subtitle,setSubtitle]=useState("Created with VideoForge"),[color,setColor]=useState("#f6a447"),[duration,setDuration]=useState(4);
   const [chosen,setChosen]=useState<string>("lower-third");
   return <div className="effects-panel" data-testid="graphics-library">
-    <div className="library-heading"><h3>Motion graphics</h3><span className="eyebrow">5 editable templates</span></div>
+    <div className="library-heading"><h3>Motion graphics</h3><span className="eyebrow">{MOTION_TEMPLATES.length} editable templates</span></div>
     <p className="help-text">Pick a look. Make it yours. Every element stays editable.</p>
     <section className="effect-group"><div className="graphics-template-list">{MOTION_TEMPLATES.map(t=><button key={t.id} className={`graphics-template ${chosen===t.id?"chosen":""}`} aria-pressed={chosen===t.id} disabled={disabled} title={t.description} onClick={()=>setChosen(t.id)} data-testid={`template-${t.id}`}>
       <TemplatePreview template={t.id} color={color}/><span className="template-card-label"><b>{t.label}</b><span>{t.description}</span></span>

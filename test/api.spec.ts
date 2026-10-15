@@ -602,6 +602,11 @@ async function main() {
     assert(bad.status === 422, "unknown transition types are rejected");
     const frame = await fetch(`${H}/api/projects/${pid}/frame?t=2.5&width=160`, { headers: AUTH_ADMIN });
     assert(frame.status === 200 && (frame.headers.get("content-type") || "").includes("png"), "frames render with a transition active");
+    for (const type of ["wipe-up", "wipe-down", "iris"]) {
+      const r = await jsonFetch(ops, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ op: "set_transition", args: { clipId: "b", type, duration: 1 } }) });
+      const f = await fetch(`${H}/api/projects/${pid}/frame?t=2.5&width=160`, { headers: AUTH_ADMIN });
+      assert(r.status === 200 && r.body.timeline.clips.find((c: any) => c.id === "b").transitionIn.type === type && f.status === 200, `${type} transition is accepted and renders a frame`);
+    }
     const gone = await jsonFetch(ops, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ op: "set_transition", args: { clipId: "b", type: "none" } }) });
     const b2 = gone.body.timeline.clips.find((c: any) => c.id === "b");
     assert(!b2.transitionIn && b2.start === 3, "type none removes the transition and restores the gap-free layout");
@@ -655,7 +660,20 @@ async function main() {
     const schema=await jsonFetch("/api/graphics/schema",{headers:AUTH_ADMIN});
     assert(schema.status===200&&schema.body.properties.type.enum.includes("ellipse"),"shape schema discoverable");
     const catalog=await jsonFetch("/api/motion/templates",{headers:AUTH_ADMIN});
-    assert(catalog.status===200&&catalog.body.templates.length===5,"template catalog discoverable");
+    assert(catalog.status===200&&catalog.body.templates.length===9,"template catalog discoverable");
+    const seq=await post({ops:[{op:"add_shape_clip",args:{id:"s1",duration:3,shape:{type:"ellipse"}}},{op:"add_shape_clip",args:{id:"s2",duration:3,shape:{type:"ellipse"}}},{op:"apply_motion_sequence",args:{clipIds:["s1","s2"],preset:"spring",stagger:.3,start:1,duration:1.2,strength:1.4}},{op:"apply_motion",args:{clipId:"s2",preset:"reveal",delay:.2,duration:1}}]});
+    const s1=seq.body.timeline?.clips.find((c:any)=>c.id==="s1"),s2=seq.body.timeline?.clips.find((c:any)=>c.id==="s2");
+    assert(seq.status===200&&s1.start===1&&s2.start===1.3&&s1.keyframes.scale.length>10&&s2.keyframes.reveal[0].time===.2,"motion sequence stages presets with timing options");
+    const rev=await post({op:"reverse_animation",args:{clipId:"s2"}});
+    assert(rev.status===200&&rev.body.timeline.clips.find((c:any)=>c.id==="s2").keyframes.reveal[0].value===1,"reverse_animation flips curves");
+    const beat=await post({op:"add_beat_markers",args:{bpm:120,count:4}});
+    assert(beat.status===200&&beat.body.timeline.markers.length===4,"beat markers are added");
+    const noText=await post({op:"add_text_clip",args:{text:"hi",duration:2,keyframes:{reveal:[{time:0,value:0},{time:1,value:1}]}}});
+    assert(noText.status===422,"reveal is rejected on text clips");
+    const frameReveal=await fetch(`${H}/api/projects/${pid}/frame?t=1.8&width=160`,{headers:AUTH_ADMIN});
+    assert(frameReveal.status===200,"frames render with spring and reveal motion");
+    const caps2=await jsonFetch("/api/capabilities",{headers:AUTH_ADMIN});
+    assert(caps2.body.ops.apply_motion_sequence&&caps2.body.ops.retime_animation&&caps2.body.animatableProperties.reveal&&caps2.body.easings.presets.includes("step-start"),"capabilities advertise motion engine v2");
     assert((await jsonFetch("/api/motion/templates")).status===401,"catalog requires authentication");
     const validate=await jsonFetch(`/api/projects/${pid}/timeline/validate`,{method:"POST",headers:AUTH_ADMIN,body:JSON.stringify({timeline:template.body.timeline})});
     assert(validate.status===200&&validate.body.valid&&validate.body.clipCount===4,"timeline validation succeeds");

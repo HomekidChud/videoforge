@@ -1,5 +1,5 @@
 import { PreviewCursors, type Peer } from "./forge-presence";
-import { incomingTransition, transitionProgress, transitionAudio } from "@shared/transitions";
+import { incomingTransition, transitionProgress, transitionAudio, transitionClipPath } from "@shared/transitions";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Film } from "lucide-react";
 import { evaluateClip, valueAt } from "@shared/animation";
@@ -11,6 +11,7 @@ export function previewFilter(c:Clip,scaleBlur=1) {
   const preset:Record<string,string>={none:"",mono:"grayscale(1)",sepia:"sepia(1)",vivid:"saturate(1.45) contrast(1.08)",cool:"sepia(.2) hue-rotate(165deg)",warm:"sepia(.25) saturate(1.15)",faded:"saturate(.7) contrast(.88) brightness(1.04)"};
   return `${preset[c.filter??"none"]??""} brightness(${1+(c.brightness??0)}) contrast(${c.contrast??1}) saturate(${c.saturation??1})${c.blur?` blur(${c.blur*scaleBlur}px)`:""}`;
 }
+export const revealClip=(r?:number)=>r!==undefined&&r<1?`inset(0 ${(1-Math.max(0,r))*100}% 0 0)`:undefined;
 export function envelope(c:Clip,time:number) {
   const relative=time-c.start,remain=clipEnd(c)-time;
   const fadeIn=(c.fadeIn??0)>0?Math.min(1,Math.max(0,relative/c.fadeIn!)):1;
@@ -44,7 +45,7 @@ function MediaLayer({clip,asset,time,playing,source,hidden,muted,onError,timelin
   const visual=clip.track!=="audio"&&asset.kind!=="audio";
   const tr=incomingTransition(timeline,clip),p=transitionProgress(timeline,clip,time);
   const g=layerTransform(ev),opacity=(ev.opacity??1)*envelope(clip,time)*(tr?.type==="dissolve"?p:1);
-  const base={opacity,clipPath:tr?.type==="wipe-left"?`inset(0 ${(1-p)*100}% 0 0)`:tr?.type==="wipe-right"?`inset(0 0 0 ${(1-p)*100}%)`:undefined,filter:previewFilter(ev,.6),display:active&&!hidden?undefined:"none",transform:g.transform,mixBlendMode:undefined};
+  const base={opacity,clipPath:tr&&p<1?transitionClipPath(tr.type,p):revealClip(ev.reveal),filter:previewFilter(ev,.6),display:active&&!hidden?undefined:"none",transform:g.transform,mixBlendMode:undefined};
   const style=clip.track==="overlay" ? {left:`${g.x*100}%`,top:`${g.y*100}%`,width:`${g.scale*100}%`,height:"auto",...base} : {left:`${g.x*100}%`,top:`${g.y*100}%`,width:"100%",height:"100%",objectFit:clip.fit==="cover"?"cover" as const:"contain" as const,...base,transform:`${g.transform} scale(${g.scale})`};
   const fail=()=>{if(!failed){setFailed(true);onError(`Couldn’t load ${asset.filename}. Check the source or API key.`);}};
   const common={"data-layer":clip.id} as any;
@@ -110,7 +111,7 @@ export default function ForgePreview({timeline,assets,time,playing,selectedId,re
           width:Math.max(2,Math.round(size.width*s.width/2)*2),height:Math.max(2,Math.round(size.height*s.height/2)*2),
           background:s.fill,border:`${s.strokeWidth*size.width/timeline.resolution.width}px solid ${s.stroke}`,
           borderRadius:s.type==="ellipse"?"50%":s.radius*size.width/timeline.resolution.width,
-          opacity:(ev.opacity??1)*envelope(c,time),transform:`${g.transform} scale(${g.scale})`,filter:previewFilter(ev,size.width/timeline.resolution.width),
+          clipPath:revealClip(ev.reveal),opacity:(ev.opacity??1)*envelope(c,time),transform:`${g.transform} scale(${g.scale})`,filter:previewFilter(ev,size.width/timeline.resolution.width),
         }}/>;
       })}
       {texts.map(c=>{const ev=evaluateClip(c,time),g=layerTransform(c.assetId?{...c,assetId:"",x:.5,y:.82,rotation:0,scale:1,keyframes:undefined}:ev);return <div key={`${c.id}-text`} data-layer={c.assetId?undefined:c.id} className="preview-caption" style={{left:`${g.x*100}%`,top:`${g.y*100}%`,fontSize:Math.round(size.height*(c.textSize??6)/100*g.scale),color:c.textColor??"#ffffff",background:c.textBg?"rgba(0,0,0,.55)":undefined,padding:c.textBg?".25em .35em":0,opacity:(c.assetId?1:(ev.opacity??1))*envelope(c,time),transform:g.transform,filter:c.blur?`blur(${c.blur*.6}px)`:undefined,textShadow:c.textBg?"none":"0 1px 3px #000"}}>{c.text}</div>;})}

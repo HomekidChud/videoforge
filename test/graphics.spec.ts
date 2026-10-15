@@ -8,6 +8,11 @@ import { normalizeClip, normalizeTimeline, clipDuration } from "../shared/timeli
 import { MOTION_TEMPLATES, normalizeShape, templateClips } from "../shared/graphics";
 import { animatedValues } from "../shared/animation";
 import { buildRenderPlan } from "../server/render";
+import { motionPreset, MOTION_PRESETS } from "../shared/presets";
+import { beatTimes, retimeAnimation, reverseAnimation } from "../shared/motion";
+import { easeAt } from "../shared/animation";
+import { TRANSITION_TYPES } from "../shared/timeline";
+import { EXAMPLES, buildExample, exampleDuration } from "../shared/examples";
 
 const empty = () => normalizeTimeline({clips:[],resolution:{width:320,height:180}});
 const lookup = () => undefined;
@@ -45,6 +50,88 @@ check(()=>assert.throws(()=>templateClips({template:"evil"},()=>""),/unknown/));
 check(()=>assert.throws(()=>templateClips({template:"kinetic-type",title:"one two three four five six seven eight nine"},()=>""),/8 words/));
 check(()=>assert.ok(templateClips({template:"title-card",title:"A longer headline designed for a portrait composition"},()=>"",9/16).filter(c=>c.text).every(c=>c.textSize<=3)));
 
+// --- Motion engine v2: presets with timing, new easings, reveal, sequences, retime/reverse, beats
+check(()=>assert.equal(MOTION_TEMPLATES.length,9));
+check(()=>assert.ok(MOTION_PRESETS.length>=14));
+const subject=applyTimelineOp(empty(),{op:"add_shape_clip",args:{id:"m",duration:4,shape:{type:"rectangle"}}},lookup).clips[0];
+for(const preset of MOTION_PRESETS) {
+  const keys=motionPreset(subject,preset.id).keyframes!;
+  check(()=>assert.ok(Object.keys(keys).length>0,preset.id));
+  check(()=>assert.doesNotThrow(()=>normalizeClip({...subject,keyframes:keys}),preset.id));
+}
+check(()=>assert.throws(()=>motionPreset(subject,"nope"),/unknown motion preset/));
+check(()=>assert.throws(()=>motionPreset(subject,"fade",{duration:9}),/duration/));
+check(()=>assert.throws(()=>motionPreset(subject,"fade",{strength:NaN}),/strength/));
+const slow=motionPreset(subject,"rise",{delay:1,duration:2,strength:.5}).keyframes!;
+check(()=>assert.equal(slow.y![0].time,1));
+check(()=>assert.equal(slow.y![1].time,3));
+check(()=>assert.ok(Math.abs(slow.y![0].value-.6)<1e-9));
+const exitKeys=motionPreset(subject,"fade-out",{duration:1}).keyframes!;
+check(()=>assert.equal(exitKeys.opacity![1].value,0));
+check(()=>assert.equal(exitKeys.opacity![1].time,4));
+check(()=>assert.throws(()=>applyTimelineOp(empty(),{op:"add_text_clip",args:{text:"hi",duration:2,keyframes:{reveal:[{time:0,value:0},{time:1,value:1}]}}},lookup),/reveal applies/));
+check(()=>assert.throws(()=>motionPreset(normalizeClip({id:"t",assetId:"",text:"x",track:"overlay",outPoint:2}),"reveal"),/wipe reveal/));
+check(()=>assert.equal(easeAt("step-start",0),0));
+check(()=>assert.equal(easeAt("step-start",.001),1));
+check(()=>assert.ok(easeAt("anticipate",.15)<0,"anticipate dips below zero first"));
+check(()=>assert.ok(easeAt("snappy",.2)>.5));
+// legacy presets keep their original short opacity ramps
+check(()=>assert.equal(motionPreset(subject,"rise").keyframes!.opacity![1].time,.3));
+check(()=>assert.equal(motionPreset(subject,"pop").keyframes!.opacity![1].time,.2));
+check(()=>assert.equal(motionPreset(subject,"fade").keyframes!.opacity![1].time,.8));
+// idPrefix + explicit text ids
+const prefixed=applyTimelineOp(empty(),{op:"add_motion_template",args:{template:"title-card",title:"Hi",idPrefix:"tc"}},lookup);
+check(()=>assert.deepEqual(prefixed.clips.map(c=>c.id),["tc-0","tc-1","tc-2"]));
+check(()=>assert.throws(()=>applyTimelineOp(prefixed,{op:"add_motion_template",args:{template:"title-card",title:"Hi",idPrefix:"tc"}},lookup),/already in use/));
+check(()=>assert.throws(()=>applyTimelineOp(empty(),{op:"add_motion_template",args:{template:"title-card",idPrefix:"bad id!"}},lookup),/idPrefix/));
+const named=applyTimelineOp(empty(),{op:"add_text_clip",args:{id:"headline",text:"Hello",duration:2}},lookup);
+check(()=>assert.equal(named.clips[0].id,"headline"));
+check(()=>assert.throws(()=>applyTimelineOp(named,{op:"add_text_clip",args:{id:"headline",text:"Again"}},lookup),/already exists/));
+// examples build, are valid and stay deterministic
+for(const ex of EXAMPLES) {
+  const tl=buildExample(ex);
+  check(()=>assert.ok(tl.clips.length>0&&exampleDuration(ex)>1,ex.id));
+  check(()=>assert.deepEqual(normalizeTimeline(tl),tl,ex.id));
+  check(()=>assert.equal(JSON.stringify(buildExample(ex).clips.map(c=>c.id)),JSON.stringify(tl.clips.map(c=>c.id)),ex.id));
+}
+check(()=>assert.equal(EXAMPLES.length,8));
+const springed=motionPreset(subject,"spring").keyframes!.scale!;
+check(()=>assert.ok(springed.some(k=>k.value>1)||springed.some(k=>k.value<subject.scale!),"spring oscillates"));
+check(()=>assert.equal(springed[springed.length-1].value,1));
+// sequence + reverse + retime
+let seq=applyTimelineOp(empty(),{op:"add_motion_template",args:{template:"kinetic-type",title:"one two three",duration:3}},lookup);
+const ids=seq.clips.map(c=>c.id);
+seq=applyTimelineOp(seq,{op:"apply_motion_sequence",args:{clipIds:ids,preset:"pop",stagger:.25,start:1}},lookup);
+check(()=>assert.deepEqual(ids.map(id=>seq.clips.find(c=>c.id===id)!.start),[1,1.25,1.5]));
+check(()=>assert.ok(seq.clips.every(c=>c.keyframes?.scale)));
+check(()=>assert.throws(()=>applyTimelineOp(seq,{op:"apply_motion_sequence",args:{clipIds:[ids[0],ids[0]],preset:"pop"}},lookup),/unique/));
+const animTl=applyTimelineOp(shaped,{op:"set_keyframes",args:{clipId:"shape",property:"x",keyframes:[{time:0,value:.2,easing:"ease-in"},{time:1,value:.5,easing:"hold"},{time:2,value:.8}]}},lookup),anim=animTl.clips[0];
+const rev=reverseAnimation(anim).x!;
+check(()=>assert.deepEqual(rev.map(k=>[k.time,k.value]),[[0,.8],[1,.5],[2,.2]]));
+check(()=>assert.equal(rev[0].easing,"step-start"));
+check(()=>assert.deepEqual(rev[1].easing,[0,0,.58,1]));
+check(()=>assert.equal(rev[2].easing,undefined));
+const fast=retimeAnimation(anim,1,.5).x!;
+check(()=>assert.deepEqual(fast.map(k=>k.time),[.5,1,1.5]));
+check(()=>assert.throws(()=>retimeAnimation({...anim,keyframes:undefined},1),/no animation/));
+check(()=>assert.throws(()=>retimeAnimation(anim,5),/fit within/));
+const retimed=applyTimelineOp(animTl,{op:"retime_animation",args:{clipId:"shape",duration:1,delay:.5}},lookup).clips[0].keyframes!.x!;
+check(()=>assert.deepEqual(retimed.map(k=>k.time),[.5,1,1.5]));
+check(()=>assert.throws(()=>applyTimelineOp(shaped,{op:"retime_animation",args:{clipId:"shape",duration:1}},lookup),/no animation/));
+const reversedTl=applyTimelineOp(animTl,{op:"reverse_animation",args:{clipId:"shape"}},lookup).clips[0];
+check(()=>assert.equal(reversedTl.keyframes!.x![0].value,.8));
+// beats
+check(()=>assert.deepEqual(beatTimes(120,4),[0,.5,1,1.5]));
+check(()=>assert.deepEqual(beatTimes(120,3,1,2),[1,2,3]));
+check(()=>assert.throws(()=>beatTimes(5,4),/bpm/));
+const beats=applyTimelineOp(empty(),{op:"add_beat_markers",args:{bpm:90,count:4}},lookup);
+check(()=>assert.equal(beats.markers!.length,4));
+check(()=>assert.throws(()=>applyTimelineOp(beats,{op:"add_beat_markers",args:{bpm:90,count:101}},lookup),/count/));
+const moved2=applyTimelineOp(applyTimelineOp(many,{op:"move_clip",args:{clipId:"second",start:1.3}},lookup),{op:"snap_to_beats",args:{clipIds:["second"],bpm:120}},lookup);
+check(()=>assert.equal(moved2.clips.find(c=>c.id==="second")!.start,1.5));
+check(()=>assert.equal(TRANSITION_TYPES.length,6));
+check(()=>assert.equal(normalizeClip({...subject,transitionIn:{fromClipId:"a",type:"iris",duration:.5}}).transitionIn?.type,"iris"));
+
 // Real FFmpeg output checks: exact center color, transparent outside, ellipse border,
 // animation, hidden track, PNGs for every template, and a playable asset-free MP4.
 const dir=fs.mkdtempSync(path.join(os.tmpdir(),"vf-graphics-"));
@@ -76,10 +163,36 @@ try {
   const moved=render(moving,"moved.png",1);
   check(()=>assert.ok(pixel(moved,240,90)[0]>240));
   check(()=>assert.ok(pixel(moved,80,90).every(v=>v<8)));
+
+  // reveal: half way through a left-to-right wipe the left half is solid and the right half empty
+  const wiped=applyTimelineOp(shaped,{op:"set_keyframes",args:{clipId:"shape",property:"reveal",keyframes:[{time:0,value:0,easing:"linear"},{time:2,value:1}]}},lookup);
+  const half=render(wiped,"reveal-half.png",1);
+  // shape is 50% of the canvas wide (x 80..240); at reveal .5 only its left half (80..160) is visible
+  check(()=>assert.ok(pixel(half,120,90)[0]>240,"left of reveal edge is drawn"));
+  check(()=>assert.ok(pixel(half,200,90).every(v=>v<8),"right of reveal edge is clear"));
+  check(()=>assert.ok(pixel(render(wiped,"reveal-end.png",1.9),200,90)[0]>240,"fully revealed at the end"));
+  check(()=>assert.ok(pixel(render(wiped,"reveal-start.png",0),120,90).every(v=>v<8),"nothing drawn at the start"));
+  // every preset compiles to a valid ffmpeg graph on a shape
+  for(const preset of MOTION_PRESETS) {
+    const tl=applyTimelineOp(shaped,{op:"apply_motion",args:{clipId:"shape",preset:preset.id}},lookup);
+    check(()=>assert.ok(render(tl,`preset-${preset.id}.png`,1.2),preset.id));
+  }
+  // step-start easing holds the end value the instant a segment begins
+  const stepped=applyTimelineOp(shaped,{op:"set_keyframes",args:{clipId:"shape",property:"x",keyframes:[{time:0,value:.25,easing:"step-start"},{time:2,value:.75}]}},lookup);
+  check(()=>assert.ok(pixel(render(stepped,"step.png",.5),240,90)[0]>240,"step-start jumps immediately"));
   for(const t of MOTION_TEMPLATES) {
     const tl=applyTimelineOp(empty(),{op:"add_motion_template",args:{template:t.id,title:"Hello motion",duration:1}},lookup);
     check(()=>assert.ok(render(tl,`${t.id}.png`,.5)));
   }
+  for(const ex of EXAMPLES) check(()=>assert.ok(render(buildExample(ex,{width:320,height:180}),`ex-${ex.id}.png`,1.2),ex.id));
+  // stat ring renders an outline with a clear centre; progress bar fill grows
+  const stat=applyTimelineOp(empty(),{op:"add_motion_template",args:{template:"stat-highlight",title:"98%",duration:3,color:"#00ff00"}},lookup);
+  check(()=>assert.ok(pixel(render(stat,"stat.png",2),160,90).every(v=>v<=255)));
+  const bar=applyTimelineOp(empty(),{op:"add_motion_template",args:{template:"progress-bar",title:"Loading",duration:5,color:"#ff0000"}},lookup);
+  const early=render(bar,"bar-early.png",.5),late=render(bar,"bar-late.png",4.4);
+  check(()=>assert.ok(pixel(late,150,90)[0]>200,"progress filled late"));
+  check(()=>assert.ok(pixel(early,150,90)[0]<120,"progress track only early"));
+
   check(()=>assert.ok(render(shaped,"shape.mp4")));
 } finally {fs.rmSync(dir,{recursive:true,force:true});}
 console.log(`${checks} graphics checks passed`);

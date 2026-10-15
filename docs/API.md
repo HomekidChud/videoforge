@@ -14,7 +14,7 @@ All three endpoints require a read-capable Bearer key:
 
 | Endpoint | Response |
 | --- | --- |
-| `GET /api/capabilities` | Version 4 catalog, shapes, templates, all ops, properties, limits and batch options |
+| `GET /api/capabilities` | Version 5 catalog, shapes, templates, all ops, properties, limits and batch options |
 | `GET /api/motion/templates` | `{templates:[{id,label,description}]}` |
 | `GET /api/graphics/schema` | JSON Schema (2020-12) for the `shape` object |
 
@@ -80,7 +80,7 @@ Stroke/radius scale proportionally for smaller frame previews. A line is a thin 
 }
 ```
 
-Templates: `lower-third`, `title-card`, `callout`, `kinetic-type`, `countdown`. Options are `title` (up to 120 characters), `subtitle`, `color`, `start` (0..86400) and `duration` (0.5..60 seconds). Kinetic type accepts at most eight words. Font sizes use an aspect-ratio-aware fit estimate; inspect long text, especially unusual fonts or wide glyphs. Templates compile to regular shape/text clips with entrance and exit motion. Returned `createdClipIds` identify every layer; edit each with existing operations. No arbitrary JavaScript, SVG paths, shaders or agent expressions are executed.
+Templates: `lower-third`, `title-card`, `callout`, `kinetic-type`, `countdown`, `quote-card`, `split-reveal`, `progress-bar`, `stat-highlight`. Options are `title` (up to 120 characters), `subtitle`, `color`, `start` (0..86400), `duration` (0.5..60 seconds) and `idPrefix` (1..32 letters, digits, `_` or `-`; names the generated layers `prefix-0`, `prefix-1`, ... in creation order so later ops in the same batch can reference them). Kinetic type accepts at most eight words. Font sizes use an aspect-ratio-aware fit estimate; inspect long text, especially unusual fonts or wide glyphs. Templates compile to regular shape/text clips with entrance and exit motion. Returned `createdClipIds` identify every layer; edit each with existing operations. No arbitrary JavaScript, SVG paths, shaders or agent expressions are executed.
 
 `stagger_clips` accepts `{clipIds:[...], delay, start?}`. IDs must be unique and exist; delay is 0..60 seconds. Clips start at `start + index * delay` in the provided order without changing their clip-local keyframes.
 
@@ -118,6 +118,58 @@ Templates: `lower-third`, `title-card`, `callout`, `kinetic-type`, `countdown`. 
 `swap_asset` takes `{clipId, assetId, duration?, inPoint?, outPoint?, keepKeyframes?}`. It re-points an existing media clip at a new asset while keeping its id, track, start, transform, style, and text. The trim window can be reset with `inPoint`/`outPoint`/`duration` in source seconds. By default, clip-local keyframes are rescaled to the new duration; `keepKeyframes:true` preserves them verbatim. Not supported on text or shape clips (those have `assetId: ""`). The referenced asset must be readable by the key (project-restricted keys cannot swap to an asset outside their allowlist).
 
 Inspect via `GET /api/projects/:id/state`, `GET /api/projects/:id/frame?t=1`, or a storyboard before queueing an MP4. Composition families draw media first, shapes next, text last; there is no general z-index or nested scene graph. Preview and export can differ slightly in font metrics, edge antialiasing and cubic easing approximation. SVG/Lottie import, arbitrary paths, 3D, motion blur, nested compositions and expressions are not implemented.
+
+## Motion engine v2 (timeline v4, capabilities v5)
+
+Everything below compiles to ordinary keyframes, so Studio, the preview and the FFmpeg renderer share one result and every layer stays editable. Runnable versions of these ideas live in [Examples](#examples) and in the in-app gallery (`#/docs/examples`).
+
+### Presets with timing
+
+`apply_motion` takes `{clipId, preset, duration?, delay?, strength?}`.
+
+| Arg | Range | Meaning |
+| --- | --- | --- |
+| `duration` | 0.01 to the clip length minus `delay` | Seconds the move takes. Default 0.8 (or the clip length for `zoom`/`drift`). |
+| `delay` | 0 to the clip length | Seconds into the clip before the move starts. Ignored by the exit presets, which end at the clip end. |
+| `strength` | 0.1..2 | Multiplier for travel distance, overshoot and zoom amount. Default 1. |
+
+Presets: `fade`, `slide-left`, `rise`, `zoom`, `pop`, `drift` (original six) plus `spring` (damped bounce), `whip` (fast right-to-left arrival with anticipation), `spin` (rotation and scale settle), `pulse` (single emphasis beat), `shake` (damped horizontal impact), `reveal` (wipe, media and shape clips only), `exit-left` and `fade-out`. `spring` and `shake` are sampled into 25 linear keyframes so browser and FFmpeg agree; other presets use two to three keys. Presets replace only the properties they animate. `reveal` on a text clip returns a 422.
+
+```json
+{ "op": "apply_motion", "args": { "clipId": "badge", "preset": "spring", "delay": 0.4, "duration": 1.2, "strength": 1.5 } }
+```
+
+### Sequence, reverse and retime
+
+| Op | Arguments | What it does |
+| --- | --- | --- |
+| `apply_motion_sequence` | `clipIds[]` (unique), `preset`, `stagger`? (0..60, default 0.12), `start`?, `duration`?, `delay`?, `strength`? | Apply one preset to several clips and offset starts by `stagger` in the given order. Atomic. |
+| `reverse_animation` | `clipId` | Reverse every curve of the clip and mirror each easing. Turns an entrance into an exit. |
+| `retime_animation` | `clipId`, `duration`, `delay`? | Fit all keyframes of a clip into one window, keeping relative timing. Needs at least two distinct key times. |
+| `add_beat_markers` | `bpm` (20..300), `count`? (1..100, default 8), `start`?, `every`?, `label`?, `color`? | Add timeline markers on every beat (or every Nth beat). The timeline allows 100 markers in total. |
+| `snap_to_beats` | `clipIds[]`, `bpm`, `start`? | Move clip starts to the nearest beat. |
+
+### Reveal (wipe mask)
+
+`reveal` (0..1, default 1) is a left-to-right alpha mask on media and shape clips, applied before scale and rotation. It can be a static clip field or a keyframed property. Text clips reject it. In preview the mask is a CSS `clip-path`; in FFmpeg it is a `geq` alpha expression. While a transition is also running on the same clip the preview shows the transition, whereas the renderer applies both.
+
+### New templates
+
+| Template | Layers (in `createdClipIds` order) |
+| --- | --- |
+| `quote-card` | quotation mark, quote, accent rule, attribution (`subtitle`) |
+| `split-reveal` | top rule, bottom rule, headline, supporting line |
+| `progress-bar` | track, fill (animated `reveal`), headline, caption |
+| `stat-highlight` | accent ring (ellipse, scaled to a circle for the project aspect), number, caption |
+
+### Transitions
+
+`dissolve`, `wipe-left`, `wipe-right`, `wipe-up`, `wipe-down`, `iris`. See `set_transition` below.
+
+### Examples
+
+The `shared/examples.ts` module holds eight asset-free compositions as op lists (`preset-sampler`, `lower-third-reveal`, `kinetic-whip`, `quote-card`, `split-reveal`, `progress-bar`, `stat-highlight`, `beat-drop`). `npm run examples` renders them with the real pipeline into `docs/examples/` (GIFs and posters) along with a transitions reel built from generated footage. The test suite builds every example. To use one over HTTP, create a project and POST `{"ops": [...]}` to `/api/projects/:id/timeline/ops`.
+
 
 ---
 
@@ -503,7 +555,7 @@ Supported `op` values:
 | `move_clip` | `clipId`, `start` | Reposition the clip on the timeline. |
 | `set_audio` | `clipId`, `volume` (0..1), `muted` (bool) | Adjust per-clip audio. |
 | `add_text` | `clipId`, `text` | Attach a burned-in text caption to a clip. |
-| `add_text_clip` | `text`, `start`, `duration`, plus style fields (`x`, `y`, `textSize`, `textColor`, `textBg`, `fadeIn`, `fadeOut`, `opacity`) | Add a standalone title on the overlay track (no asset needed). |
+| `add_text_clip` | `text`, `id`? (rejected if it already exists), `start`, `duration`, plus style fields (`x`, `y`, `textSize`, `textColor`, `textBg`, `fadeIn`, `fadeOut`, `opacity`) | Add a standalone title on the overlay track (no asset needed). |
 | `update_clip` | `clipId` plus any clip field to change | Patch speed, fades, `filter` (`none\|mono\|sepia\|vivid\|cool\|warm\|faded`), `brightness`, `contrast`, `saturation`, `opacity`, `x`, `y`, `scale`, text style, timing. Values equal to defaults reset the field. |
 | `split_clip` | `clipId`, `at` (timeline seconds) | Split a clip in two at least 0.1s from either edge. |
 | `set_project` | `fps`?, `resolution`?, `background`? | Change frame rate, canvas size or background colour (`#rrggbb`). |
@@ -523,7 +575,7 @@ Batches: send `{ "ops": [ {"op": ..., "args": ...}, ... ] }` (maximum 100) to ap
 
 ### Keyframes and easing
 
-Animatable properties: `x`, `y`, `scale`, `rotation`, `opacity`, `volume`, `brightness`, `contrast`, `saturation`. Keyframe `time` is clip-relative seconds. The `easing` on a keyframe shapes the segment leaving it: `linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out`, `back-out` (overshoot), `hold` (step), or a custom cubic bezier `[x1, y1, x2, y2]` where x is 0..1 and y may overshoot. Keyframes created through the API default to `linear`.
+Animatable properties: `x`, `y`, `scale`, `rotation`, `opacity`, `reveal`, `volume`, `brightness`, `contrast`, `saturation`. Keyframe `time` is clip-relative seconds. The `easing` on a keyframe shapes the segment leaving it: `linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out`, `back-out` (overshoot), `snappy` (fast start, long settle), `anticipate` (dips backwards, then launches), `hold` (keep the start value until the next key), `step-start` (jump to the next value as soon as the segment starts), or a custom cubic bezier `[x1, y1, x2, y2]` where x is 0..1 and y may overshoot. Keyframes created through the API default to `linear`.
 
 ```json
 { "op": "set_keyframes",
@@ -536,7 +588,7 @@ Animatable properties: `x`, `y`, `scale`, `rotation`, `opacity`, `volume`, `brig
 
 | Op | Arguments | What it does |
 |----|-----------|--------------|
-| `set_transition` | `clipId`, `type` (`none`, `dissolve`, `wipe-left`, `wipe-right`), `duration`? (0.1 to 3, default 0.6), `join`? (default true) | Overlaps a video-track clip with the one before it. With `join` the clip first moves to touch the previous clip; later video clips move up by the overlap. `none` removes the transition and restores the gap-free layout. Rendered with an alpha ramp, plus an audio crossfade. Wipes reveal the incoming clip from the left or the right. |
+| `set_transition` | `clipId`, `type` (`none`, `dissolve`, `wipe-left`, `wipe-right`, `wipe-up`, `wipe-down`, `iris`), `duration`? (0.1 to 3, default 0.6), `join`? (default true) | Overlaps a video-track clip with the one before it. With `join` the clip first moves to touch the previous clip; later video clips move up by the overlap. `none` removes the transition and restores the gap-free layout. Rendered with an alpha ramp, plus an audio crossfade. Wipes reveal the incoming clip from the named edge (`wipe-up` rises from the bottom, `wipe-down` falls from the top); `iris` opens a circle from the centre. |
 | `remove_clips` | `clipIds[]` | Delete several clips in one step. |
 | `shift_clips` | `delta`, `from`?, `track`?, `clipIds`? | Slide clips later or earlier. `from` limits it to clips starting at or after that time. |
 | `close_gaps` | `track`? (default `video`) | Pack a track's clips end to end in their current order. |

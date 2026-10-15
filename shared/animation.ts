@@ -6,6 +6,7 @@ export const ANIMATABLE = {
   scale: { label: "Scale", min: .1, max: 2, step: .01, default: 1 },
   rotation: { label: "Rotation", min: -360, max: 360, step: 1, default: 0 },
   opacity: { label: "Opacity", min: 0, max: 1, step: .01, default: 1 },
+  reveal: { label: "Reveal", min: 0, max: 1, step: .01, default: 1 },
   volume: { label: "Volume", min: 0, max: 1, step: .01, default: 1 },
   brightness: { label: "Brightness", min: -.5, max: .5, step: .01, default: 0 },
   contrast: { label: "Contrast", min: .5, max: 2, step: .01, default: 1 },
@@ -13,15 +14,15 @@ export const ANIMATABLE = {
 } as const;
 export type AnimationProperty = keyof typeof ANIMATABLE;
 export type Bezier = [number, number, number, number];
-export const EASINGS = { linear: [0, 0, 1, 1], ease: [.25, .1, .25, 1], "ease-in": [.42, 0, 1, 1], "ease-out": [0, 0, .58, 1], "ease-in-out": [.42, 0, .58, 1], "back-out": [.34, 1.56, .64, 1] } satisfies Record<string, Bezier>;
-export type Easing = keyof typeof EASINGS | "hold" | Bezier;
+export const EASINGS = { linear: [0, 0, 1, 1], ease: [.25, .1, .25, 1], "ease-in": [.42, 0, 1, 1], "ease-out": [0, 0, .58, 1], "ease-in-out": [.42, 0, .58, 1], "back-out": [.34, 1.56, .64, 1], "snappy": [.16, 1, .3, 1], "anticipate": [.68, -.6, .32, 1.6] } satisfies Record<string, Bezier>;
+export type Easing = keyof typeof EASINGS | "hold" | "step-start" | Bezier;
 /** Time is relative to the clip's start, in timeline seconds. Easing belongs to the outgoing segment. */
 export type Keyframe = { time: number; value: number; easing?: Easing };
 export type Keyframes = Partial<Record<AnimationProperty, Keyframe[]>>;
 export const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 export const isProperty = (p: string): p is AnimationProperty => Object.prototype.hasOwnProperty.call(ANIMATABLE, p);
 export function normalizeEasing(e: any): Easing {
-  if (e === "hold" || typeof e === "string" && Object.prototype.hasOwnProperty.call(EASINGS, e)) return e;
+  if (e === "hold" || e === "step-start" || typeof e === "string" && Object.prototype.hasOwnProperty.call(EASINGS, e)) return e;
   if (Array.isArray(e) && e.length === 4 && e.every(n => typeof n === "number" && Number.isFinite(n))) return [clamp(e[0], 0, 1), clamp(e[1], -2, 3), clamp(e[2], 0, 1), clamp(e[3], -2, 3)];
   throw new Error("easing must be a preset, hold, or [x1,y1,x2,y2] (x: 0..1, y: -2..3)");
 }
@@ -49,10 +50,10 @@ export function baseValue(c: Clip, p: AnimationProperty): number {
   if (p === "y") return c.y ?? (!c.assetId && !c.shape ? .82 : .5);
   return (c as any)[p] ?? ANIMATABLE[p].default;
 }
-export function easingCurve(e: Easing | undefined): Bezier { return Array.isArray(e) ? e : EASINGS[e === "hold" ? "linear" : e ?? "linear"]; }
+export function easingCurve(e: Easing | undefined): Bezier { return Array.isArray(e) ? e : EASINGS[(e === "hold" || e === "step-start") ? "linear" : e ?? "linear"]; }
 const cubic = (s: number, a: number, b: number) => 3 * (1 - s) ** 2 * s * a + 3 * (1 - s) * s * s * b + s ** 3;
 export function easeAt(e: Easing | undefined, progress: number): number {
-  const x = clamp(progress, 0, 1); if (e === "hold") return x >= 1 ? 1 : 0;
+  const x = clamp(progress, 0, 1); if (e === "step-start") return x <= 0 ? 0 : 1; if (e === "hold") return x >= 1 ? 1 : 0;
   const [x1, y1, x2, y2] = easingCurve(e);
   let lo = 0, hi = 1;
   for (let i = 0; i < 24; i++) { const m = (lo + hi) / 2; if (cubic(m, x1, x2) < x) lo = m; else hi = m; }
@@ -83,7 +84,7 @@ export function sliceKeyframes(c: Clip, from: number, to: number): Keyframes | u
     const times = new Set<number>([from, to, ...src.filter(k => k.time > from && k.time < to).map(k => k.time)]);
     for (let i = 0; i < src.length - 1; i++) {
       const a = src[i], b = src[i + 1];
-      if ((from > a.time && from < b.time || to > a.time && to < b.time) && a.easing !== "hold") {
+      if ((from > a.time && from < b.time || to > a.time && to < b.time) && a.easing !== "hold" && a.easing !== "step-start") {
         const lo = Math.max(from, a.time), hi = Math.min(to, b.time);
         const n = Math.min(28, Math.max(1, Math.ceil((hi - lo) * 30)));
         for (let j = 1; j < n; j++) times.add(lo + (hi - lo) * j / n);
@@ -94,7 +95,7 @@ export function sliceKeyframes(c: Clip, from: number, to: number): Keyframes | u
       const seg = [...src].reverse().find(k => k.time <= t);
       const endSeg = src.find(k => k.time > t);
       const cut = seg && endSeg && (from > seg.time && from < endSeg.time || to > seg.time && to < endSeg.time);
-      return { time: Math.round((t - from) * 1000)/1000, value: valueAt(c,p,t), easing: seg?.easing === "hold" ? "hold" as const : !cut && original ? original.easing : "linear" as const };
+      return { time: Math.round((t - from) * 1000)/1000, value: valueAt(c,p,t), easing: seg?.easing === "hold" || seg?.easing === "step-start" ? seg.easing : !cut && original ? original.easing : "linear" as const };
     });
     out[p] = list;
   }
@@ -108,7 +109,8 @@ export function animationExpression(c: Clip, p: AnimationProperty, clock = "t"):
   for (let i = frames.length-2; i >= 0; i--) {
     const a=frames[i],b=frames[i+1],duration=b.time-a.time;
     let segment=fmt(a.value);
-    if(a.easing !== "hold") {
+    if(a.easing === "step-start") segment=`if(lte(${clock},${fmt(a.time)}),${fmt(a.value)},${fmt(b.value)})`;
+    else if(a.easing !== "hold") {
       if(!a.easing||a.easing==="linear") segment=`${fmt(a.value)}+(${fmt(b.value-a.value)})*(${clock}-${fmt(a.time)})/${fmt(duration)}`;
       else {
         segment=fmt(b.value);

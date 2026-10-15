@@ -1,6 +1,7 @@
 import { Sparkles, Palette, Type, Droplets, ArrowRightLeft } from "lucide-react";
 import { FILTERS, type Clip } from "@shared/timeline";
 import { MOTION_PRESETS, TITLE_PRESETS } from "@shared/presets";
+import { TRANSITIONS, TRANSITION_LABELS } from "@shared/transitions";
 
 export type Effect =
   | { kind: "motion"; id: string; label: string }
@@ -31,7 +32,7 @@ export default function ForgeEffects({ disabled, onApply }: { disabled: boolean;
     {group("Motion", <Sparkles size={13} />, MOTION_PRESETS.map((m) => ({ kind: "motion" as const, id: m.id, label: m.label })))}
     {group("Color", <Palette size={13} />, FILTERS.filter((f) => f !== "none").map((f) => ({ kind: "filter" as const, id: f, label: f[0].toUpperCase() + f.slice(1) })))}
     {group("Fades and looks", <Droplets size={13} />, FADES)}
-    {group("Transitions", <ArrowRightLeft size={13} />, [{ kind: "transition" as const, id: "dissolve", label: "Dissolve" }, { kind: "transition" as const, id: "wipe-left", label: "Wipe from left" }, { kind: "transition" as const, id: "wipe-right", label: "Wipe from right" }, { kind: "transition" as const, id: "none", label: "No transition" }])}
+    {group("Transitions", <ArrowRightLeft size={13} />, [...TRANSITIONS.map(id => ({ kind: "transition" as const, id, label: TRANSITION_LABELS[id] })), { kind: "transition" as const, id: "none", label: "No transition" }])}
     {group("Titles", <Type size={13} />, TITLE_PRESETS.map((t) => ({ kind: "title" as const, id: t.id, label: t.label })))}
   </div>;
 }

@@ -1,11 +1,22 @@
-import { clipDuration, clipEnd, normalizeTimeline, type Clip, type Timeline } from './timeline';
-export const TRANSITIONS = ['dissolve', 'wipe-left', 'wipe-right'] as const;
+import { clipDuration, clipEnd, normalizeTimeline, TRANSITION_TYPES, type Clip, type Timeline } from './timeline';
+export const TRANSITIONS = TRANSITION_TYPES;
+export const TRANSITION_LABELS: Record<string,string> = { none: 'None', dissolve: 'Dissolve', 'wipe-left': 'Wipe from left', 'wipe-right': 'Wipe from right', 'wipe-up': 'Wipe from bottom', 'wipe-down': 'Wipe from top', iris: 'Iris open' };
 export type TransitionType = typeof TRANSITIONS[number];
 export type Transition = { fromClipId: string; type: TransitionType; duration: number };
 export function incomingTransition(t: Timeline, c: Clip): Transition | undefined {
   const tr = c.transitionIn, from = tr && t.clips.find(x => x.id === tr.fromClipId);
   if (!tr || !from || from.track !== 'video' || c.track !== 'video' || from.start >= c.start || Math.abs(clipEnd(from) - c.start - tr.duration) > .04) return;
   return tr;
+}
+/** CSS clip-path for a transition at progress p (0..1); the FFmpeg renderer draws the same shapes with geq. */
+export function transitionClipPath(type: string, p: number): string | undefined {
+  switch (type) {
+    case 'wipe-left': return `inset(0 ${(1-p)*100}% 0 0)`;
+    case 'wipe-right': return `inset(0 0 0 ${(1-p)*100}%)`;
+    case 'wipe-up': return `inset(${(1-p)*100}% 0 0 0)`;
+    case 'wipe-down': return `inset(0 0 ${(1-p)*100}% 0)`;
+    case 'iris': return `circle(${p*70.711}% at 50% 50%)`;
+  }
 }
 export function transitionProgress(t: Timeline, c: Clip, time: number) {
   const tr = incomingTransition(t,c); return tr ? Math.max(0,Math.min(1,(time-c.start)/tr.duration)) : 1;
