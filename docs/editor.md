@@ -1,7 +1,7 @@
 ---
 title: Using the editor
 group: Studio
-order: 13
+order: 14
 description: Cut media, build graphics and refine keyframes visually.
 ---
 
@@ -12,6 +12,10 @@ Open Studio and sign in with a read, write or admin key. The left library holds 
 ## Work on a smaller screen
 
 On mobile, the preview stays above the active Timeline, Library or Inspector panel. Switch panels with the panel buttons rather than scrolling away from the preview. Tools contains composition JSON, add title, redo, snapping and documentation links.
+
+## Typography for text clips
+
+Select a text clip and open the Typography section of the inspector to choose a family from the catalog, a weight, an alignment, line height, letter spacing and uppercase. The preview loads every catalog font, so what you pick is what renders. The font catalog is documented in Fonts & text.
 
 ## Create graphics
 

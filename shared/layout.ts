@@ -1,7 +1,9 @@
 import { clipDuration, clipScale, clipX, clipY, timelineDuration, type Clip, type Timeline } from "./timeline";
 import { valueAt } from "./animation";
-import { textAdvance } from "./textmetrics";
+import { textAdvance, type TextStyle } from "./textmetrics";
 export { textAdvance };
+/** The clip properties that change how text measures: font, weight and letter spacing. */
+export const textStyle = (c: Clip): TextStyle => ({ font: c.font, fontWeight: c.fontWeight, letterSpacing: c.letterSpacing });
 
 export type CanvasSize = { width: number; height: number };
 export type FitMode = "contain" | "cover" | "fill" | "safe";
@@ -18,16 +20,16 @@ function extremes(c: Clip) {
   for (const t of Array.from(times)) { scale = Math.max(scale, valueAt(c, "scale", t)); angles.push(valueAt(c, "rotation", t)); }
   return { scale, angles };
 }
-function wrap(text: string, width: number): string[] {
+function wrap(text: string, width: number, style: TextStyle): string[] {
   const lines: string[] = [];
   for (const paragraph of text.replace(/\r/g, "").split("\n")) {
     let line = "";
     for (const word of paragraph.trim().split(/\s+/)) {
       if (!word) continue;
-      if (line && textAdvance(`${line} ${word}`) <= width) { line += ` ${word}`; continue; }
+      if (line && textAdvance(`${line} ${word}`, style) <= width) { line += ` ${word}`; continue; }
       if (line) { lines.push(line); line = ""; }
       for (const char of Array.from(word)) {
-        if (line && textAdvance(line + char) > width) { lines.push(line); line = ""; }
+        if (line && textAdvance(line + char, style) > width) { lines.push(line); line = ""; }
         line += char;
       }
     }
@@ -42,14 +44,15 @@ function textRoom(c: Clip, canvas: CanvasSize, maxScale: number) {
 }
 /** Shared deterministic wrapping and shrink-to-fit used by the preview and the FFmpeg renderer. Text is never truncated. */
 export function textLayout(c: Clip, canvas: CanvasSize) {
-  const text = c.text ?? "", requested = canvas.height * (c.textSize ?? 6) / 100;
+  // Uppercase transforms change how wide text measures, so fit the rendered form.
+  const text = c.textTransform === "uppercase" ? (c.text ?? "").toUpperCase() : (c.text ?? ""), requested = canvas.height * (c.textSize ?? 6) / 100;
   const pad = (size: number) => c.textBg ? size * .35 : size * .08;
   if (c.textFit === "none") return { text, lines: text.split("\n"), fontSize: requested, width: 0, height: 0, padding: pad(requested) };
   const { scale, angles } = c.assetId ? { scale: 1, angles: [0] } : extremes(c);
   const room = textRoom(c, canvas, scale);
   const measure = (size: number) => {
-    const p = pad(size), lines = wrap(text, Math.max(.01, (room.w - 2 * p) / size));
-    const width = Math.max(.01, ...lines.map(textAdvance)) * size + 2 * p, height = lines.length * size * 1.4 + 2 * p;
+    const p = pad(size), lines = wrap(text, Math.max(.01, (room.w - 2 * p) / size), textStyle(c));
+    const width = Math.max(.01, ...lines.map(l => textAdvance(l, textStyle(c)))) * size + 2 * p, height = lines.length * size * (c.lineHeight ?? 1.4) + 2 * p;
     const fits = angles.every(a => { const r = rotated(width, height, a); return r.w <= room.w + .01 && r.h <= room.h + .01; });
     return { lines, width, height, fits, p };
   };
@@ -70,8 +73,8 @@ export function clipBounds(c: Clip, canvas: CanvasSize, media: MediaSize = {}): 
     else if (c.fit === "cover" || c.fit === "fill") { w = scale * canvas.width; h = scale * canvas.height; }
     else { const fw = a >= ca ? 1 : a / ca, fh = a >= ca ? ca / a : 1; w = fw * scale * canvas.width; h = fh * scale * canvas.height; }
   } else {
-    const lines = (c.text ?? "").split("\n"), size = canvas.height * (c.textSize ?? 6) / 100, p = c.textBg ? size * .35 : size * .08;
-    w = (Math.max(...lines.map(textAdvance)) * size + 2 * p) * scale; h = (lines.length * size * 1.4 + 2 * p) * scale;
+    const lines = (c.textTransform === "uppercase" ? (c.text ?? "").toUpperCase() : (c.text ?? "")).split("\n"), size = canvas.height * (c.textSize ?? 6) / 100, p = c.textBg ? size * .35 : size * .08, lh = c.lineHeight ?? 1.4;
+    w = (Math.max(...lines.map(l => textAdvance(l, textStyle(c)))) * size + 2 * p) * scale; h = (lines.length * size * lh + 2 * p) * scale;
     if (c.textFit !== "none") { const l = textLayout(c, canvas); w = l.width * scale; h = l.height * scale; }
   }
   const box = angles.map(a => rotated(w, h, a)).reduce((m, r) => ({ w: Math.max(m.w, r.w), h: Math.max(m.h, r.h) }), { w: 0, h: 0 });

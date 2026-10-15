@@ -1,7 +1,7 @@
 ---
 title: Rendering & inspection
 group: Agent API
-order: 17
+order: 18
 description: See your composition before paying the cost of a full export.
 ---
 

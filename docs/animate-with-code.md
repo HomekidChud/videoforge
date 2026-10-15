@@ -1,7 +1,7 @@
 ---
 title: Animate with code
 group: Motion graphics
-order: 10
+order: 11
 description: Drive any property with a formula of time that previews live and renders exactly.
 ---
 

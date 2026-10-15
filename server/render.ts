@@ -1,5 +1,8 @@
 import { incomingTransition } from "@shared/transitions";
 import { textLayout } from "@shared/layout";
+import { textAdvance } from "@shared/textmetrics";
+import { getFont } from "@shared/fonts";
+import { fontFileCached } from "./fonts";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -169,22 +172,56 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
   const escPath = (p: string) => p.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
   texts.forEach((c, i) => {
     const lay = textLayout(c, { width: W, height: H });
-    // One drawtext per line: centred without relying on text_align (FFmpeg 6.1+), and no stray newline glyphs.
+    // One drawtext per line, aligned without relying on text_align (FFmpeg 6.1+), and no stray newline glyphs.
     const files = lay.lines.map((line, j) => { const file = path.join(tmpDir, `${jobId}_t${i}_${j}.txt`); fs.writeFileSync(file, line.replace(/\r/g, "")); tempFiles.push(file); return file; });
     const dur = clipDuration(c);
     const next = `base${layer + 1}`;
     const size = Math.max(1, Math.round(lay.fontSize));
     const color = (c.textColor ?? "#ffffff").replace("#", "0x");
     const box = c.textBg ? `:box=1:boxcolor=black@0.55:boxborderw=${Math.round(size * 0.35)}` : `:borderw=${Math.max(1, Math.round(size / 18))}:bordercolor=black@0.7`;
-    const font = process.env.VIDEOFORGE_FONT ? `:fontfile='${escPath(process.env.VIDEOFORGE_FONT)}'` : "";
+    // Per-clip font: the renderer downloads catalog fonts and matches the weight the clip asks for.
+    const fontDef = getFont(c.font);
+    const weight = fontDef.weights.includes(c.fontWeight ?? 400) ? (c.fontWeight ?? 400) : fontDef.weights[fontDef.weights.length - 1];
+    const fontFile = fontFileCached(c.font, weight);
+    const font = fontFile ? `:fontfile='${escPath(fontFile)}'` : process.env.VIDEOFORGE_FONT ? `:fontfile='${escPath(process.env.VIDEOFORGE_FONT)}'` : "";
     const tc:Clip=c.assetId ? {...c,assetId:"",x:.5,y:.82,scale:1,rotation:0,keyframes:undefined,expressions:undefined} : c;
-    const n = files.length, lineY = (j: number) => n === 1 ? "(h-text_h)/2" : `(h-${n}*line_h)/2+${j}*line_h`;
-    const draw = (j: number, style: string) => `drawtext=expansion=none:textfile='${escPath(files[j])}'${font}:fontsize=${size}${style}:x=(w-text_w)/2:y=${lineY(j)}`;
-    const lineFilters = c.textBg
-      ? n === 1 ? [draw(0, `:fontcolor=${color}${box}`)]
+    const n = files.length;
+    // Optional line height and alignment, measured with the same metrics as the fit engine.
+    const lh = c.lineHeight ? Math.round(size * c.lineHeight * 100) / 100 : undefined;
+    const lineY = (j: number) => lh ? `(h-${n}*${lh})/2+${j}*${lh}+(${lh}-${size})/2` : n === 1 ? "(h-text_h)/2" : `(h-${n}*line_h)/2+${j}*line_h`;
+    const align = c.textAlign ?? "center";
+    const measure = { font: c.font, fontWeight: weight, letterSpacing: c.letterSpacing ?? 0 };
+    const lineW = lay.lines.map((l) => textAdvance(l, measure));
+    const maxW = Math.max(...lineW);
+    const px = (em: number) => Math.round(em * size * 100) / 100;
+    const lineX = (j: number) => align === "center" ? "(w-text_w)/2" : `(w-${px(maxW)})/2${align === "right" ? `+${px(maxW - lineW[j])}` : ""}`;
+    const draw = (file: string, x: string, j: number, style: string) => `drawtext=expansion=none:textfile='${escPath(file)}'${font}:fontsize=${size}${style}:x=${x}:y=${lineY(j)}`;
+    let lineFilters: string[];
+    if (Math.abs(c.letterSpacing ?? 0) > 0.005 && !c.textBg && Array.from(lay.lines.join("")).length <= 240) {
+      // Letter spacing: draw each character at its estimated advance so the export matches the preview.
+      lineFilters = [];
+      lay.lines.forEach((line, j) => {
+        let advance = 0;
+        const chars = Array.from(line);
+        for (let k = 0; k < chars.length; k++) {
+          const ch = chars[k];
+          const charX = advance;
+          advance += textAdvance(ch, measure);
+          if (ch.trim() === "") continue;
+          const file = path.join(tmpDir, `${jobId}_t${i}_${j}_${k}.txt`);
+          fs.writeFileSync(file, ch);
+          tempFiles.push(file);
+          const x = align === "center" ? `(w-${px(lineW[j])})/2+${px(charX)}` : align === "left" ? `(w-${px(maxW)})/2+${px(charX)}` : `(w-${px(maxW)})/2+${px(maxW - lineW[j] + charX)}`;
+          lineFilters.push(draw(file, x, j, `:fontcolor=${color}:borderw=${Math.max(1, Math.round(size / 18))}:bordercolor=black@0.7`));
+        }
+      });
+    } else if (c.textBg) {
+      lineFilters = n === 1 ? [draw(files[0], lineX(0), 0, `:fontcolor=${color}${box}`)]
         // Boxes are drawn opaque first and made translucent together, so overlapping lines do not darken twice.
-        : [...files.map((_, j) => draw(j, `:fontcolor=black@0:box=1:boxcolor=black@1:boxborderw=${Math.round(size * 0.35)}`)), "format=rgba", "colorchannelmixer=aa=0.55", "format=yuva420p", ...files.map((_, j) => draw(j, `:fontcolor=${color}`))]
-      : files.map((_, j) => draw(j, `:fontcolor=${color}${box}`));
+        : [...files.map((file, j) => draw(file, lineX(j), j, `:fontcolor=black@0:box=1:boxcolor=black@1:boxborderw=${Math.round(size * 0.35)}`)), "format=rgba", "colorchannelmixer=aa=0.55", "format=yuva420p", ...files.map((file, j) => draw(file, lineX(j), j, `:fontcolor=${color}`))];
+    } else {
+      lineFilters = files.map((file, j) => draw(file, lineX(j), j, `:fontcolor=${color}${box}`));
+    }
     const textChain=[`color=c=black@0:s=${W}x${H}:r=${fps}:d=${f(dur)}`,"format=yuva420p",...lineFilters,...transformFilters(tc,W,H,dur,true),`setpts=PTS+${f(c.start)}/TB`];
     filters.push(`${textChain.join(",")}[ct${i}]`);
     const x=`main_w*(${animationExpression(tc,"x",`(t-${f(c.start)})`)})-overlay_w/2`;

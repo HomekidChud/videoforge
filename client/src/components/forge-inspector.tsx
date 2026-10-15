@@ -7,6 +7,7 @@ import type { TimelineGesture } from "@/components/forge-timeline";
 import { TRANSITIONS, TRANSITION_LABELS, type Transition } from "@shared/transitions";
 import ForgeMotion from "@/components/forge-motion";
 import { fitClip } from "@shared/layout";
+import { FONT_CATALOG, getFont } from "@shared/fonts";
 
 type Gesture = TimelineGesture;
 function Slider({ label, value, min, max, step, format, onGesture, onChange, disabled, keyframe }: { label: string; value: number; min: number; max: number; step: number; format?: (v: number) => string; onGesture: Gesture; onChange: (v: number) => void; disabled?: boolean; keyframe?: ReactNode }) {
@@ -58,6 +59,20 @@ export function ClipInspector({ canvas, clip, asset, readOnly, gesture, time, fp
       {isText && <Section title="Text"><textarea rows={3} value={textDraft} disabled={readOnly} aria-label="Title text" maxLength={500} placeholder="Type your title" onChange={(e) => { setTextDraft(e.target.value); if (e.target.value.trim()) patch({ text: e.target.value }, true); }} onFocus={gesture.begin} onBlur={gesture.end} data-testid="input-title-text" />
         <Slider label="Size" value={clip.textSize ?? 6} min={2} max={20} step={0.5} format={(v) => `${v}%`} onGesture={gesture} onChange={(v) => ps({ textSize: v })} disabled={readOnly} />
         <div className="inline-fields"><label className="color-field">Color<input type="color" aria-label="Text color" disabled={readOnly} value={clip.textColor ?? "#ffffff"} onChange={(e) => patch({ textColor: e.target.value })} /></label><label className="check-field"><input type="checkbox" disabled={readOnly} checked={!!clip.textBg} onChange={(e) => patch({ textBg: e.target.checked })} />Background box</label></div></Section>}
+      {isText && <Section title="Typography"><div className="field"><label className="field-label">Font</label>
+        <select aria-label="Font" disabled={readOnly} value={clip.font ?? "noto-sans"} onChange={(e) => { const id = e.target.value; const f = getFont(id); patch({ font: id, fontWeight: f.weights.includes(clip.fontWeight ?? 700) ? clip.fontWeight : undefined }); }}>
+          {["Sans", "Serif", "Display", "Handwriting", "Mono"].map((cat) => <optgroup key={cat} label={cat}>{FONT_CATALOG.filter((f) => f.category === cat).map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}</optgroup>)}
+        </select></div>
+        {getFont(clip.font).weights.length > 1 && <div className="chip-grid" role="radiogroup" aria-label="Font weight">
+          {getFont(clip.font).weights.map((w) => <button key={w} role="radio" aria-checked={(clip.fontWeight ?? 400) === w} className={(clip.fontWeight ?? 400) === w ? "selected chip" : "chip"} disabled={readOnly} onClick={() => ps({ fontWeight: w === 400 ? undefined : (w as 400 | 700) })} style={{ fontWeight: w }}>{w === 400 ? "Regular" : "Bold"}</button>)}
+        </div>}
+        <div className="chip-grid" role="radiogroup" aria-label="Text alignment">
+          {[["left", "Align left"], ["center", "Align centre"], ["right", "Align right"]].map(([a, label]) => <button key={a} role="radio" aria-checked={(clip.textAlign ?? "center") === a} className={(clip.textAlign ?? "center") === a ? "selected chip" : "chip"} disabled={readOnly} onClick={() => ps({ textAlign: a === "center" ? undefined : (a as "left" | "right") })}>{label}</button>)}
+        </div>
+        <Slider label="Line height" value={clip.lineHeight ?? 1.4} min={1} max={2} step={0.05} format={(v) => v.toFixed(2)} onGesture={gesture} onChange={(v) => ps({ lineHeight: v })} disabled={readOnly} />
+        <Slider label="Letter spacing" value={clip.letterSpacing ?? 0} min={-0.05} max={0.25} step={0.01} format={(v) => `${v.toFixed(2)}em`} onGesture={gesture} onChange={(v) => ps({ letterSpacing: v === 0 ? undefined : v })} disabled={readOnly} />
+        <label className="check-field"><input type="checkbox" disabled={readOnly} checked={clip.textTransform === "uppercase"} onChange={(e) => patch({ textTransform: e.target.checked ? "uppercase" : undefined })} />UPPERCASE</label>
+        <p className="help-text">The font catalog is shared by the preview and the FFmpeg renderer; the server downloads each font on first render.</p></Section>}
       <Section title="Timing"><div className="two-col"><NumberField label="Start" value={clip.start} min={0} max={86400} disabled={readOnly} onCommit={(v) => patch({ start: v })} />
         {media ? <NumberField label="Speed" value={clip.speed ?? 1} min={0.25} max={4} step={0.25} suffix="×" disabled={readOnly} onCommit={(v) => patch({ speed: v })} /> : <NumberField label="Duration" value={dur} min={0.1} max={3600} disabled={readOnly} onCommit={(v) => patch({ outPoint: clip.inPoint + v })} />}</div>
         {media && <div className="two-col"><NumberField label="In" value={clip.inPoint} min={0} max={Math.max(0, (asset?.duration ?? 86400) - 0.1)} disabled={readOnly} onCommit={(v) => patch({ inPoint: v })} /><NumberField label="Out" value={clip.outPoint} min={0.1} max={asset?.duration || 86400} disabled={readOnly} onCommit={(v) => patch({ outPoint: v })} /></div>}</Section>
