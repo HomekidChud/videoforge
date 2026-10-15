@@ -8,7 +8,7 @@ import ExampleGallery from "@/components/example-gallery";
 
 const sectionId=(s:string)=>s.toLowerCase().replace(/[^a-z0-9]+/g,"-");
 export default function ApiDocsPage({params}:{params?:{slug:string}}) {
-  const slug=params?.slug??"api-reference",current=DOC_PAGES.find(p=>p.slug===slug);
+  const rawSlug=params?.slug,slug=rawSlug?rawSlug.replace(/\/+$/,""):"api-reference",current=DOC_PAGES.find(p=>p.slug===slug);
   const [searchOpen,setSearchOpen]=useState(false),[query,setQuery]=useState(""),[menu,setMenu]=useState(false);
   const [,navigate]=useLocation(),searchRef=useRef<HTMLInputElement>(null),searchButton=useRef<HTMLButtonElement>(null);
   usePageTitle(current?`${current.title} · Docs`:"Page not found · Docs");
