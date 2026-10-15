@@ -1,12 +1,14 @@
 import { ANIMATABLE, EASINGS } from "./animation";
 import { FILTERS, MAX_CLIPS, RESOLUTIONS } from "./timeline";
-import { MOTION_PRESETS, TITLE_PRESETS } from "./presets";
+import { MOTION_PRESETS, TITLE_PRESETS, presetGroup } from "./presets";
+import { CODE_RECIPES, EXPRESSION_FUNCTIONS, EXPRESSION_LIMITS, EXPRESSION_VARIABLES } from "./expr";
+import { TRANSITION_TYPES } from "./timeline";
 import { MOTION_TEMPLATES, SHAPE_TYPES, GRAPHICS_SCHEMA } from "./graphics";
 
 /** Machine-readable description of what the editor and API can do. Served at GET /api/capabilities. */
 export function capabilities() {
   return {
-    version: 5,
+    version: 6,
     graphics: { shapeTypes: SHAPE_TYPES, templates: MOTION_TEMPLATES, shapeSchema: GRAPHICS_SCHEMA, units: "shape width/height are canvas fractions; strokeWidth/radius are output pixels. All primitives use existing transform keyframes." },
     batch: { dryRun: "true validates and returns the proposed timeline without saving", expectedUpdatedAt: "optional timestamp from GET project; stale writes return 409", createdClipIds: "IDs of clips added by this batch, in creation order" },
     overview: "Timeline coordinates are seconds. Keyframe time is relative to the clip start. Layer order: video track, overlay track, then text. Use ops with ops[] for atomic batches, GET /frame to look at the result, and GET /state to read animated values.",
@@ -18,17 +20,35 @@ export function capabilities() {
     canvases: RESOLUTIONS,
     clipFields: {
       timing: ["start", "inPoint", "outPoint", "speed", "fadeIn", "fadeOut"],
-      transform: ["x", "y", "scale", "rotation", "fit", "flipX", "flipY", "opacity", "blur", "reveal"],
+      transform: ["x", "y", "scale", "rotation", "fit (contain|cover|fill)", "flipX", "flipY", "opacity", "blur", "reveal"],
       color: ["filter", "brightness", "contrast", "saturation"],
       audio: ["volume", "muted"],
-      text: ["text", "textSize", "textColor", "textBg"],
-      meta: ["label", "keyframes"],
+      text: ["text", "textSize", "textColor", "textBg", "textFit", "textMaxWidth", "textMaxHeight"],
+      meta: ["label", "keyframes", "expressions"],
     },
-    motionPresets: MOTION_PRESETS,
+    motionPresets: MOTION_PRESETS.map(p => ({ ...p, group: presetGroup(p.id) })),
+    transitions: TRANSITION_TYPES,
+    codeAnimation: {
+      summary: "Animate with code: give any animatable property an expression of time. Expressions run live in the preview and compile to FFmpeg, so renders match. They override keyframes for that property. Division by zero or invalid maths falls back to the property's base value.",
+      op: "animate_code {clipId, expressions: {property: code}, replace?} (\"\" clears one), apply_code_motion {clipId|clipIds, recipe, speed?, strength?}, bake_expression {clipId, property?, samples?} turns code into editable keyframes",
+      variables: EXPRESSION_VARIABLES,
+      operators: "+ - * / % ^ and parentheses",
+      functions: Object.fromEntries(Object.entries(EXPRESSION_FUNCTIONS).map(([k, v]) => [k, v.doc]).concat([["wiggle", "wiggle(frequency, amount) is smooth noise over time"]])),
+      limits: EXPRESSION_LIMITS,
+      examples: { orbit: { x: "0.5 + 0.2 * cos(t * 2)", y: "0.5 + 0.2 * sin(t * 2)" }, breathe: { scale: "base * (1 + 0.05 * sin(t * 3))" }, wiggle: { rotation: "wiggle(2, 4)" }, ramp: { opacity: "mix(0, 1, easeOut(clamp(t / 0.8, 0, 1)))" } },
+      recipes: CODE_RECIPES.map(r => ({ id: r.id, label: r.label, description: r.description })),
+      notes: "reveal expressions are not allowed on text clips. Use clip field expressions in add_* ops and update_clip as well.",
+    },
+    fit: {
+      summary: "Everything can be made to fit. Text wraps and shrinks automatically (textFit \"none\" opts out) within textMaxWidth/textMaxHeight; media uses fit contain|cover|fill; shapes and overlays are scaled and nudged into the frame by fit_clip / fit_all.",
+      ops: "fit_clip {clipId, mode?: safe|contain|cover|fill, margin?}, fit_all {media?: keep|contain|cover|fill, clipIds?, margin?}, set_project {resolution, refit: true} refits after changing canvas",
+      endpoint: "GET /api/projects/:id/fit-report?margin= lists clips that cross the frame with a fix for each",
+      notes: "Text width uses a Noto Sans based estimate with about 12% spare room. Fit checks static position and animated scale and rotation, not x/y travel of entrance animations.",
+    },
     titlePresets: TITLE_PRESETS,
     ops: {
       add_shape_clip: "shape: {type,width?,height?,fill?,stroke?,strokeWidth?,radius?}, id?, start?, duration?, x?, y?, plus transform/keyframe fields",
-      add_motion_template: "template (lower-third|title-card|callout|kinetic-type|countdown|quote-card|split-reveal|progress-bar|stat-highlight), title?, subtitle?, color?, start?, duration? (0.5..60), idPrefix? (stable layer ids: prefix-0, prefix-1, ...)",
+      add_motion_template: "template (lower-third|title-card|callout|kinetic-type|countdown|quote-card|split-reveal|progress-bar|stat-highlight|bullet-list|social-handle|chapter-number|starburst); bullet-list takes items[] (1..6), chapter-number takes number, title?, subtitle?, color?, start?, duration? (0.5..60), idPrefix? (stable layer ids: prefix-0, prefix-1, ...)",
       stagger_clips: "clipIds: [id...] in desired order, delay (0..60 seconds), start?",
       add_clip: "assetId, track?, start?, inPoint?, outPoint?, plus any clip field",
       add_text_clip: "text, id?, start?, duration?, plus text and transform fields",
@@ -47,14 +67,19 @@ export function capabilities() {
       snap_to_beats: "clipIds[], bpm, start? - moves clip starts to the nearest beat",
       set_track: "track, settings: {muted?, hidden?, locked?}",
       add_marker: "time, label?, color?", remove_marker: "id",
-      set_project: "fps?, resolution?: {width,height}, background?: #rrggbb",
+      set_project: "fps?, resolution?: {width,height}, background?: #rrggbb, refit? (true refits text, shapes and overlays to the new canvas)",
       reorder: "order: [clipId...] re-spaces video clips sequentially",
       shift_clips: "delta (seconds, may be negative), from? (only clips starting at or after), track?, clipIds?",
       close_gaps: "track? (default video) packs the track's clips end to end in their current order",
       update_clips: "patch: {any clip field}, plus clipIds? or track? (omit both to hit every clip)",
       copy_style: "fromClipId, toClipIds: copies transform, color, fades, text style and keyframes (scaled to the target length)",
       set_marker: "id, time?, label?, color?",
-      set_transition: "clipId, type (none|dissolve|wipe-left|wipe-right|wipe-up|wipe-down|iris), duration? (0.1-3, default 0.6), join? (default true: move the clip to touch the previous video clip first). Overlaps the clip with the one before it and moves later video clips up",
+      set_transition: "clipId, type (none|dissolve|wipe-left|wipe-right|wipe-up|wipe-down|iris|barn-h|barn-v|diamond|wipe-diagonal), duration? (0.1-3, default 0.6), join? (default true: move the clip to touch the previous video clip first). Overlaps the clip with the one before it and moves later video clips up",
+      animate_code: "clipId, expressions: {property: code}, replace? - see codeAnimation",
+      apply_code_motion: "clipId or clipIds[], recipe (see codeAnimation.recipes), speed? (0.1..5), strength? (0.1..3)",
+      bake_expression: "clipId, property?, samples? (2..64, default 48) - converts expressions to linear keyframes",
+      fit_clip: "clipId, mode? (safe|contain|cover|fill, default safe), margin? (0..0.3, default 0.04)",
+      fit_all: "media? (keep|contain|cover|fill), clipIds?, margin? - fits every visual clip inside the frame",
       remove_clips: "clipIds[] - delete several clips in one step",
     },
     endpoints: {
@@ -62,6 +87,7 @@ export function capabilities() {
       "GET /api/motion/templates": "Editable motion-template catalog",
       "POST /api/projects/:id/timeline/validate": "{timeline} normalizes and checks a proposed timeline and its media references without saving",
       "GET /api/projects/:id/frame?t=SECONDS&width=960": "PNG of the composed frame",
+      "GET /api/projects/:id/fit-report?margin=0.04": "clips whose bounds leave the frame, each with a fix suggestion",
       "GET /api/projects/:id/state?t=SECONDS": "evaluated animated values for clips active at t",
       "POST /api/projects/:id/timeline/ops": "{op,args} or {ops:[...]}",
       "GET /api/projects/:id/storyboard?count=6&width=320": "one PNG contact sheet of evenly spaced frames; the X-Storyboard header lists cols, rows and times",

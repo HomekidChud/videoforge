@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Film } from "lucide-react";
 import { evaluateClip, valueAt } from "@shared/animation";
 import { clipDuration, clipEnd, type Clip, type Timeline } from "@shared/timeline";
+import { textLayout } from "@shared/layout";
 import type { AssetDTO } from "@/lib/editor-model";
 import type { TimelineGesture } from "@/components/forge-timeline";
 
@@ -46,7 +47,7 @@ function MediaLayer({clip,asset,time,playing,source,hidden,muted,onError,timelin
   const tr=incomingTransition(timeline,clip),p=transitionProgress(timeline,clip,time);
   const g=layerTransform(ev),opacity=(ev.opacity??1)*envelope(clip,time)*(tr?.type==="dissolve"?p:1);
   const base={opacity,clipPath:tr&&p<1?transitionClipPath(tr.type,p):revealClip(ev.reveal),filter:previewFilter(ev,.6),display:active&&!hidden?undefined:"none",transform:g.transform,mixBlendMode:undefined};
-  const style=clip.track==="overlay" ? {left:`${g.x*100}%`,top:`${g.y*100}%`,width:`${g.scale*100}%`,height:"auto",...base} : {left:`${g.x*100}%`,top:`${g.y*100}%`,width:"100%",height:"100%",objectFit:clip.fit==="cover"?"cover" as const:"contain" as const,...base,transform:`${g.transform} scale(${g.scale})`};
+  const style=clip.track==="overlay" ? {left:`${g.x*100}%`,top:`${g.y*100}%`,width:`${g.scale*100}%`,height:"auto",...base} : {left:`${g.x*100}%`,top:`${g.y*100}%`,width:"100%",height:"100%",objectFit:clip.fit==="cover"?"cover" as const:clip.fit==="fill"?"fill" as const:"contain" as const,...base,transform:`${g.transform} scale(${g.scale})`};
   const fail=()=>{if(!failed){setFailed(true);onError(`Couldn’t load ${asset.filename}. Check the source or API key.`);}};
   const common={"data-layer":clip.id} as any;
   if(asset.kind==="image")return source&&visual?<img {...common} src={source} crossOrigin="anonymous" className="preview-media" style={style} alt="" onError={fail}/>:null;
@@ -76,7 +77,7 @@ export default function ForgePreview({timeline,assets,time,playing,selectedId,re
     const r=el.getBoundingClientRect(),s=root.getBoundingClientRect();
     // object-fit: contain footage fills the frame element, so use the intrinsic video rect when possible
     let {left,top,width,height}=r;
-    const v=el as HTMLVideoElement;if(selected.track==="video"&&v.videoWidth&&v.videoHeight&&selected.fit!=="cover"){const aspect=v.videoWidth/v.videoHeight,fit=Math.min(r.width/aspect,r.height);width=Math.min(r.width,fit*aspect);height=fit;left=r.left+(r.width-width)/2;top=r.top+(r.height-height)/2;}
+    const v=el as HTMLVideoElement;if(selected.track==="video"&&v.videoWidth&&v.videoHeight&&selected.fit!=="cover"&&selected.fit!=="fill"){const aspect=v.videoWidth/v.videoHeight,fit=Math.min(r.width/aspect,r.height);width=Math.min(r.width,fit*aspect);height=fit;left=r.left+(r.width-width)/2;top=r.top+(r.height-height)/2;}
     const next={l:left-s.left,t:top-s.top,w:width,h:height};
     setBox(prev=>prev&&Math.abs(prev.l-next.l)<.5&&Math.abs(prev.t-next.t)<.5&&Math.abs(prev.w-next.w)<.5&&Math.abs(prev.h-next.h)<.5?prev:next);
   });
@@ -114,7 +115,7 @@ export default function ForgePreview({timeline,assets,time,playing,selectedId,re
           clipPath:revealClip(ev.reveal),opacity:(ev.opacity??1)*envelope(c,time),transform:`${g.transform} scale(${g.scale})`,filter:previewFilter(ev,size.width/timeline.resolution.width),
         }}/>;
       })}
-      {texts.map(c=>{const ev=evaluateClip(c,time),g=layerTransform(c.assetId?{...c,assetId:"",x:.5,y:.82,rotation:0,scale:1,keyframes:undefined}:ev);return <div key={`${c.id}-text`} data-layer={c.assetId?undefined:c.id} className="preview-caption" style={{left:`${g.x*100}%`,top:`${g.y*100}%`,fontSize:Math.round(size.height*(c.textSize??6)/100*g.scale),color:c.textColor??"#ffffff",background:c.textBg?"rgba(0,0,0,.55)":undefined,padding:c.textBg?".25em .35em":0,opacity:(c.assetId?1:(ev.opacity??1))*envelope(c,time),transform:g.transform,filter:c.blur?`blur(${c.blur*.6}px)`:undefined,textShadow:c.textBg?"none":"0 1px 3px #000"}}>{c.text}</div>;})}
+      {texts.map(c=>{const ev=evaluateClip(c,time),g=layerTransform(c.assetId?{...c,assetId:"",x:.5,y:.82,rotation:0,scale:1,keyframes:undefined}:ev),lay=textLayout(c,timeline.resolution),fitted=c.textFit!=="none";return <div key={`${c.id}-text`} data-layer={c.assetId?undefined:c.id} className="preview-caption" style={{left:`${g.x*100}%`,top:`${g.y*100}%`,fontSize:fitted?lay.fontSize*size.height/timeline.resolution.height*g.scale:Math.round(size.height*(c.textSize??6)/100*g.scale),maxWidth:fitted?"none":undefined,whiteSpace:fitted?"pre":undefined,color:c.textColor??"#ffffff",background:c.textBg?"rgba(0,0,0,.55)":undefined,padding:c.textBg?".25em .35em":0,opacity:(c.assetId?1:(ev.opacity??1))*envelope(c,time),transform:g.transform,filter:c.blur?`blur(${c.blur*.6}px)`:undefined,textShadow:c.textBg?"none":"0 1px 3px #000"}}>{fitted?lay.text:c.text}</div>;})}
       {box&&!playing&&<div className="selection-frame" style={{left:box.l,top:box.t,width:box.w,height:box.h}} onPointerDown={e=>startDrag(e,"move")} data-testid="selection-frame"><span className="scale-handle" onPointerDown={e=>startDrag(e,"scale")} aria-label="Drag to scale"/></div>}
       {peers&&<PreviewCursors peers={peers}/>}
       {!timeline.clips.length&&<div className="preview-empty"><Film size={28}/><h3>Your next story starts here.</h3><p>Import media or add a title to begin.</p></div>}

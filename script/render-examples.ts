@@ -39,26 +39,28 @@ function renderTimeline(id: string, timeline: Timeline, assets = new Map<string,
 try {
   for (const example of EXAMPLES) {
     if (only.length && !only.includes(example.id)) continue;
-    renderTimeline(example.id, buildExample(example), undefined, tmp, example.id === "preset-sampler" ? 1.6 : 1.8);
+    renderTimeline(example.id, buildExample(example), undefined, tmp, /sampler/.test(example.id) || example.id === "loop-recipes" ? 2.2 : 1.8);
   }
 
-  if (!only.length || only.includes("transitions")) {
-    // Three generated clips joined with the new wipe-up, iris and wipe-down transitions.
-    const pair = (c0: string, c1: string, id: string) => [`gradients=s=640x360:c0=${c0}:c1=${c1}:speed=0.01`, id];
-    const sources = [pair("#f6a447", "#7c3aed", "a"), pair("#0ea5e9", "#22c55e", "b"), pair("#ef4444", "#facc15", "c"), pair("#14b8a6", "#6366f1", "d")];
+  const reels: { id: string; types: string[]; colors: [string, string][] }[] = [
+    { id: "transitions", types: ["wipe-up", "iris", "wipe-down"], colors: [["#f6a447", "#7c3aed"], ["#0ea5e9", "#22c55e"], ["#ef4444", "#facc15"], ["#14b8a6", "#6366f1"]] },
+    { id: "transitions-2", types: ["barn-h", "barn-v", "diamond", "wipe-diagonal"], colors: [["#f472b6", "#6366f1"], ["#22c55e", "#0ea5e9"], ["#facc15", "#ef4444"], ["#7c3aed", "#14b8a6"], ["#f6a447", "#ec4899"]] },
+  ];
+  for (const reel of reels) {
+    if (only.length && !only.includes(reel.id)) continue;
+    // Generated gradient clips joined with each transition type (no files needed).
     const assets = new Map<string, Asset>();
-    for (const [src, id] of sources) {
-      ffmpeg(["-f", "lavfi", "-i", src, "-t", "4", "-r", "30", "-pix_fmt", "yuv420p", "-f", "mp4", path.join(tmp, id)]);
+    reel.colors.forEach(([c0, c1], i) => {
+      const id = `${reel.id}-${i}`;
+      ffmpeg(["-f", "lavfi", "-i", `gradients=s=640x360:c0=${c0}:c1=${c1}:speed=0.01`, "-t", "4", "-r", "30", "-pix_fmt", "yuv420p", "-f", "mp4", path.join(tmp, id)]);
       assets.set(id, { id, filename: `${id}.mp4`, kind: "video", mime: "video/mp4", duration: 4, hasAudio: 0, width: 640, height: 360, sizeBytes: 1, storagePath: id, thumbPath: null, createdAt: 0 });
-    }
+    });
     let t = normalizeTimeline({ clips: [], resolution: { width: 1280, height: 720 }, fps: 30, background: "#000000" });
     const lookup = (id: string) => assets.get(id) && { kind: "video", duration: 4 };
-    ["a", "b", "c", "d"].forEach((id, i) => { t = applyTimelineOp(t, { op: "add_clip", args: { id: `clip-${id}`, assetId: id, track: "video", start: i * 3, inPoint: 0, outPoint: 3 } }, lookup); });
-    t = applyTimelineOp(t, { op: "set_transition", args: { clipId: "clip-b", type: "wipe-up", duration: 1 } }, lookup);
-    t = applyTimelineOp(t, { op: "set_transition", args: { clipId: "clip-c", type: "iris", duration: 1 } }, lookup);
-    t = applyTimelineOp(t, { op: "set_transition", args: { clipId: "clip-d", type: "wipe-down", duration: 1 } }, lookup);
-    t = applyTimelineOp(t, { op: "add_text_clip", args: { id: "tag", text: "wipe-up  /  iris  /  wipe-down", y: .9, textSize: 4, duration: 8 } }, lookup);
-    renderTimeline("transitions", t, assets, tmp, 2.5, 480, 10);
+    reel.colors.forEach((_, i) => { t = applyTimelineOp(t, { op: "add_clip", args: { id: `clip-${i}`, assetId: `${reel.id}-${i}`, track: "video", start: i * 3, inPoint: 0, outPoint: 3 } }, lookup); });
+    reel.types.forEach((type, i) => { t = applyTimelineOp(t, { op: "set_transition", args: { clipId: `clip-${i + 1}`, type, duration: 1 } }, lookup); });
+    t = applyTimelineOp(t, { op: "add_text_clip", args: { id: "tag", text: reel.types.join("  /  "), y: .9, textSize: 4, duration: timelineDuration(t) } }, lookup);
+    renderTimeline(reel.id, t, assets, tmp, 2.5, 480, 10);
   }
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true });

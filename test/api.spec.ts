@@ -602,7 +602,7 @@ async function main() {
     assert(bad.status === 422, "unknown transition types are rejected");
     const frame = await fetch(`${H}/api/projects/${pid}/frame?t=2.5&width=160`, { headers: AUTH_ADMIN });
     assert(frame.status === 200 && (frame.headers.get("content-type") || "").includes("png"), "frames render with a transition active");
-    for (const type of ["wipe-up", "wipe-down", "iris"]) {
+    for (const type of ["wipe-up", "wipe-down", "iris", "barn-h", "barn-v", "diamond", "wipe-diagonal"]) {
       const r = await jsonFetch(ops, { method: "POST", headers: AUTH_ADMIN, body: JSON.stringify({ op: "set_transition", args: { clipId: "b", type, duration: 1 } }) });
       const f = await fetch(`${H}/api/projects/${pid}/frame?t=2.5&width=160`, { headers: AUTH_ADMIN });
       assert(r.status === 200 && r.body.timeline.clips.find((c: any) => c.id === "b").transitionIn.type === type && f.status === 200, `${type} transition is accepted and renders a frame`);
@@ -660,7 +660,7 @@ async function main() {
     const schema=await jsonFetch("/api/graphics/schema",{headers:AUTH_ADMIN});
     assert(schema.status===200&&schema.body.properties.type.enum.includes("ellipse"),"shape schema discoverable");
     const catalog=await jsonFetch("/api/motion/templates",{headers:AUTH_ADMIN});
-    assert(catalog.status===200&&catalog.body.templates.length===9,"template catalog discoverable");
+    assert(catalog.status===200&&catalog.body.templates.length===13,"template catalog discoverable");
     const seq=await post({ops:[{op:"add_shape_clip",args:{id:"s1",duration:3,shape:{type:"ellipse"}}},{op:"add_shape_clip",args:{id:"s2",duration:3,shape:{type:"ellipse"}}},{op:"apply_motion_sequence",args:{clipIds:["s1","s2"],preset:"spring",stagger:.3,start:1,duration:1.2,strength:1.4}},{op:"apply_motion",args:{clipId:"s2",preset:"reveal",delay:.2,duration:1}}]});
     const s1=seq.body.timeline?.clips.find((c:any)=>c.id==="s1"),s2=seq.body.timeline?.clips.find((c:any)=>c.id==="s2");
     assert(seq.status===200&&s1.start===1&&s2.start===1.3&&s1.keyframes.scale.length>10&&s2.keyframes.reveal[0].time===.2,"motion sequence stages presets with timing options");
@@ -685,6 +685,52 @@ async function main() {
     assert(malformed.status===422,"malformed clips fail validation instead of crashing auth middleware");
     const readValidation=await jsonFetch(`/api/projects/${pid}/timeline/validate`,{method:"POST",headers:{"Authorization":`Bearer ${readKey}`},body:JSON.stringify({timeline:template.body.timeline})});
     assert(readValidation.status===200,"read keys can validate without changing projects");
+  }
+  console.log("Fit and animate with code");
+  {
+    const created=await jsonFetch("/api/projects",{method:"POST",headers:AUTH_ADMIN,body:JSON.stringify({name:"Fit and code QA",timeline:{clips:[]}})});
+    const pid=created.body.id,post=(body:any)=>jsonFetch(`/api/projects/${pid}/timeline/ops`,{method:"POST",headers:AUTH_ADMIN,body:JSON.stringify(body)});
+    const setup=await post({ops:[
+      {op:"add_shape_clip",args:{id:"big",x:.95,scale:2,duration:3,shape:{type:"rectangle",width:.5,height:.5}}},
+      {op:"add_text_clip",args:{id:"edge",text:"A very long caption that runs off the right edge of the frame",x:.97,textSize:9,textFit:"none",duration:3}},
+      {op:"add_shape_clip",args:{id:"dot",duration:3,shape:{type:"ellipse",width:.1,height:.1}}},
+    ]});
+    assert(setup.status===200,"fit fixtures created");
+    const report=await jsonFetch(`/api/projects/${pid}/fit-report?margin=0.04`,{headers:AUTH_ADMIN});
+    assert(report.status===200&&!report.body.ok&&report.body.issues.length===2&&report.body.issues.every((i:any)=>["big","edge"].includes(i.clipId)),"fit report lists clips that leave the frame");
+    assert((await jsonFetch(`/api/projects/${pid}/fit-report?margin=0.9`,{headers:AUTH_ADMIN})).status===422,"fit report validates the margin");
+    assert((await jsonFetch(`/api/projects/nope/fit-report`,{headers:AUTH_ADMIN})).status===404,"fit report on a missing project is 404");
+    assert((await jsonFetch(`/api/projects/${pid}/fit-report`)).status===401,"fit report requires authentication");
+    const fixed=await post({op:"fit_all",args:{}});
+    assert(fixed.status===200,"fit_all succeeds");
+    const clean=await jsonFetch(`/api/projects/${pid}/fit-report?margin=0.04`,{headers:AUTH_ADMIN});
+    assert(clean.body.ok&&clean.body.issues.length===0,"fit_all leaves nothing outside the frame");
+    assert((await post({op:"fit_clip",args:{clipId:"big",mode:"bogus"}})).status===422,"fit_clip rejects unknown modes");
+    // animate with code
+    const coded=await post({op:"animate_code",args:{clipId:"dot",expressions:{x:"0.25 + 0.25 * t",rotation:"wiggle(2, 5)"}}});
+    assert(coded.status===200&&coded.body.timeline.clips.find((c:any)=>c.id==="dot").expressions.x==="0.25 + 0.25 * t","animate_code stores expressions");
+    const state=await jsonFetch(`/api/projects/${pid}/state?t=1`,{headers:AUTH_ADMIN});
+    const dot=state.body.clips.find((c:any)=>c.id==="dot");
+    assert(Math.abs(dot.values.x-.5)<1e-6,`state evaluates expressions, got ${dot?.values?.x}`);
+    const frame=await fetch(`${H}/api/projects/${pid}/frame?t=1&width=160`,{headers:AUTH_ADMIN});
+    assert(frame.status===200,"frames render with expressions");
+    for(const bad of ["process.exit(1)","__proto__","constructor","sin(","1/","require('fs')","t;t","a+b"]) {
+      const r=await post({op:"animate_code",args:{clipId:"dot",expressions:{y:bad}}});
+      assert(r.status===422,`expression ${JSON.stringify(bad)} is rejected`);
+    }
+    const recipe=await post({op:"apply_code_motion",args:{clipId:"dot",recipe:"orbit",speed:2}});
+    assert(recipe.status===200&&recipe.body.timeline.clips.find((c:any)=>c.id==="dot").expressions.y.includes("sin"),"apply_code_motion applies a recipe");
+    const baked=await post({op:"bake_expression",args:{clipId:"dot",samples:16}});
+    const bd=baked.body.timeline.clips.find((c:any)=>c.id==="dot");
+    assert(baked.status===200&&!bd.expressions&&bd.keyframes.x.length===16,"bake_expression converts code to keyframes");
+    const dryText=await post({op:"add_text_clip",args:{text:"x",duration:2,expressions:{reveal:"p"}}});
+    assert(dryText.status===422,"reveal expressions are rejected on text");
+    const caps=await jsonFetch("/api/capabilities",{headers:AUTH_ADMIN});
+    assert(caps.body.version===6&&caps.body.ops.animate_code&&caps.body.ops.fit_all&&caps.body.codeAnimation.recipes.length===13&&caps.body.fit.endpoint.includes("fit-report")&&caps.body.transitions.includes("diamond")&&caps.body.motionPresets.length===33,"capabilities advertise fit, code animation and the larger library");
+    const tpl=await post({op:"add_motion_template",args:{template:"bullet-list",title:"Points",items:["One","Two"],duration:3}});
+    assert(tpl.status===200&&tpl.body.createdClipIds.length>=5,"new templates are available over the API");
+    const presets=await post({ops:[{op:"apply_motion",args:{clipId:"big",preset:"bounce-in"}},{op:"apply_motion",args:{clipId:"big",preset:"exit-up"}}]});
+    assert(presets.status===200,"new presets apply over the API");
   }
   console.log(`\n${passed} passed, ${failed} failed`);
   killServer();

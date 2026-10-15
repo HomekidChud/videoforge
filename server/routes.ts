@@ -13,6 +13,7 @@ import { normalizeTimeline, clipEnd, timelineDuration, type Timeline } from "@sh
 import { applyTimelineOp } from "@shared/editing";
 import { animatedValues } from "@shared/animation";
 import { capabilities } from "@shared/capabilities";
+import { fitSummary } from "@shared/layout";
 import { GRAPHICS_SCHEMA, MOTION_TEMPLATES } from "@shared/graphics";
 import { buildRenderPlan, runFfmpeg } from "./render";
 import { requireScope, requireMediaAccess, projectAllowed, assetAllowed, keyRestrictions } from "./auth";
@@ -508,6 +509,16 @@ export async function registerRoutes(
     if (!p || !projectAllowed((req as any).apiKey, p.id)) return res.status(404).json({ message: "project not found" });
     const timeline = parseTimeline(p.timelineJson), t = Math.max(0, Number(req.query.t ?? 0) || 0);
     res.json({ time: t, duration: timelineDuration(timeline), clips: timeline.clips.filter((c) => t >= c.start && t < clipEnd(c)).map((c) => ({ id: c.id, track: c.track, local: Math.round((t - c.start) * 1000) / 1000, values: animatedValues(c, t) })) });
+  });
+
+  // List clips whose animated bounds leave the frame (or the safe margin), with a fix suggestion for each.
+  app.get("/api/projects/:id/fit-report", requireScope("read"), (req, res) => {
+    const p = storage.getProject(String(req.params.id));
+    if (!p || !projectAllowed((req as any).apiKey, p.id)) return res.status(404).json({ message: "project not found" });
+    try {
+      const timeline = parseTimeline(p.timelineJson), margin = Number(req.query.margin ?? 0);
+      res.json(fitSummary(timeline, (id) => { const a = storage.getAsset(id); return a ? { width: a.width, height: a.height } : undefined; }, margin));
+    } catch (e: any) { res.status(422).json({ message: e.message }); }
   });
 
   // Render one finished frame as PNG: the fastest visual feedback loop for an agent.

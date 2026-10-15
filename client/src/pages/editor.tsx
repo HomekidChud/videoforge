@@ -18,6 +18,7 @@ import ForgeEffects, { type Effect } from "@/components/forge-effects";
 import ForgeGraphics, { applyGraphics } from "@/components/forge-graphics";
 import ForgeComposition from "@/components/forge-composition";
 import { applyTimelineOp } from "@shared/editing";
+import { fitReport } from "@shared/layout";
 import { WorkspaceDivider } from "@/components/forge-workspace";
 import ForgeMotion from "@/components/forge-motion";
 
@@ -421,7 +422,9 @@ export default function EditorPage() {
     catch (e: any) { toast(e.message, "error"); }
   };
   const copyPublicLink = async () => { try { await navigator.clipboard.writeText(`${location.href.split("#")[0]}#/share/${projectId}`); toast("Public link copied"); } catch { toast("Couldn’t access the clipboard.", "error"); } };
-  const setProjectSettings = (p: { fps?: number; resolution?: { width: number; height: number }; background?: string }) => mutate((t) => ({ ...t, ...p }));
+  const fitIssues = useMemo(() => fitReport(timeline, (id) => { const a = byId.get(id); return a ? { width: a.width, height: a.height } : undefined; }, 0.04).length, [timeline, byId]);
+  const fitAll = () => { try { const next = applyTimelineOp(tlRef.current, { op: "fit_all", args: {} }, (id) => byId.get(id)); mutate(() => next); toast("Layers fitted inside the frame"); } catch (e: any) { toast(e.message, "error"); } };
+  const setProjectSettings = (p: { fps?: number; resolution?: { width: number; height: number }; background?: string }) => mutate((t) => { try { return p.resolution ? applyTimelineOp({ ...t, ...p }, { op: "set_project", args: { refit: true } }, (id) => byId.get(id)) : { ...t, ...p }; } catch { return { ...t, ...p }; } });
   const [workspace, setWorkspace] = useState<"edit" | "animate">("edit");
   const [focusedKey,setFocusedKey]=useState<{clipId:string;property:AnimationProperty;time:number}|undefined>();
   const [libraryOpen, setLibraryOpen] = useState(true), [inspectorOpen, setInspectorOpen] = useState(true);
@@ -507,8 +510,8 @@ export default function EditorPage() {
           <span className="mono time-big">{timecode(time, timeline.fps)}</span><div className="flex-spacer" /><button className="secondary-btn" onClick={split} disabled={readOnly || !timeline.clips.length} title="Split at playhead (S)"><Scissors size={15} />Split</button></div></main>
 
       <aside className="inspector" aria-label="Inspector">{selectedIds.length > 1 ? <MultiInspector clips={timeline.clips.filter((c) => selectedIds.includes(c.id))} readOnly={readOnly} onPatch={(p) => patchClips(selectedIds, p)} onDuplicate={duplicate} onDelete={() => remove(false)} onRippleDelete={() => remove(true)} onAlign={alignClips} onTransitions={transitionSelected} onClear={() => setSel([])} />
-        : selected ? <ClipInspector transition={incomingTransition(timeline, selected)} onTransition={(type, d) => applyTransition(selected.id, type, d)} key={selected.id} clip={selected} asset={byId.get(selected.assetId)} readOnly={readOnly} gesture={gesture} time={time} fps={timeline.fps} patch={(p, live) => patchClip(selected.id, p, live)} setValues={(v, live) => setValues(selected.id, v, live)} toggleKey={(p) => toggleKey(selected.id, p)} seek={seek} onSplit={split} onDuplicate={duplicate} onDelete={() => remove(false)} />
-        : <ProjectInspector name={projectName} onName={setProjectName} timeline={timeline} setProject={setProjectSettings} readOnly={readOnly} canPublish={canPublish} projectId={projectId} visibility={visibility} onVisibility={toggleVisibility} onCopyLink={copyPublicLink} seek={seek} addMarker={addMarker} removeMarker={removeMarker} />}</aside>
+        : selected ? <ClipInspector canvas={timeline.resolution} transition={incomingTransition(timeline, selected)} onTransition={(type, d) => applyTransition(selected.id, type, d)} key={selected.id} clip={selected} asset={byId.get(selected.assetId)} readOnly={readOnly} gesture={gesture} time={time} fps={timeline.fps} patch={(p, live) => patchClip(selected.id, p, live)} setValues={(v, live) => setValues(selected.id, v, live)} toggleKey={(p) => toggleKey(selected.id, p)} seek={seek} onSplit={split} onDuplicate={duplicate} onDelete={() => remove(false)} />
+        : <ProjectInspector fitIssues={fitIssues} onFitAll={fitAll} name={projectName} onName={setProjectName} timeline={timeline} setProject={setProjectSettings} readOnly={readOnly} canPublish={canPublish} projectId={projectId} visibility={visibility} onVisibility={toggleVisibility} onCopyLink={copyPublicLink} seek={seek} addMarker={addMarker} removeMarker={removeMarker} />}</aside>
       {inspectorOpen&&<div className="inspector-divider"><WorkspaceDivider axis="horizontal" label="Inspector width" value={inspectorWidth} min={260} max={Math.min(440,Math.max(260,viewportWidth-(libraryOpen?libraryWidth:0)-272))} onChange={setInspectorWidth}/></div>}
       <div className="timeline-divider"><WorkspaceDivider axis="vertical" label="Timeline height" value={timelineHeight} min={180} max={480} onChange={setTimelineHeight}/></div>
 

@@ -1,10 +1,10 @@
-import { normalizeKeyframes, type Keyframes } from "./animation";
+import { normalizeExpressions, normalizeKeyframes, type Expressions, type Keyframes } from "./animation";
 import { normalizeShape, type Shape } from "./graphics";
 // Timeline model shared by the editor, the HTTP API and the FFmpeg renderer.
 // Everything coming from a client is passed through normalizeTimeline() so the
 // renderer only ever sees bounded, well-typed values.
 
-export const TRANSITION_TYPES = ["dissolve", "wipe-left", "wipe-right", "wipe-up", "wipe-down", "iris"] as const;
+export const TRANSITION_TYPES = ["dissolve", "wipe-left", "wipe-right", "wipe-up", "wipe-down", "iris", "barn-h", "barn-v", "diamond", "wipe-diagonal"] as const;
 export type TrackName = "video" | "overlay" | "audio";
 export type ClipFilter = "none" | "mono" | "sepia" | "vivid" | "cool" | "warm" | "faded";
 
@@ -35,13 +35,17 @@ export type Clip = {
   textSize?: number; // % of frame height, 2..20
   textColor?: string; // #rrggbb
   keyframes?: Keyframes;
+  expressions?: Expressions; // animate with code: property -> expression of t, d, p, base
   rotation?: number;
-  fit?: "contain" | "cover";
+  fit?: "contain" | "cover" | "fill"; // fill stretches footage to the frame
   flipX?: boolean;
   flipY?: boolean;
   blur?: number; // 0..20 pixels
   label?: string;
   textBg?: boolean; // translucent box behind text
+  textFit?: "none"; // text auto-wraps and shrinks to fit the frame unless this is "none"
+  textMaxWidth?: number; // fraction of the frame width text may use (0.1..1, default 0.9)
+  textMaxHeight?: number; // fraction of the frame height text may use (0.05..1, default 0.5)
 };
 
 export type Timeline = {
@@ -91,7 +95,7 @@ export function normalizeClip(raw: any): Clip {
   const shape = normalizeShape(raw.shape);
   if (!assetId && !text && !shape) throw new Error("clip needs an assetId, text, or shape");
   if (shape && (assetId || text || track === "audio")) throw new Error("shape clips must be visual and cannot also contain media or text");
-  if (!assetId && !shape && ((typeof raw.reveal === "number" && raw.reveal < 1) || raw.keyframes?.reveal?.length)) throw new Error("reveal applies to media and shape clips; use opacity or position keyframes for text");
+  if (!assetId && !shape && ((typeof raw.reveal === "number" && raw.reveal < 1) || raw.keyframes?.reveal?.length || raw.expressions?.reveal)) throw new Error("reveal applies to media and shape clips; use opacity or position keyframes for text");
   const inPoint = round(num(raw.inPoint, 0, 86400, 0));
   const outPoint = round(Math.max(inPoint + MIN_CLIP, num(raw.outPoint, 0, 86400, inPoint + 5)));
   const clip: Clip = {
@@ -123,16 +127,22 @@ export function normalizeClip(raw: any): Clip {
   opt("scale", raw.scale, 0.1, 2, assetId && track === "overlay" ? 0.35 : 1);
   opt("rotation", raw.rotation, -360, 360, 0);
   opt("blur", raw.blur, 0, 20, 0);
-  if(raw.fit === "cover") clip.fit = "cover";
+  if(raw.fit === "cover" || raw.fit === "fill") clip.fit = raw.fit;
   if(raw.flipX) clip.flipX = true;
   if(raw.flipY) clip.flipY = true;
   if(typeof raw.label === "string" && raw.label.trim()) clip.label = raw.label.slice(0,120);
   const keyframes = normalizeKeyframes(raw.keyframes, clipDuration(clip));
   if(Object.keys(keyframes).length) clip.keyframes = keyframes;
+  const expressions = normalizeExpressions(raw.expressions);
+  if(Object.keys(expressions).length > 10) throw new Error("a clip accepts at most 10 expressions");
+  if(Object.keys(expressions).length) clip.expressions = expressions;
   opt("textSize", raw.textSize, 2, 20, 6);
   if (FILTERS.includes(raw.filter) && raw.filter !== "none") clip.filter = raw.filter;
   if (typeof raw.textColor === "string" && /^#[0-9a-fA-F]{6}$/.test(raw.textColor) && raw.textColor.toLowerCase() !== "#ffffff") clip.textColor = raw.textColor.toLowerCase();
   if (raw.textBg === true) clip.textBg = true;
+  if (raw.textFit === "none") clip.textFit = "none";
+  opt("textMaxWidth", raw.textMaxWidth, .1, 1, .9);
+  opt("textMaxHeight", raw.textMaxHeight, .05, 1, .5);
   return clip;
 }
 

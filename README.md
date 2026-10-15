@@ -15,9 +15,11 @@ gated behind **API keys with permission scopes** (`read`, `write`, `admin`).
 
 - **Public homepage** (`#/`) with a working composition playground and links to Studio and docs
 - **Searchable documentation** (`#/docs/introduction`) with guides, endpoint reference, keyboard search, section navigation, previous/next links, light/dark themes and mobile navigation. `#/api-docs` remains the legacy HTTP reference route
-- **Motion graphics**: asset-free rectangles, ellipses and lines with fill, stroke and corners; nine templates (lower-third, title-card, callout, kinetic-type, countdown, quote-card, split-reveal, progress-bar, stat-highlight). Generated layers remain editable clips
-- **Motion engine v2**: fourteen timed, strength-scaled motion presets (spring, whip, spin, pulse, shake, wipe reveal, exits), sequencing across layers, reverse and retime, beat markers and beat snapping, `snappy`/`anticipate`/`step-start` easings and a `reveal` wipe property. See [Gallery](#gallery)
-- **Transitions**: dissolve, wipe-left, wipe-right, wipe-up, wipe-down and iris, in preview and FFmpeg
+- **Motion graphics**: asset-free rectangles, ellipses and lines with fill, stroke and corners; thirteen templates (lower-third, title-card, callout, kinetic-type, countdown, quote-card, split-reveal, progress-bar, stat-highlight, bullet-list, social-handle, chapter-number, starburst). Generated layers remain editable clips
+- **Motion engine v2**: thirty-three timed, strength-scaled motion presets in three groups (entrances, emphasis, exits: spring, bounce-in, rubber, tada, glitch, heartbeat, shrink-out, spin-out and more), sequencing across layers, reverse and retime, beat markers and beat snapping, `snappy`/`anticipate`/`step-start` easings and a `reveal` wipe property. See [Gallery](#gallery)
+- **Animate with code**: give any property an expression of time (`x: "0.5 + 0.2 * cos(t * 2)"`). Thirteen looping recipes (float, orbit, wiggle, heartbeat, glitch...), bake to keyframes, live validation in Studio. See [Animate with code](#animate-with-code)
+- **Perfect fit**: text wraps and shrinks to fit by default, footage can contain, cover or stretch, `fit_clip` / `fit_all` pull layers inside the frame and `GET /api/projects/:id/fit-report` lists anything that does not fit. See [Fit and layout](#fit-and-layout)
+- **Transitions**: dissolve, five wipes (left, right, up, down, diagonal), iris, barn doors (horizontal and vertical) and diamond, in preview and FFmpeg
 - **Safer agent editing**: `dryRun`, `expectedUpdatedAt` revision guards, `createdClipIds`, timeline validation, shape JSON Schema, template discovery and stagger operations
 - **Studio editor:** live compositing preview, three-lane timeline (titles and overlays, video, audio) with drag-to-move across lanes, trim handles, snapping, zoom, audio waveforms, split, duplicate, ripple delete, undo/redo, autosave and keyboard shortcuts
 - Per-clip speed, fades, colour filters, brightness/contrast/saturation, opacity, position and scale, picture-in-picture, standalone titles with size, colour and background box
@@ -53,7 +55,7 @@ The Studio now lives at `#/editor`. Its Graphics library adds templates or shape
 
 Send this to `POST /api/projects/:id/timeline/ops` with a write-capable Bearer key. The response includes editable layer IDs in `createdClipIds`. Discover options via `GET /api/capabilities`, `GET /api/motion/templates` and `GET /api/graphics/schema`.
 
-Shape dimensions are composition fractions; stroke and radius use output pixels. Layer families are media, shapes, then text. There is no arbitrary SVG, Lottie, expressions, 3D or nested scene graph. `reveal` works on media and shapes, not text. Browser and FFmpeg output can differ slightly in font metrics and cubic easing approximation.
+Shape dimensions are composition fractions; stroke and radius use output pixels. Layer families are media, shapes, then text. There is no arbitrary SVG, Lottie, 3D or nested scene graph. Expressions are a safe formula language, not scripts: no loops, strings or property access. `reveal` works on media and shapes, not text. Browser and FFmpeg output can differ slightly in font metrics and cubic easing approximation.
 
 ## Gallery
 
@@ -61,11 +63,16 @@ Rendered with the real FFmpeg pipeline by `npm run examples` (sources in [`share
 
 | | |
 | --- | --- |
-| ![Preset sampler](docs/examples/preset-sampler.gif)<br>**Preset sampler**: all 14 presets | ![Beat-synced circles](docs/examples/beat-drop.gif)<br>**Beat drop**: `add_beat_markers` + `apply_motion_sequence` |
+| ![Entrance presets](docs/examples/preset-sampler.gif)<br>**Entrance presets** | ![Beat-synced circles](docs/examples/beat-drop.gif)<br>**Beat drop**: `add_beat_markers` + `apply_motion_sequence` |
 | ![Lower third with wipe reveal](docs/examples/lower-third-reveal.gif)<br>**Lower third** with wipe reveal | ![Kinetic type with whip-ins](docs/examples/kinetic-whip.gif)<br>**Kinetic type** with sequenced whip-ins |
 | ![Quote card](docs/examples/quote-card.gif)<br>**Quote card** | ![Split reveal](docs/examples/split-reveal.gif)<br>**Split reveal** chapter title |
 | ![Progress bar](docs/examples/progress-bar.gif)<br>**Progress bar** | ![Stat highlight](docs/examples/stat-highlight.gif)<br>**Stat highlight** |
-| ![Transitions reel](docs/examples/transitions.gif)<br>**Transitions**: wipe-up, iris, wipe-down | |
+| ![Transitions reel](docs/examples/transitions.gif)<br>**Transitions**: wipe-up, iris, wipe-down | ![Transitions reel 2](docs/examples/transitions-2.gif)<br>**More transitions**: barn doors, diamond, diagonal wipe |
+| ![Emphasis presets](docs/examples/emphasis-sampler.gif)<br>**Emphasis presets** | ![Exit presets](docs/examples/exit-sampler.gif)<br>**Exit presets** |
+| ![Orbit with code](docs/examples/code-orbit.gif)<br>**Orbit with code**: expressions only | ![Looping code recipes](docs/examples/loop-recipes.gif)<br>**Looping recipes**: `apply_code_motion` |
+| ![Text that always fits](docs/examples/fit-demo.gif)<br>**Text that fits**: wrap, shrink, `fit_all` | ![Bullet list](docs/examples/bullet-points.gif)<br>**Bullet list** template |
+| ![Starburst badge](docs/examples/starburst-badge.gif)<br>**Starburst badge** | ![Chapter number](docs/examples/chapter-opener.gif)<br>**Chapter number** |
+| ![Social handle](docs/examples/social-handle.gif)<br>**Social handle** | |
 
 A snippet from the beat-synced example, ready to POST to `/api/projects/:id/timeline/ops`:
 
@@ -91,6 +98,29 @@ A snippet from the beat-synced example, ready to POST to `/api/projects/:id/time
 ```
 
 In Studio, the Motion tab has Duration, Delay and Strength controls for the preset grid, plus a Reverse animation button. `add_motion_template` accepts `idPrefix` so a batch can name the layers it creates. Full reference: [docs/API.md](docs/API.md#motion-engine-v2-timeline-v4-capabilities-v5).
+
+## Animate with code
+
+Any animatable property accepts an expression instead of keyframes. Studio and FFmpeg compile the same parsed tree, so the preview matches the render. Variables: `t` (seconds), `d` (clip length), `p` (0 to 1), `base` (static value), `pi`. Functions include `sin cos abs min max clamp mix smoothstep easeOut noise tri fract mod if` and `wiggle(freq, amount)`.
+
+```json
+{ "op": "animate_code", "args": { "clipId": "badge", "expressions": { "x": "0.5 + 0.2 * cos(t * 2)", "y": "0.5 + 0.2 * sin(t * 2)", "rotation": "wiggle(2, 4)" } } }
+{ "op": "apply_code_motion", "args": { "clipIds": ["badge", "logo"], "recipe": "float", "speed": 1.2, "strength": 1 } }
+{ "op": "bake_expression", "args": { "clipId": "badge", "property": "x", "samples": 32 } }
+```
+
+Recipes: float, sway, breathe, heartbeat, wiggle, orbit, spin, pendulum, bounce, flicker, pulse-glow, drift-loop, glitch. Expressions are limited to 300 characters, cannot reach anything except numbers, and fall back to the static value on invalid maths. Reveal expressions are not allowed on text. In Studio open Motion, then Animate with code.
+
+## Fit and layout
+
+```json
+{ "op": "add_text_clip", "args": { "id": "h", "text": "A very long headline", "textMaxWidth": 0.8 } }
+{ "op": "fit_clip", "args": { "clipId": "badge", "margin": 0.05 } }
+{ "op": "fit_all", "args": { "media": "contain" } }
+{ "op": "set_project", "args": { "resolution": { "width": 1080, "height": 1920 }, "refit": true } }
+```
+
+Text wraps and shrinks inside `textMaxWidth` (default 0.9) and `textMaxHeight` (default 0.5); set `textFit: "none"` to opt out. Footage supports `fit: contain | cover | fill`. `GET /api/projects/:id/fit-report?margin=0.04` lists clips that leave the frame. Text width is a Noto Sans based estimate with about 12% spare room, and fit does not consider x/y travel of entrance animations.
 
 ## Cursors, Follow, multi-select and transitions
 

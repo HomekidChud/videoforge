@@ -164,7 +164,7 @@ Presets: `fade`, `slide-left`, `rise`, `zoom`, `pop`, `drift` (original six) plu
 
 ### Transitions
 
-`dissolve`, `wipe-left`, `wipe-right`, `wipe-up`, `wipe-down`, `iris`. See `set_transition` below.
+`dissolve`, `wipe-left`, `wipe-right`, `wipe-up`, `wipe-down`, `iris`, plus `barn-h`, `barn-v`, `diamond` and `wipe-diagonal` (capabilities v6). See `set_transition` below.
 
 ### Examples
 
@@ -172,6 +172,56 @@ The `shared/examples.ts` module holds eight asset-free compositions as op lists 
 
 
 ---
+
+## Fit, animate with code and more motion (capabilities v6)
+
+### Animate with code
+
+Any animatable property can take an expression instead of keyframes. The clip field is `expressions` (`{property: code}`). An expression wins over keyframes on that property. It is evaluated in the browser preview and compiled to an FFmpeg expression from one parsed tree.
+
+| Part | Details |
+| --- | --- |
+| Variables | `t` seconds since the clip started, `d` clip duration, `p` progress 0..1, `base` the property's static value, `pi` |
+| Operators | `+ - * / % ^` and parentheses. `^` binds tighter than unary minus, so `-2^2` is `-4` |
+| Functions | `sin cos tan atan atan2 abs sqrt pow exp log min max clamp floor ceil round fract mod sign mix step smoothstep easeIn easeOut easeInOut noise tri lt lte gt gte between if` and `wiggle(frequency, amount)` |
+| Limits | 300 characters, 160 nodes, nesting depth 16, at most 10 expressions per clip, emitted FFmpeg expression at most 4000 characters |
+| Failure | Non-finite results (division by zero, `log(-1)`) use `base`. Results are clamped to the property range. Invalid code returns 422 with the character position |
+| Text | `reveal` expressions are rejected on text clips |
+
+| Op | Arguments | What it does |
+| --- | --- | --- |
+| `animate_code` | `clipId`, `expressions: {property: code}`, `replace`? | Sets or merges expressions. `""` or `null` clears a property. |
+| `apply_code_motion` | `clipId` or `clipIds[]`, `recipe`, `speed`? (0.1..5), `strength`? (0.1..3) | Applies a looping recipe: `float sway breathe heartbeat wiggle orbit spin pendulum bounce flicker pulse-glow drift-loop glitch`. |
+| `bake_expression` | `clipId`, `property`?, `samples`? (2..64, default 48) | Samples expressions into linear keyframes and removes the code. |
+
+```json
+{ "op": "animate_code", "args": { "clipId": "badge", "expressions": { "x": "0.5 + 0.2 * cos(t * 2)", "y": "0.5 + 0.2 * sin(t * 2)", "scale": "base * (1 + 0.05 * sin(t * 3))" } } }
+```
+
+`apply_motion` on a property that has an expression removes that expression, so the preset takes effect.
+
+### Fit and layout
+
+| Field or op | Details |
+| --- | --- |
+| `textFit` | `"none"` opts a text clip out of auto-fit. By default text wraps and shrinks to fit. |
+| `textMaxWidth`, `textMaxHeight` | Fractions of the frame (0.1..1, default 0.9; 0.05..1, default 0.5). Text is also limited by the nearer frame edge, scale and rotation. |
+| `fit` | `contain`, `cover` or `fill` (stretch) for footage on the video track. |
+| `fit_clip` | `{clipId, mode?: safe\|contain\|cover\|fill, margin?: 0..0.3 (default 0.04)}`. `safe` scales and nudges text, shapes and overlays inside the frame; the other modes set the fit of media. |
+| `fit_all` | `{media?: keep\|contain\|cover\|fill, clipIds?, margin?}` fits every visual clip. |
+| `set_project` | Accepts `refit: true` to refit text, shapes and overlays after a canvas change. |
+
+`GET /api/projects/:id/fit-report?margin=0.04` returns `{ok, checked, duration, issues: [{clipId, label, problem, overflow: {left,right,top,bottom}, suggestion}]}`. Overflow values are frame fractions. Needs the `read` scope.
+
+Text width is a Noto Sans based estimate with about 12% spare room. Fit considers the static position and the peak animated scale and rotation, not x/y travel in entrance animations.
+
+### More presets, easings, templates and transitions
+
+- Presets (33): the original 14 plus `slide-right`, `drop`, `bounce-in`, `zoom-out`, `swing`, `wobble`, `rubber`, `tada`, `heartbeat`, `blink`, `flash`, `glitch`, `exit-right`, `exit-up`, `exit-down`, `shrink-out`, `spin-out`, `pop-out`, `reveal-out`. `GET /api/capabilities` lists each with its group (entrance, emphasis, exit).
+- Easings: `ease-in-cubic`, `ease-out-cubic`, `ease-in-out-cubic`, `ease-in-expo`, `ease-in-back`.
+- Templates: `bullet-list` (`items[]`, 1..6), `social-handle`, `chapter-number` (`number`), `starburst` (rocked by an expression).
+- Transitions: `barn-h`, `barn-v`, `diamond`, `wipe-diagonal`.
+- Examples: 17 in `shared/examples.ts`, rendered to `docs/examples/*.gif` by `npm run examples`.
 
 ## Table of contents
 
