@@ -15,7 +15,9 @@ gated behind **API keys with permission scopes** (`read`, `write`, `admin`).
 
 - **Public homepage** (`#/`) with a working composition playground and links to Studio and docs
 - **Searchable documentation** (`#/docs/introduction`) with guides, endpoint reference, keyboard search, section navigation, previous/next links, light/dark themes and mobile navigation. `#/api-docs` remains the legacy HTTP reference route
-- **Motion graphics**: asset-free rectangles, ellipses and lines with fill, stroke and corners; lower-third, title-card, callout, kinetic-type and countdown templates. Generated layers remain editable clips
+- **Motion graphics**: asset-free rectangles, ellipses and lines with fill, stroke and corners; nine templates (lower-third, title-card, callout, kinetic-type, countdown, quote-card, split-reveal, progress-bar, stat-highlight). Generated layers remain editable clips
+- **Motion engine v2**: fourteen timed, strength-scaled motion presets (spring, whip, spin, pulse, shake, wipe reveal, exits), sequencing across layers, reverse and retime, beat markers and beat snapping, `snappy`/`anticipate`/`step-start` easings and a `reveal` wipe property. See [Gallery](#gallery)
+- **Transitions**: dissolve, wipe-left, wipe-right, wipe-up, wipe-down and iris, in preview and FFmpeg
 - **Safer agent editing**: `dryRun`, `expectedUpdatedAt` revision guards, `createdClipIds`, timeline validation, shape JSON Schema, template discovery and stagger operations
 - **Studio editor:** live compositing preview, three-lane timeline (titles and overlays, video, audio) with drag-to-move across lanes, trim handles, snapping, zoom, audio waveforms, split, duplicate, ripple delete, undo/redo, autosave and keyboard shortcuts
 - Per-clip speed, fades, colour filters, brightness/contrast/saturation, opacity, position and scale, picture-in-picture, standalone titles with size, colour and background box
@@ -51,7 +53,44 @@ The Studio now lives at `#/editor`. Its Graphics library adds templates or shape
 
 Send this to `POST /api/projects/:id/timeline/ops` with a write-capable Bearer key. The response includes editable layer IDs in `createdClipIds`. Discover options via `GET /api/capabilities`, `GET /api/motion/templates` and `GET /api/graphics/schema`.
 
-Shape dimensions are composition fractions; stroke and radius use output pixels. Layer families are media, shapes, then text. There is no arbitrary SVG, Lottie, expressions, 3D or nested scene graph. Browser and FFmpeg output can differ slightly in font metrics and cubic easing approximation.
+Shape dimensions are composition fractions; stroke and radius use output pixels. Layer families are media, shapes, then text. There is no arbitrary SVG, Lottie, expressions, 3D or nested scene graph. `reveal` works on media and shapes, not text. Browser and FFmpeg output can differ slightly in font metrics and cubic easing approximation.
+
+## Gallery
+
+Rendered with the real FFmpeg pipeline by `npm run examples` (sources in [`shared/examples.ts`](shared/examples.ts)). The same compositions play live, with their JSON, at `#/docs/examples` in the app. None of them uses uploaded media.
+
+| | |
+| --- | --- |
+| ![Preset sampler](docs/examples/preset-sampler.gif)<br>**Preset sampler**: all 14 presets | ![Beat-synced circles](docs/examples/beat-drop.gif)<br>**Beat drop**: `add_beat_markers` + `apply_motion_sequence` |
+| ![Lower third with wipe reveal](docs/examples/lower-third-reveal.gif)<br>**Lower third** with wipe reveal | ![Kinetic type with whip-ins](docs/examples/kinetic-whip.gif)<br>**Kinetic type** with sequenced whip-ins |
+| ![Quote card](docs/examples/quote-card.gif)<br>**Quote card** | ![Split reveal](docs/examples/split-reveal.gif)<br>**Split reveal** chapter title |
+| ![Progress bar](docs/examples/progress-bar.gif)<br>**Progress bar** | ![Stat highlight](docs/examples/stat-highlight.gif)<br>**Stat highlight** |
+| ![Transitions reel](docs/examples/transitions.gif)<br>**Transitions**: wipe-up, iris, wipe-down | |
+
+A snippet from the beat-synced example, ready to POST to `/api/projects/:id/timeline/ops`:
+
+```json
+{
+  "ops": [
+    { "op": "add_beat_markers", "args": { "bpm": 120, "count": 8 } },
+    { "op": "add_shape_clip", "args": { "id": "b0", "x": 0.2, "y": 0.46, "duration": 4, "shape": { "type": "ellipse", "width": 0.11, "height": 0.196, "fill": "#f6a447" } } },
+    { "op": "add_shape_clip", "args": { "id": "b1", "x": 0.4, "y": 0.46, "duration": 3.5, "shape": { "type": "ellipse", "width": 0.11, "height": 0.196, "fill": "#7cc4ff" } } },
+    { "op": "apply_motion_sequence", "args": { "clipIds": ["b0", "b1"], "preset": "spring", "stagger": 0.5, "duration": 0.9 } }
+  ]
+}
+```
+
+## Motion presets, sequencing and beats
+
+```json
+{ "op": "apply_motion", "args": { "clipId": "badge", "preset": "spring", "delay": 0.4, "duration": 1.2, "strength": 1.5 } }
+{ "op": "apply_motion_sequence", "args": { "clipIds": ["k-0","k-1","k-2"], "preset": "whip", "stagger": 0.2 } }
+{ "op": "reverse_animation", "args": { "clipId": "badge" } }
+{ "op": "retime_animation", "args": { "clipId": "badge", "duration": 0.8, "delay": 3 } }
+{ "op": "add_beat_markers", "args": { "bpm": 120, "count": 8 } }
+```
+
+In Studio, the Motion tab has Duration, Delay and Strength controls for the preset grid, plus a Reverse animation button. `add_motion_template` accepts `idPrefix` so a batch can name the layers it creates. Full reference: [docs/API.md](docs/API.md#motion-engine-v2-timeline-v4-capabilities-v5).
 
 ## Cursors, Follow, multi-select and transitions
 
@@ -150,9 +189,10 @@ See the in-app `#/api-docs` page for the complete reference.
 npm run check
 npm test
 npm run build
+npm run examples   # re-render docs/examples/*.gif with FFmpeg
 ```
 
-`test/graphics.spec.ts` covers normalization, templates, staggered sequencing and actual FFmpeg output (pixel checks, rounded/outlined shapes, animated positions, every template and MP4 export). `test/api.spec.ts` covers authentication, restrictions, safe batches, discovery and validation. FFmpeg and ffprobe are required for rendering tests.
+`test/graphics.spec.ts` covers normalization, templates, every motion preset, sequencing, reverse/retime, beat tools and actual FFmpeg output (pixel checks, rounded/outlined shapes, animated positions, wipe reveal, every template and every example). `test/api.spec.ts` covers authentication, restrictions, safe batches, discovery and validation. FFmpeg and ffprobe are required for rendering tests.
 
 ## Save data and durability
 

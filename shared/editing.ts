@@ -3,6 +3,7 @@ import { normalizeClip, normalizeTimeline, clipDuration, clipEnd, TRACKS, type C
 import { normalizeKeyframes, isProperty, sliceKeyframes, type AnimationProperty, type Keyframe } from "./animation";
 import { motionPreset } from "./presets";
 import { templateClips } from "./graphics";
+import { beatTimes, retimeAnimation, reverseAnimation } from "./motion";
 const uid = () => Math.random().toString(36).slice(2,14);
 export type TimelineOp = { op: string; args?: any };
 export function splitKeyframes(c:Clip, at:number) { return [sliceKeyframes(c,0,at),sliceKeyframes(c,at,clipDuration(c))]; }
@@ -39,7 +40,12 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
           break;
         }
         case "add_motion_template": {
-          clips.push(...templateClips(args, uid, timeline.resolution.width/timeline.resolution.height).map(normalizeClip));
+          // idPrefix gives the generated layers stable ids (prefix-0, prefix-1, ...) so later ops in the same batch can target them.
+          if (args.idPrefix !== undefined && !/^[\w-]{1,32}$/.test(args.idPrefix)) throw new Error("idPrefix must be 1..32 letters, digits, _ or -");
+          let n = 0; const nextId = args.idPrefix ? () => `${args.idPrefix}-${n++}` : uid;
+          const made = templateClips(args, nextId, timeline.resolution.width/timeline.resolution.height).map(normalizeClip);
+          if (made.some(m => clips.some(c => c.id === m.id))) throw new Error(`idPrefix ${args.idPrefix} is already in use`);
+          clips.push(...made);
           break;
         }
         case "stagger_clips": {
@@ -65,7 +71,8 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
         case "add_text_clip": {
           const { text, start, duration, ...style } = args || {};
           if (typeof text !== "string" || !text.trim()) throw new Error("text required");
-          clips.push(normalizeClip({ ...style, id: uid(), assetId: "", track: "overlay", text, start: start ?? 0, inPoint: 0, outPoint: duration ?? 3 }));
+          if (style.id && clips.some(c => c.id === style.id)) throw new Error(`clip ${style.id} already exists`);
+          clips.push(normalizeClip({ ...style, id: style.id ?? uid(), assetId: "", track: "overlay", text, start: start ?? 0, inPoint: 0, outPoint: duration ?? 3 }));
           break;
         }
         case "remove_clip": {
@@ -265,7 +272,34 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
         }
         case "set_transition": return setTransition(timeline,args.clipId,args.type,args.duration,args.join!==false);
         case "remove_clips": { if(!Array.isArray(args.clipIds)) throw new Error("clipIds required"); timeline.clips=clips.filter(c=>!args.clipIds.includes(c.id)); break; }
-        case "apply_motion": { const c=find(args?.clipId); Object.assign(c, motionPreset(c,args.preset)); break; }
+        case "apply_motion": { const c=find(args?.clipId); Object.assign(c, motionPreset(c,args.preset,{duration:args.duration,delay:args.delay,strength:args.strength})); break; }
+        case "apply_motion_sequence": {
+          // One preset across several clips, each starting `stagger` seconds after the previous one.
+          if (!Array.isArray(args.clipIds) || !args.clipIds.length || new Set(args.clipIds).size !== args.clipIds.length) throw new Error("unique clipIds required");
+          const stagger = args.stagger ?? .12;
+          if (!Number.isFinite(stagger) || stagger < 0 || stagger > 60) throw new Error("stagger must be 0..60 seconds");
+          const start = args.start ?? Math.min(...args.clipIds.map((id: string) => find(id).start));
+          if (!Number.isFinite(start) || start < 0) throw new Error("start must be nonnegative");
+          args.clipIds.forEach((id: string, i: number) => { const c = find(id); Object.assign(c, motionPreset(c, args.preset, { duration: args.duration, delay: args.delay, strength: args.strength })); c.start = Math.round((start + i * stagger) * 1000) / 1000; });
+          break;
+        }
+        case "reverse_animation": { const c=find(args?.clipId); if(!c.keyframes) throw new Error("clip has no animation to reverse"); c.keyframes=reverseAnimation(c); break; }
+        case "retime_animation": { const c=find(args?.clipId); c.keyframes=retimeAnimation(c,args.duration,args.delay??0); break; }
+        case "add_beat_markers": {
+          const count = args.count ?? 8;
+          if (!Number.isInteger(count) || count < 1 || count > 100) throw new Error("count must be an integer 1..100");
+          const times = beatTimes(args.bpm, count, args.start ?? 0, args.every ?? 1);
+          timeline.markers = [...(timeline.markers ?? []), ...times.map((time, i) => ({ id: `beat-${uid().slice(0,6)}${i}`, time, label: args.label ?? `Beat ${i + 1}`, color: args.color }))];
+          if (timeline.markers.length > 100) throw new Error("a timeline can contain at most 100 markers");
+          break;
+        }
+        case "snap_to_beats": {
+          if (!Array.isArray(args.clipIds) || !args.clipIds.length) throw new Error("clipIds required");
+          if (!Number.isFinite(args.bpm) || args.bpm < 20 || args.bpm > 300) throw new Error("bpm must be 20..300");
+          const origin = args.start ?? 0, beat = 60 / args.bpm;
+          for (const id of args.clipIds) { const c = find(id); c.start = Math.max(0, Math.round((origin + Math.round((c.start - origin) / beat) * beat) * 1000) / 1000); }
+          break;
+        }
         default:
           throw new Error(`unknown op: ${op}`);
       }

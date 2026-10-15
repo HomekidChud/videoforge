@@ -48,6 +48,8 @@ function transformFilters(c:Clip, width:number, height:number, dur:number, text=
     if(c.fit==="cover") chain.push(`crop=${width}:${height}`);
     chain.push("format=yuva420p",`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black@0`);
   }
+  // Wipe reveal: a left-to-right alpha mask on the unscaled layer, so it follows later scale/rotation.
+  if(c.keyframes?.reveal||(c.reveal??1)<1) chain.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*lt(X,W*(${animationExpression(c,"reveal","T")}))'`);
   if((c.scale??(c.track==="overlay"&&!text? .35:1))!==1||dynamicScale) {
     chain.push(`scale=w='max(2,trunc(${width}*(${scale})/2)*2)':h='max(2,trunc(${height}*(${scale})/2)*2)':eval=frame`);
   }
@@ -121,7 +123,7 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     const width=c.track==="overlay" ? W : W, height=c.track==="overlay" ? Math.max(2,Math.round(W/aspect/2)*2) : H;
     chain.push(...transformFilters(c,width,height,dur));
     const tr = incomingTransition(tl,c);
-    if(tr) { const p=`min(1,max(0,T/${f(tr.duration)}))`, alpha=tr.type==='dissolve'?p:tr.type==='wipe-left'?`lte(X,W*(${p}))`:`gte(X,W*(1-(${p})))`;
+    if(tr) { const p=`min(1,max(0,T/${f(tr.duration)}))`, alpha=({dissolve:p,'wipe-left':`lte(X,W*(${p}))`,'wipe-right':`gte(X,W*(1-(${p})))`,'wipe-up':`gte(Y,H*(1-(${p})))`,'wipe-down':`lte(Y,H*(${p}))`,iris:`lte(hypot(X-W/2,Y-H/2),hypot(W/2,H/2)*(${p}))`} as Record<string,string>)[tr.type];
       chain.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*(${alpha})'`); }
 
     chain.push(`setpts=PTS+${f(c.start)}/TB`);

@@ -25,6 +25,10 @@ export const MOTION_TEMPLATES = [
   { id: "callout", label: "Callout", description: "An animated badge with a short message." },
   { id: "kinetic-type", label: "Kinetic type", description: "Words arrive in sequence with staggered motion." },
   { id: "countdown", label: "Countdown", description: "A sequence of numbered beats with a final message." },
+  { id: "quote-card", label: "Quote card", description: "A large quotation mark, the quote and an attribution rule." },
+  { id: "split-reveal", label: "Split reveal", description: "Two accent rules wipe open around a rising headline." },
+  { id: "progress-bar", label: "Progress bar", description: "A rounded track fills with a headline above and caption below." },
+  { id: "stat-highlight", label: "Stat highlight", description: "A big number inside a springing accent ring with a caption." },
 ] as const;
 /** Templates compile to normal, independently editable clips, never arbitrary code. */
 export function templateClips(args: Record<string, any>, id: () => string, aspect = 16/9): Record<string, any>[] {
@@ -59,6 +63,29 @@ export function templateClips(args: Record<string, any>, id: () => string, aspec
       return words.map((word, i) => ({ ...text(word, .5, 8, start + i * step, duration - i * step),
         x: .1 + .8*(lengths.slice(0,i).reduce((a,b)=>a+b+1,0)+lengths[i]/2)/total,
         textColor: color, textSize: Math.max(1, Math.min(8, .8*aspect*100/(total*.75))) }));
+    }
+    case "quote-card": {
+      const mark = { ...text("\u201C", .3, 20), textColor: color, keyframes: { scale: [{ time: 0, value: .4, easing: "back-out" }, { time: intro, value: 1 }], opacity: [{ time: 0, value: 0 }, { time: intro, value: 1 }] }, y: .3 };
+      return [mark, text(title, .5, 6), plate(.6, .12, .006), ...(subtitle ? [{ ...text(subtitle, .68, 3.5), textColor: color }] : [])];
+    }
+    case "split-reveal": {
+      const rule = (y: number) => ({ ...base(`split rule ${y}`), x: .5, y, shape: { type: "rectangle", width: .64, height: .008, fill: color },
+        keyframes: { reveal: [{ time: 0, value: 0, easing: "snappy" }, { time: Math.min(.7, duration / 2), value: 1 }] } });
+      return [rule(.36), rule(.64), text(title, .5, 9, start + Math.min(.25, duration / 8), duration - Math.min(.25, duration / 8)), ...(subtitle ? [text(subtitle, .72, 3.5, start + Math.min(.45, duration / 5), duration - Math.min(.45, duration / 5))] : [])];
+    }
+    case "progress-bar": {
+      const fill = Math.min(duration * .8, duration - .1);
+      const track = { ...base("progress track"), x: .5, y: .5, shape: { type: "rectangle", width: .6, height: .035, fill: "#2a2a2e", radius: 100 } };
+      const bar = { ...base("progress fill"), x: .5, y: .5, shape: { type: "rectangle", width: .6, height: .035, fill: color, radius: 100 },
+        keyframes: { reveal: [{ time: 0, value: 0, easing: "ease-in-out" }, { time: fill, value: 1 }] } };
+      return [track, bar, text(title, .4, 7), ...(subtitle ? [text(subtitle, .6, 3.5)] : [])];
+    }
+    case "stat-highlight": {
+      let width = .56 / aspect, tall = .56;
+      if (width > .8) { width = .8; tall = .8 * aspect; }
+      const ring = { ...base("stat ring"), x: .5, y: .46, shape: { type: "ellipse", width, height: tall, fill: "transparent", stroke: color, strokeWidth: 10 },
+        keyframes: { scale: [{ time: 0, value: .5, easing: "back-out" }, { time: Math.min(.7, duration / 2), value: 1 }] } };
+      return [ring, { ...text(title, .46, 12), textColor: color, keyframes: { scale: [{ time: 0, value: .6, easing: "back-out" }, { time: intro, value: 1 }], opacity: [{ time: 0, value: 0 }, { time: intro, value: 1 }] }, y: .46 }, ...(subtitle ? [text(subtitle, .86, 4)] : [])];
     }
     case "countdown": {
       const step = duration / 4;

@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, Diamond, Plus, Trash2 } from "lucide-react";
 import { ANIMATABLE, EASINGS, baseValue, clamp, easeAt, easingCurve, valueAt, type AnimationProperty, type Bezier, type Easing, type Keyframe } from "@shared/animation";
 import { clipDuration, type Clip } from "@shared/timeline";
 import { MOTION_PRESETS, motionPreset } from "@shared/presets";
+import { reverseAnimation } from "@shared/motion";
 import { round } from "@/lib/editor-model";
 import type { TimelineGesture } from "./forge-timeline";
 
@@ -46,12 +47,12 @@ function BezierEditor({value,onChange,gesture,disabled}:{value:Easing|undefined;
     ctx.fillStyle="#101011";ctx.fillRect(0,0,w,h);ctx.strokeStyle="#2f2f33";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(L,B);ctx.lineTo(R,B);ctx.moveTo(L,T);ctx.lineTo(L,B);ctx.stroke();
     const p1=[X(curve[0]),Y(curve[1])],p2=[X(curve[2]),Y(curve[3])];
     ctx.strokeStyle="#707078";ctx.beginPath();ctx.moveTo(L,B);ctx.lineTo(p1[0],p1[1]);ctx.moveTo(R,T);ctx.lineTo(p2[0],p2[1]);ctx.stroke();
-    ctx.strokeStyle="#f6a447";ctx.lineWidth=2;ctx.beginPath();for(let i=0;i<=100;i++){const x=i/100,y=value==="hold"?(i===100?1:0):easeAt(curve,x);i?ctx.lineTo(X(x),Y(y)):ctx.moveTo(X(x),Y(y));}ctx.stroke();
+    ctx.strokeStyle="#f6a447";ctx.lineWidth=2;ctx.beginPath();for(let i=0;i<=100;i++){const x=i/100,y=value==="hold"?(i===100?1:0):value==="step-start"?(i===0?0:1):easeAt(curve,x);i?ctx.lineTo(X(x),Y(y)):ctx.moveTo(X(x),Y(y));}ctx.stroke();
     for(const p of [p1,p2]){ctx.fillStyle="#c4b7ef";ctx.beginPath();ctx.arc(p[0],p[1],5,0,Math.PI*2);ctx.fill();}
     ctx.fillStyle="#99969e";ctx.font="10px monospace";ctx.fillText("0",L-3,B+16);ctx.fillText("1",R-3,B+16);ctx.fillText("Progress →",w/2-34,h-2);
   },[JSON.stringify(curve),value]);
   return <><canvas ref={ref} className="bezier-graph" aria-label="Drag tween slope handles" data-testid="bezier-graph"
-    onPointerDown={e=>{if(disabled||value==="hold")return;const r=e.currentTarget.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;const pos=(i:number)=>[26+curve[i]*(r.width-50),r.height-28-curve[i+1]*(r.height-58)];
+    onPointerDown={e=>{if(disabled||value==="hold"||value==="step-start")return;const r=e.currentTarget.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;const pos=(i:number)=>[26+curve[i]*(r.width-50),r.height-28-curve[i+1]*(r.height-58)];
       const p1=pos(0),p2=pos(2),d1=Math.hypot(x-p1[0],y-p1[1]),d2=Math.hypot(x-p2[0],y-p2[1]);if(Math.min(d1,d2)>16)return;drag.current=d1<d2?0:2;e.currentTarget.setPointerCapture(e.pointerId);gesture.begin();}}
     onPointerMove={e=>{const i=drag.current;if(i===null||!e.buttons)return;const r=e.currentTarget.getBoundingClientRect(),next=[...curve] as Bezier;next[i]=round(clamp((e.clientX-r.left-26)/(r.width-50),0,1));next[i+1]=round(clamp((r.height-28-(e.clientY-r.top))/(r.height-58),-2,3));onChange(next,true);}}
     onPointerUp={()=>{drag.current=null;gesture.end();}} onPointerCancel={()=>{drag.current=null;gesture.end();}}/>
@@ -60,6 +61,7 @@ function BezierEditor({value,onChange,gesture,disabled}:{value:Easing|undefined;
 }
 export default function ForgeMotion(props:Props) {
   const {clip,time,readOnly,patch,seek}=props;
+  const [timing,setTiming]=useState({duration:.8,delay:0,strength:1});
   const [property,setProperty]=useState<AnimationProperty>(()=>props.audioOnly?"volume":(Object.keys(clip.keyframes??{}) as AnimationProperty[]).find(p=>clip.keyframes?.[p]?.length)??"x"),[selected,setSelected]=useState(0);
   useEffect(()=>{
     if(!props.focusKey)return;
@@ -80,10 +82,15 @@ export default function ForgeMotion(props:Props) {
     {!frames.length?<p className="help-text">Add keys at two different times to animate {meta.label.toLowerCase()}. Drag diamonds to retime and change values.</p>:<>
       <div className="key-pills">{frames.map((k,i)=><button key={i} className={selected===i?"selected":""} onClick={()=>{setSelected(i);seek(clip.start+k.time);}}><Diamond size={10}/>{k.time.toFixed(2)}s</button>)}</div>
       {point&&<><div className="two-col"><label className="field compact">Time (seconds)<input aria-label="Keyframe time" type="number" min={0} max={dur} step={1/props.fps} value={point.time} disabled={readOnly} onChange={e=>update({time:round(clamp(Number(e.target.value),0,dur))})}/></label><label className="field compact">{meta.label}<input aria-label="Keyframe value" type="number" min={meta.min} max={meta.max} step={meta.step} value={point.value} disabled={readOnly} onChange={e=>update({value:clamp(Number(e.target.value),meta.min,meta.max)})}/></label></div>
-      {selected<frames.length-1&&<details className="tween-details" open><summary>Tween slope <span>{Array.isArray(point.easing)?"Custom":point.easing??"Linear"}</span></summary><select aria-label="Keyframe easing" value={Array.isArray(point.easing)?"custom":point.easing??"linear"} disabled={readOnly} onChange={e=>update({easing:e.target.value==="custom"?[.25,.1,.25,1]:e.target.value as Easing})}>{[...Object.keys(EASINGS),"hold","custom"].map(e=><option key={e} value={e}>{e.replace(/-/g," ")}</option>)}</select><BezierEditor value={point.easing} onChange={(b,live)=>update({easing:b},live)} gesture={props.gesture} disabled={readOnly}/></details>}
+      {selected<frames.length-1&&<details className="tween-details" open><summary>Tween slope <span>{Array.isArray(point.easing)?"Custom":point.easing??"Linear"}</span></summary><select aria-label="Keyframe easing" value={Array.isArray(point.easing)?"custom":point.easing??"linear"} disabled={readOnly} onChange={e=>update({easing:e.target.value==="custom"?[.25,.1,.25,1]:e.target.value as Easing})}>{[...Object.keys(EASINGS),"hold","step-start","custom"].map(e=><option key={e} value={e}>{e.replace(/-/g," ")}</option>)}</select><BezierEditor value={point.easing} onChange={(b,live)=>update({easing:b},live)} gesture={props.gesture} disabled={readOnly}/></details>}
       <button className="ghost-link danger" onClick={remove} disabled={readOnly}><Trash2 size={13}/>Remove selected key</button></>}
     </>}
-    {!props.audioOnly&&<details className="motion-presets"><summary>Motion presets</summary><div className="preset-grid">{MOTION_PRESETS.map(p=><button key={p.id} title={p.description} disabled={readOnly} onClick={()=>{patch(motionPreset(clip,p.id));setSelected(0);}} data-testid={`motion-${p.id}`}>{p.label}</button>)}</div><p className="help-text">Presets replace only the properties they animate.</p></details>}
+    {!props.audioOnly&&<details className="motion-presets"><summary>Motion presets</summary>
+      <div className="two-col"><label className="field compact">Duration (s)<input aria-label="Preset duration" type="number" min={.1} max={dur} step={.1} value={timing.duration} onChange={e=>setTiming(t=>({...t,duration:clamp(Number(e.target.value)||.1,.1,dur)}))}/></label><label className="field compact">Delay (s)<input aria-label="Preset delay" type="number" min={0} max={Math.max(0,dur-.1)} step={.1} value={timing.delay} onChange={e=>setTiming(t=>({...t,delay:clamp(Number(e.target.value)||0,0,Math.max(0,dur-.1))}))}/></label></div>
+      <label className="field compact">Strength {timing.strength.toFixed(1)}×<input aria-label="Preset strength" type="range" min={.2} max={2} step={.1} value={timing.strength} onChange={e=>setTiming(t=>({...t,strength:Number(e.target.value)}))}/></label>
+      <div className="preset-grid">{MOTION_PRESETS.map(p=><button key={p.id} title={p.id==="reveal"&&!clip.assetId&&!clip.shape?"Wipe reveal applies to media and shapes":p.description} disabled={readOnly||(p.id==="reveal"&&!clip.assetId&&!clip.shape)} onClick={()=>{try{patch(motionPreset(clip,p.id,{duration:Math.min(timing.duration,Math.max(.01,dur-timing.delay)),delay:timing.delay,strength:timing.strength}));setSelected(0);}catch(e){/* e.g. reveal on text */}}} data-testid={`motion-${p.id}`}>{p.label}</button>)}</div>
+      <div className="preset-grid"><button disabled={readOnly||!Object.keys(clip.keyframes??{}).length} onClick={()=>patch({keyframes:reverseAnimation(clip)})} data-testid="motion-reverse">Reverse animation</button></div>
+      <p className="help-text">Presets replace only the properties they animate. Delay and duration place the move inside the clip.</p></details>}
     {frames.length>0&&<button className="ghost-link muted" disabled={readOnly} onClick={()=>{replace([]);setSelected(0);}}>Clear {meta.label.toLowerCase()} animation</button>}
   </div>;
 }

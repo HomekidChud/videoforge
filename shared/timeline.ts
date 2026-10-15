@@ -4,6 +4,7 @@ import { normalizeShape, type Shape } from "./graphics";
 // Everything coming from a client is passed through normalizeTimeline() so the
 // renderer only ever sees bounded, well-typed values.
 
+export const TRANSITION_TYPES = ["dissolve", "wipe-left", "wipe-right", "wipe-up", "wipe-down", "iris"] as const;
 export type TrackName = "video" | "overlay" | "audio";
 export type ClipFilter = "none" | "mono" | "sepia" | "vivid" | "cool" | "warm" | "faded";
 
@@ -26,6 +27,7 @@ export type Clip = {
   brightness?: number; // -0.5..0.5
   contrast?: number; // 0.5..2
   saturation?: number; // 0..2
+  reveal?: number; // 0..1 left-to-right mask, applied before transforms
   opacity?: number; // 0..1
   x?: number; // 0..1 centre position (overlay track and text)
   y?: number;
@@ -89,6 +91,7 @@ export function normalizeClip(raw: any): Clip {
   const shape = normalizeShape(raw.shape);
   if (!assetId && !text && !shape) throw new Error("clip needs an assetId, text, or shape");
   if (shape && (assetId || text || track === "audio")) throw new Error("shape clips must be visual and cannot also contain media or text");
+  if (!assetId && !shape && ((typeof raw.reveal === "number" && raw.reveal < 1) || raw.keyframes?.reveal?.length)) throw new Error("reveal applies to media and shape clips; use opacity or position keyframes for text");
   const inPoint = round(num(raw.inPoint, 0, 86400, 0));
   const outPoint = round(Math.max(inPoint + MIN_CLIP, num(raw.outPoint, 0, 86400, inPoint + 5)));
   const clip: Clip = {
@@ -101,7 +104,7 @@ export function normalizeClip(raw: any): Clip {
   };
   if (text) clip.text = text;
   if (shape) clip.shape = shape;
-  if(raw.transitionIn && ["dissolve","wipe-left","wipe-right"].includes(raw.transitionIn.type) && typeof raw.transitionIn.fromClipId === "string") clip.transitionIn = { fromClipId: raw.transitionIn.fromClipId.slice(0,64), type: raw.transitionIn.type, duration: round(num(raw.transitionIn.duration,.05,3,.6)) };
+  if(raw.transitionIn && (TRANSITION_TYPES as readonly string[]).includes(raw.transitionIn.type) && typeof raw.transitionIn.fromClipId === "string") clip.transitionIn = { fromClipId: raw.transitionIn.fromClipId.slice(0,64), type: raw.transitionIn.type, duration: round(num(raw.transitionIn.duration,.05,3,.6)) };
   const opt = (k: keyof Clip, v: unknown, lo: number, hi: number, def: number) => {
     if (v === undefined || v === null) return;
     const n = round(num(v, lo, hi, def));
@@ -113,6 +116,7 @@ export function normalizeClip(raw: any): Clip {
   opt("brightness", raw.brightness, -0.5, 0.5, 0);
   opt("contrast", raw.contrast, 0.5, 2, 1);
   opt("saturation", raw.saturation, 0, 2, 1);
+  opt("reveal", raw.reveal, 0, 1, 1);
   opt("opacity", raw.opacity, 0, 1, 1);
   opt("x", raw.x, 0, 1, 0.5);
   opt("y", raw.y, 0, 1, track === "overlay" && !assetId && !shape ? 0.82 : 0.5);
