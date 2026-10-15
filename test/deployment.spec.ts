@@ -24,9 +24,15 @@ const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, "..");
 
 let passed = 0, failed = 0, skipped = 0;
-const test = (name: string, fn: () => void | Promise<void>) => {
+/** Sentinel a test can return to report itself as skipped (never counted as PASS). */
+const SKIP = Symbol("skip");
+const test = (name: string, fn: () => void | Promise<void | typeof SKIP>) => {
   return (async () => {
-    try { await fn(); passed++; console.log(`PASS: ${name}`); }
+    try {
+      const r = await fn();
+      if (r === SKIP) { skipped++; console.log(`SKIP: ${name}`); }
+      else { passed++; console.log(`PASS: ${name}`); }
+    }
     catch (e: any) { failed++; console.log(`FAIL: ${name}: ${e.message}`); }
   })();
 };
@@ -262,9 +268,8 @@ await test("real connection: ping, reuse, read/write, close (disposable in-memor
     const { MongoMemoryServer } = await import("mongodb-memory-server");
     memory = await MongoMemoryServer.create();
   } catch (e: any) {
-    skipped++;
-    console.log(`SKIP: could not obtain the disposable MongoDB binary (${e.message})`);
-    return;
+    console.log(`disposable MongoDB unavailable: ${e.message}`);
+    return SKIP;
   }
   try {
     process.env.MONGODB_URI = memory.getUri();
@@ -286,6 +291,17 @@ await test("real connection: ping, reuse, read/write, close (disposable in-memor
 
     await m.closeMongo();
     if (m.isMongoConnected() !== false) throw new Error("close must disconnect");
+
+    // --- shutdown race on the SUCCESS path: close while a real connection is
+    // still being established. The connect must reject ("closed while
+    // connecting"), the fresh client must be closed (awaited), and nothing
+    // may repopulate the module state afterwards.
+    process.env.MONGODB_URI = memory.getUri();
+    const fresh = await import(`../server/mongo.ts?bust=race2-${Date.now()}`);
+    const pending = fresh.getMongoDb(); // do NOT await yet
+    await fresh.closeMongo(); // runs before the connect can settle
+    await assert.rejects(() => pending, /closed while connecting/i);
+    if (fresh.isMongoConnected() !== false) throw new Error("the late-settling connect must not leave a client");
   } finally {
     if (memory) await memory.stop().catch(() => undefined);
   }
