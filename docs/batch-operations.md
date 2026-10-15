@@ -1,7 +1,7 @@
 ---
 title: Batch operations
 group: Agent API
-order: 16
+order: 17
 description: Atomic edits, dry-run validation and revision guards.
 ---
 

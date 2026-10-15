@@ -4,7 +4,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "test": "tsx test/graphics.spec.ts && tsx test/api.spec.ts && tsx test/durable.spec.ts && tsx test/deployment.spec.ts && tsx test/media-lifecycle.ts && tsx test/docs.spec.ts && tsx test/text.spec.ts",
+    "test": "tsx test/graphics.spec.ts && tsx test/api.spec.ts && tsx test/durable.spec.ts && tsx test/deployment.spec.ts && tsx test/media-lifecycle.ts && tsx test/docs.spec.ts && tsx test/text.spec.ts && tsx test/custom-tools.spec.ts",
     "dev": "NODE_ENV=development tsx server/index.ts",
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",

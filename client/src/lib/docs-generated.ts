@@ -1242,6 +1242,10 @@ export const DOC_PAGES: DocPage[] = [
         "text": "On mobile, the preview stays above the active Timeline, Library or Inspector panel. Switch panels with the panel buttons rather than scrolling away from the preview. Tools contains composition JSON, add title, redo, snapping and documentation links."
       },
       {
+        "title": "Custom tools",
+        "text": "The Tools tab of the library lists your custom tools: automations written in JavaScript or assembled from building blocks. Run one and its operations apply as a single undoable step. See Custom tools."
+      },
+      {
         "title": "Typography for text clips",
         "text": "Select a text clip and open the Typography section of the inspector to choose a family from the catalog, a weight, an alignment, line height, letter spacing and uppercase. The preview loads every catalog font, so what you pick is what renders. The font catalog is documented in Fonts & text."
       },
@@ -1314,6 +1318,144 @@ export const DOC_PAGES: DocPage[] = [
           {
             "label": "Rendering",
             "slug": "rendering"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "custom-tools",
+    "group": "Studio",
+    "title": "Custom tools",
+    "description": "Write your own one-click automations in JavaScript or snap them together from building blocks.",
+    "sections": [
+      {
+        "title": "Your own tools",
+        "text": "Custom tools are small automations you write once and run with a click: \"three beat titles at the playhead\", \"bold every title\", \"orbit the selection\". A tool returns a list of timeline operations, and running it applies them as one atomic, undoable step — the same operations the API uses, with the same validation. Open the Tools tab of the Studio library."
+      },
+      {
+        "title": "Two ways to write one",
+        "text": "Every tool has a name, a description, and a program written in one of two modes. - **Blocks** snap together like building blocks, no code required: operation steps, repeat groups, for-each loops over clips, and notes. - **Code** is a short JavaScript function that receives a `vf` helper and returns operations. Duplicate a built-in example to get started; your tools are stored in your browser and run only against the timeline you have open."
+      },
+      {
+        "title": "Building blocks",
+        "text": "A block tool is a list of steps. Operation steps run one timeline operation, repeat groups run their steps N times, and for-each groups run their steps for every clip that matches a filter (all, text, shape, media, or the current selection). Inside those groups, `$clipId` refers to the current clip.",
+        "rows": [
+          [
+            "Block",
+            "What it does"
+          ],
+          [
+            "Operation",
+            "runs one timeline operation such as add_text_clip or apply_motion"
+          ],
+          [
+            "Repeat",
+            "runs its steps N times with $index and $count"
+          ],
+          [
+            "For each clip",
+            "runs its steps for every matching clip with $clipId"
+          ],
+          [
+            "Note",
+            "a comment for future you; does nothing"
+          ]
+        ]
+      },
+      {
+        "title": "Templates",
+        "text": "Any string value in a block can hold a template that is resolved when the tool runs. Arithmetic works too: `\"$playhead + $index * 0.4\"` staggers each step from the playhead. Fields marked JSON (patches, keyframes, expressions) are parsed into objects, so an update step can carry any clip fields, including the new text style.",
+        "rows": [
+          [
+            "Template",
+            "Becomes"
+          ],
+          [
+            "$playhead",
+            "the playhead position in seconds"
+          ],
+          [
+            "$duration",
+            "the timeline duration in seconds"
+          ],
+          [
+            "$index / $count",
+            "position inside a repeat or for-each group"
+          ],
+          [
+            "$clipId",
+            "the current clip inside a for-each group"
+          ],
+          [
+            "$selection",
+            "the selected clip ids, comma separated"
+          ]
+        ]
+      },
+      {
+        "title": "Code tools",
+        "text": "A code tool is the body of a JavaScript function. It receives one argument, `vf`, and returns one operation or an array of them.",
+        "language": "JS",
+        "code": "// vf has the playhead, selection and every clip\nconst ops = [];\nfor (const id of vf.selection) {\n  ops.push(vf.animate(id, { rotation: \"wiggle(2, 4)\" }));\n}\nops.push(vf.markers(120, 8));\nreturn ops;",
+        "rows": [
+          [
+            "Helper",
+            "Returns"
+          ],
+          [
+            "vf.addText({ text, start?, duration?, ... })",
+            "add_text_clip"
+          ],
+          [
+            "vf.addShape({ shape, ... })",
+            "add_shape_clip"
+          ],
+          [
+            "vf.update(id, patch)",
+            "update_clip with any clip fields"
+          ],
+          [
+            "vf.motion(id, preset, opts?)",
+            "apply_motion"
+          ],
+          [
+            "vf.stagger(ids, opts?)",
+            "stagger_clips"
+          ],
+          [
+            "vf.keyframes(id, property, keys)",
+            "set_keyframes"
+          ],
+          [
+            "vf.animate(id, expressions)",
+            "animate_code"
+          ],
+          [
+            "vf.remove(id) / vf.duplicate(id)",
+            "remove_clip / duplicate_clip"
+          ],
+          [
+            "vf.markers(bpm, count)",
+            "add_beat_markers"
+          ]
+        ]
+      },
+      {
+        "title": "Safety and limits",
+        "text": "Tools run in your browser against the open project; the server still validates every operation and rejects anything invalid, atomically. A tool may produce at most 100 operations, matching the batch limit. Because tools are just operations, they respect scopes, undo, dry runs and everything else in the operation catalog.",
+        "links": [
+          {
+            "label": "Using the editor",
+            "slug": "editor"
+          },
+          {
+            "label": "Batch operations",
+            "slug": "batch-operations"
+          },
+          {
+            "label": "Fonts & text",
+            "slug": "fonts-and-text"
           }
         ]
       }

@@ -1,7 +1,7 @@
 ---
 title: Self-hosting
 group: Resources
-order: 19
+order: 20
 description: Run the Studio and rendering API on infrastructure you control.
 ---
 
