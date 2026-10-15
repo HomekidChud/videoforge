@@ -117,4 +117,29 @@ await check("catalog well formed", async () => {
   }
 });
 
+// Flat shape fields nest into the shape object; clip id lists become arrays; JSON arrays parse.
+await check("block arg conversion", async () => {
+  const ops = compileBlocks([
+    { kind: "op", op: "add_shape_clip", args: { shapeType: "ellipse", width: 0.3, height: 0.2, fill: "#f6a447" } },
+    { kind: "op", op: "stagger_clips", args: { clipIds: "$selection", delay: "0.15" } },
+    { kind: "op", op: "set_keyframes", args: { clipId: "a", property: "scale", keyframes: "[{ \"time\": 0, \"value\": 0 }]" } },
+    { kind: "op", op: "add_text_clip", args: { text: "hi", start: "$playhead + 0.4", duration: "3" } },
+  ], ctx);
+  assert.deepEqual(ops[0].args.shape, { type: "ellipse", width: 0.3, height: 0.2, fill: "#f6a447" });
+  assert.deepEqual(ops[1].args.clipIds, ["a", "b"]);
+  assert.equal(ops[1].args.delay, 0.15, "numeric params become numbers");
+  assert.deepEqual(ops[2].args.keyframes, [{ time: 0, value: 0 }], "JSON arrays parse");
+  assert.equal(ops[3].args.start, 2.9, "template arithmetic is computed");
+  assert.equal(ops[3].args.duration, 3, "numeric strings become numbers");
+  assert.throws(() => compileBlocks([{ kind: "op", op: "set_keyframes", args: { clipId: "a", property: "x", keyframes: "not json" } }], ctx), /valid JSON/);
+});
+
+// Block expansion honours the 100-operation batch limit.
+await check("block limit", async () => {
+  const blocks: any[] = [{ kind: "repeat", count: 60, blocks: [{ kind: "op", op: "add_text_clip", args: { text: "x" } }, { kind: "op", op: "add_text_clip", args: { text: "y" } }] }];
+  assert.throws(() => compileBlocks(blocks, ctx), /more than 100 operations/);
+  const ok = compileBlocks([{ kind: "repeat", count: 50, blocks: [{ kind: "op", op: "add_text_clip", args: { text: "x" } }] }] as any, ctx);
+  assert.equal(ok.length, 50);
+});
+
 console.log(`custom-tools.spec: ${checks} checks passed`);

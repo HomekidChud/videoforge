@@ -9,7 +9,8 @@ const CACHE_DIR = process.env.VIDEOFORGE_FONTS_DIR || "data/fonts";
 /** Weight actually available for a font id (falls back to the heaviest cut). */
 export function effectiveWeight(id: string | undefined, weight: number | undefined): number {
   const font = getFont(id);
-  return font.weights.includes(weight ?? 400) ? (weight as number) : font.weights[font.weights.length - 1];
+  const w = weight ?? 400;
+  return font.weights.includes(w) ? w : font.weights[font.weights.length - 1];
 }
 
 /** Cached font file for a clip's font, or undefined when it has not been downloaded (or is offline). */
