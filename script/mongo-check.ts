@@ -5,7 +5,9 @@
  * prints the result. Exit code 0 on ok / not-configured, 1 on error — so it
  * can be used in deploy hooks and health scripts. Deliberately separate from
  * /api/health so an unreachable integration can never affect app liveness.
+ * Loads .env the same way the server does, so local checks match local runs.
  */
+import "dotenv/config";
 import { mongoConfigured, mongoHealth, closeMongo } from "../server/mongo";
 
 const result = await mongoHealth();

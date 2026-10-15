@@ -41,7 +41,7 @@ function newKey(prefix: "vf_live_" | "vf_admin_"): string {
 
 let ownerKeyPlaintext: string | null = null;
 
-export async function ensureOwnerKeyExists(): Promise<string> {
+export async function ensureOwnerKeyExists(): Promise<string | null> {
   // Preferred for hosted deployments: the admin key is supplied via
   // VIDEOFORGE_BOOTSTRAP_KEY env var. This means the key never appears in
   // logs, files, or URLs, and it survives ephemeral-filesystem restarts
@@ -96,12 +96,13 @@ export async function ensureOwnerKeyExists(): Promise<string> {
     // the operator, remove the useless hash-only row and point at the env-var
     // bootstrap, which works on read-only filesystems.
     ownerKeyPlaintext = null;
-    try { db.delete(apiKeys).where(eq(apiKeys.id, row.id)); } catch { /* best effort */ }
+    try { db.delete(apiKeys).where(eq(apiKeys.id, row.id)).run(); } catch { /* best effort */ }
     console.warn(
       `[auth] WARNING: created an owner key but could NOT write it to ${ADMIN_KEY_FILE} (${e.code ?? e.message}). ` +
       `The key was discarded — nothing was saved. On read-only deployments, set ` +
       `VIDEOFORGE_BOOTSTRAP_KEY=<your chosen key> in the environment and restart; it will be seeded as the owner key.`
     );
+    return null;
   }
   return row.id;
 }

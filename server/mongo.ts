@@ -66,11 +66,12 @@ async function getClient(): Promise<MongoClient> {
       maxPoolSize: 10,
     })
       .connect()
-      .then((c) => {
+      .then(async (c) => {
         if (closed) {
-          // closeMongo() ran while this connection was pending — hand it back
-          // so the caller closes it; never repopulate the module state.
-          c.close().catch(() => undefined);
+          // closeMongo() ran while this connection was pending — close it
+          // (awaited, so closeMongo can rely on it) and never repopulate
+          // the module state.
+          await c.close().catch(() => undefined);
           throw new Error("MongoDB client was closed while connecting.");
         }
         client = c;

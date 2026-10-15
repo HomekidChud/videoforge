@@ -7,8 +7,10 @@
 // Covers the Render EACCES boot crash (unwritable VIDEOFORGE_SYNC_DIR /
 // VIDEOFORGE_DB / media dirs must never kill the server at import time),
 // the degraded-storage contract (boot, serve reads, reject writes with a
-// clear 503 — never accept data into a disposable database), and the
-// optional MongoDB module (server/mongo.ts).
+// clear 503 — never accept data into a disposable database, on every
+// mutating route including the live routes), persistence with an unwritable
+// backup dir, the owner-key discard path, and the optional MongoDB module
+// (server/mongo.ts).
 // ============================================================================
 
 import { spawn, type ChildProcess } from "node:child_process";
@@ -21,7 +23,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, "..");
 
-let passed = 0, failed = 0;
+let passed = 0, failed = 0, skipped = 0;
 const test = (name: string, fn: () => void | Promise<void>) => {
   return (async () => {
     try { await fn(); passed++; console.log(`PASS: ${name}`); }
@@ -42,73 +44,92 @@ const tmp = (label: string) => {
 };
 
 // ---------------------------------------------------------------------------
-// Server harness
+// Server harness — one child per scenario, always cleaned up in finally,
+// exit awaited. No orphaned processes between scenarios.
 // ---------------------------------------------------------------------------
-let server: ChildProcess | null = null;
 const OUT = fs.openSync("/tmp/vf_deployment_server.log", "w");
 
-function killServer() {
-  if (server) {
-    try { process.kill(-server.pid!, "SIGKILL"); } catch { try { server.kill("SIGKILL"); } catch {} }
-    server = null;
-  }
-}
-process.on("exit", killServer);
-process.on("SIGINT", () => { killServer(); process.exit(1); });
-
-async function startServer(port: number, env: Record<string, string>): Promise<void> {
-  server = spawn("npx", ["tsx", "server/index.ts"], {
+async function withServer(
+  port: number,
+  env: Record<string, string>,
+  fn: (port: number) => void | Promise<void>
+): Promise<void> {
+  const child = spawn("npx", ["tsx", "server/index.ts"], {
     cwd: ROOT,
     env: { ...process.env, NODE_ENV: "development", PORT: String(port), ...env },
     stdio: ["ignore", OUT, OUT],
     detached: true,
   });
-  const deadline = Date.now() + 30000;
-  while (Date.now() < deadline) {
-    try {
-      const r = await fetch(`http://127.0.0.1:${port}/api/health`);
-      if (r.ok || r.status === 503) return;
-    } catch {}
-    await new Promise((r) => setTimeout(r, 200));
+  let killed = false;
+  const kill = async () => {
+    killed = true;
+    try { process.kill(-child.pid!, "SIGKILL"); } catch { /* already gone */ }
+    // await exit so the next scenario can never talk to a stale process
+    if (child.exitCode === null) {
+      await new Promise<void>((resolve) => {
+        const t = setTimeout(resolve, 5000);
+        child.on("exit", () => { clearTimeout(t); resolve(); });
+      });
+    }
+  };
+  try {
+    const deadline = Date.now() + 30000;
+    for (;;) {
+      if (child.exitCode !== null) throw new Error(`server exited early with code ${child.exitCode}`);
+      try {
+        const r = await fetch(`http://127.0.0.1:${port}/api/health`);
+        if (r.ok || r.status === 503) break;
+      } catch {}
+      if (Date.now() > deadline) throw new Error("server did not start in 30s");
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    await fn(port);
+  } finally {
+    await kill();
   }
-  throw new Error("server did not start in 30s");
+  if (!killed) throw new Error("unreachable");
 }
+
 const j = async (port: number, p: string, init: RequestInit = {}) => {
   const r = await fetch(`http://127.0.0.1:${port}${p}`, init);
   let body: any = null;
   try { body = await r.json(); } catch {}
   return { status: r.status, body };
 };
+const AUTH = { Authorization: "Bearer vf_admin_deployment_spec_key" };
 
 // ---------------------------------------------------------------------------
 // 1. The exact Render failure: sync dir + DB + media dirs all unwritable.
 //    Previously: EACCES crash at import. Now: boot, serve reads/UI, 503 on
-//    every mutating /api request with an actionable message.
+//    every mutating /api request — including the live routes — with an
+//    actionable message.
 // ---------------------------------------------------------------------------
 await test("unwritable durable paths: server boots, serves reads, rejects writes with 503", async () => {
   const PORT = 5187;
-  await startServer(PORT, {
+  await withServer(PORT, {
     VIDEOFORGE_DB: unwritable("data/data.db"),
     VIDEOFORGE_SYNC_DIR: unwritable("data/restore"),
     VIDEOFORGE_MEDIA_DIR: unwritable("data/media"),
     VIDEOFORGE_RENDER_DIR: unwritable("data/renders"),
+  }, async (port) => {
+    const health = await j(port, "/api/health");
+    if (health.status !== 200) throw new Error(`health status ${health.status}`);
+    if (health.body.ok !== false) throw new Error("degraded storage must report ok:false");
+    if (!health.body.warnings?.length) throw new Error("degraded storage must carry warnings");
+
+    const ui = await fetch(`http://127.0.0.1:${port}/`);
+    if (ui.status !== 200) throw new Error(`UI status ${ui.status} — server must still serve the client`);
+
+    // key management
+    const keys = await j(port, "/api/keys", { method: "POST" });
+    if (keys.status !== 503) throw new Error(`mutating request must be 503, got ${keys.status}`);
+    if (!String(keys.body.message ?? "").includes("storage is degraded"))
+      throw new Error("503 must explain the degraded storage and the fix");
+
+    // a live (polling) route must be covered too — no bypass via /api/live
+    const live = await j(port, "/api/live/some-project/publish", { method: "POST", headers: AUTH });
+    if (live.status !== 503) throw new Error(`live mutating route must be 503, got ${live.status}`);
   });
-
-  const health = await j(PORT, "/api/health");
-  if (health.status !== 200) throw new Error(`health status ${health.status}`);
-  if (health.body.ok !== false) throw new Error("degraded storage must report ok:false");
-  if (!health.body.warnings?.length) throw new Error("degraded storage must carry warnings");
-
-  const ui = await fetch(`http://127.0.0.1:${PORT}/`);
-  if (ui.status !== 200) throw new Error(`UI status ${ui.status} — server must still serve the client`);
-
-  const write = await j(PORT, "/api/keys", { method: "POST" });
-  if (write.status !== 503) throw new Error(`mutating request must be 503, got ${write.status}`);
-  if (!String(write.body.message ?? "").includes("storage is degraded"))
-    throw new Error("503 must explain the degraded storage and the fix");
-
-  // the process must still be alive (no import-time crash, no boot loop)
-  if (!server || server.exitCode !== null) throw new Error("server process died");
 });
 
 // ---------------------------------------------------------------------------
@@ -121,7 +142,7 @@ await test("unwritable media dirs: uploads fail per-request, rest works, manifes
   const PORT = 5186;
   const DB = path.join(tmp("db"), "data.db");
   const SYNC = tmp("sync");
-  await startServer(PORT, {
+  await withServer(PORT, {
     VIDEOFORGE_DB: DB,
     VIDEOFORGE_SYNC_DIR: SYNC,
     VIDEOFORGE_MEDIA_DIR: unwritable("media"),
@@ -130,36 +151,69 @@ await test("unwritable media dirs: uploads fail per-request, rest works, manifes
     // configured-but-unreachable mongo: health must report it WITHOUT
     // attempting a connection (liveness stays independent of the integration)
     MONGODB_URI: "mongodb://127.0.0.1:1/",
+  }, async (port) => {
+    const health = await j(port, "/api/health");
+    if (health.body.ok !== true) throw new Error("writable DB must report ok:true");
+    if (health.body.mongo !== "configured") throw new Error("configured mongo must be reported in health");
+    if (health.body.warnings) throw new Error("no warnings expected in this scenario");
+
+    const fd = new FormData();
+    fd.append("file", new Blob(["x"]), "clip.mp4");
+    const upload = await j(port, "/api/media/upload", {
+      method: "POST", headers: AUTH, body: fd,
+    });
+    if (upload.status === 503) throw new Error("upload must not be blocked by the degraded-DB middleware here");
+    if (![400, 500].includes(upload.status)) throw new Error(`upload status ${upload.status}`);
+    if (!String(upload.body.message ?? "").match(/store|upload/i))
+      throw new Error("failed upload must return a clear per-request error");
+
+    // The manifest writer snapshots on change on a 5s interval — wait for it.
+    const manifest = path.join(SYNC, "save_manifest.json");
+    for (let i = 0; i < 20 && !fs.existsSync(manifest); i++) {
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    if (!fs.existsSync(manifest)) throw new Error("manifest backup must be written when the DB is healthy");
   });
-
-  const health = await j(PORT, "/api/health");
-  if (health.body.ok !== true) throw new Error("writable DB must report ok:true");
-  if (health.body.mongo !== "configured") throw new Error("configured mongo must be reported in health");
-  if (health.body.warnings) throw new Error("no warnings expected in this scenario");
-
-  const fd = new FormData();
-  fd.append("file", new Blob(["x"]), "clip.mp4");
-  const upload = await j(PORT, "/api/media/upload", {
-    method: "POST",
-    headers: { Authorization: "Bearer vf_admin_deployment_spec_key" },
-    body: fd,
-  });
-  if (upload.status === 503) throw new Error("upload must not be blocked by the degraded-DB middleware here");
-  if (![400, 500].includes(upload.status)) throw new Error(`upload status ${upload.status}`);
-  if (!String(upload.body.message ?? "").match(/store|upload/i))
-    throw new Error("failed upload must return a clear per-request error");
-
-  // The manifest writer snapshots on change on a 5s interval — wait for it.
-  const manifest = path.join(SYNC, "save_manifest.json");
-  for (let i = 0; i < 20 && !fs.existsSync(manifest); i++) {
-    await new Promise((r) => setTimeout(r, 500));
-  }
-  if (!fs.existsSync(manifest)) throw new Error("manifest backup must be written when the DB is healthy");
-  killServer();
 });
 
 // ---------------------------------------------------------------------------
-// 3. Optional MongoDB module (server/mongo.ts) — in-process.
+// 3. The minimal original regression: writable SQLite + unwritable sync dir.
+//    The backup is optional — the service must be fully operational and data
+//    must persist across a restart.
+// ---------------------------------------------------------------------------
+await test("writable DB + unwritable sync dir: fully operational, data survives a restart", async () => {
+  const PORT = 5185;
+  const DB = path.join(tmp("persist"), "data.db");
+  const env = {
+    VIDEOFORGE_DB: DB,
+    VIDEOFORGE_SYNC_DIR: unwritable("restore"),
+    VIDEOFORGE_BOOTSTRAP_KEY: "vf_admin_deployment_spec_key",
+  };
+  const name = `persist-spec-${Date.now()}`;
+  let projectId = "";
+  await withServer(PORT, env, async (port) => {
+    const health = await j(port, "/api/health");
+    if (health.body.ok !== true) throw new Error("must be fully operational");
+    if (health.body.warnings) throw new Error("an unwritable optional backup must not degrade the service");
+    const created = await j(port, "/api/projects", {
+      method: "POST", headers: { ...AUTH, "Content-Type": "application/json" },
+      body: JSON.stringify({ name, timeline: { clips: [] } }),
+    });
+    if (created.status !== 201) throw new Error(`create project: ${created.status} ${JSON.stringify(created.body)}`);
+    projectId = created.body.id;
+    if (!projectId) throw new Error("project id missing from response");
+  });
+  await withServer(PORT, env, async (port) => {
+    const again = await j(port, "/api/health");
+    if (again.body.ok !== true) throw new Error("restart must be healthy");
+    const list = await j(port, "/api/projects", { headers: AUTH });
+    const names = (list.body.projects ?? list.body ?? []).map((p: any) => p.name ?? p);
+    if (!JSON.stringify(names).includes(name)) throw new Error("project must survive the restart");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4. Optional MongoDB module (server/mongo.ts) — in-process.
 // ---------------------------------------------------------------------------
 const importMongo = () => import(`../server/mongo.ts?bust=${Date.now()}-${Math.random()}`);
 
@@ -201,11 +255,19 @@ await test("closeMongo() during a pending connect: no race, nothing reconnects",
 
 await test("real connection: ping, reuse, read/write, close (disposable in-memory MongoDB)", async () => {
   let memory: { getUri: () => string; stop: () => Promise<void> } | null = null;
+  // Only the disposable-server setup is allowed to degrade into a SKIP
+  // (binary download can fail on restricted networks). The assertions below
+  // it are never skipped.
   try {
     const { MongoMemoryServer } = await import("mongodb-memory-server");
-    const mem = await MongoMemoryServer.create();
-    memory = mem;
-    process.env.MONGODB_URI = mem.getUri();
+    memory = await MongoMemoryServer.create();
+  } catch (e: any) {
+    skipped++;
+    console.log(`SKIP: could not obtain the disposable MongoDB binary (${e.message})`);
+    return;
+  }
+  try {
+    process.env.MONGODB_URI = memory.getUri();
     process.env.MONGODB_DB = "videoforge-spec";
     const m = await importMongo();
     if (m.mongoConfigured() !== true) throw new Error("must be configured");
@@ -224,17 +286,13 @@ await test("real connection: ping, reuse, read/write, close (disposable in-memor
 
     await m.closeMongo();
     if (m.isMongoConnected() !== false) throw new Error("close must disconnect");
-  } catch (e: any) {
-    if (/download|EACCES|ENOSPC|network/i.test(e.message ?? "")) {
-      console.log(`SKIP: could not obtain the disposable MongoDB binary (${e.message})`);
-    } else throw e;
   } finally {
     if (memory) await memory.stop().catch(() => undefined);
   }
 });
 
 // ---------------------------------------------------------------------------
-// 4. The durable module itself: unwritable sync dir must not throw at import.
+// 5. The durable module itself: unwritable sync dir must not throw at import.
 // ---------------------------------------------------------------------------
 await test("unwritable sync dir: durable module loads, manifest save is a no-op", async () => {
   process.env.VIDEOFORGE_SYNC_DIR = unwritable("restore");
@@ -244,6 +302,39 @@ await test("unwritable sync dir: durable module loads, manifest save is a no-op"
   m.saveManifest({ mediaAssets: [], projects: [], renderJobs: [], apiKeyHashes: [], bootstrapKeyHash: null });
 });
 
+// ---------------------------------------------------------------------------
+// 6. Owner-key discard: if OWNER_KEY.txt cannot be written, no unusable admin
+//    row may remain and the plaintext must never be printed.
+// ---------------------------------------------------------------------------
+await test("unwritable OWNER_KEY.txt: key discarded, no admin row, no plaintext in logs", async () => {
+  delete process.env.VIDEOFORGE_BOOTSTRAP_KEY;
+  // Run from a directory where data/ cannot exist: make "data" a regular file.
+  const cwd = process.cwd();
+  const ro = tmp("ro");
+  fs.writeFileSync(path.join(ro, "data"), "not a directory");
+  process.env.VIDEOFORGE_DB = path.join(ro, "data.db");
+  process.chdir(ro);
+  const logs: string[] = [];
+  const origWarn = console.warn, origLog = console.log;
+  console.warn = (...a: any[]) => logs.push(a.join(" "));
+  console.log = (...a: any[]) => logs.push(a.join(" "));
+  try {
+    const auth = await import(`../server/auth.ts?bust=discard-${Date.now()}`);
+    const id = await auth.ensureOwnerKeyExists();
+    if (id !== null) throw new Error("a discarded key must return null, not a success id");
+    const admins = auth.listKeys().filter((k: any) => k.scope === "admin");
+    if (admins.length !== 0) throw new Error("no unusable admin row may remain in the DB");
+    const text = logs.join("\n");
+    if (/vf_admin_[A-Za-z0-9_]+/.test(text)) throw new Error("plaintext key leaked to logs");
+    if (!text.includes("VIDEOFORGE_BOOTSTRAP_KEY")) throw new Error("operator must be pointed at the env bootstrap");
+  } finally {
+    console.warn = origWarn; console.log = origLog;
+    process.chdir(cwd);
+    delete process.env.VIDEOFORGE_DB;
+    fs.rmSync(ro, { recursive: true, force: true });
+  }
+});
+
 fs.rmSync(BLOCKER, { force: true });
-console.log(`\n${passed} passed, ${failed} failed`);
+console.log(`\n${passed} passed, ${failed} failed, ${skipped} skipped`);
 if (failed > 0) process.exit(1);
