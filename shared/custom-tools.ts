@@ -28,9 +28,35 @@ export type CustomTool = {
   description: string;
   mode: "blocks" | "code";
   blocks?: ToolBlock[];
+  /** Full-screen studio graph (the current block format). */
+  graph?: ToolGraph;
   code?: string;
   builtIn?: boolean;
 };
+
+/**
+ * The studio graph: a plain, versioned model of nodes and connections,
+ * independent of the canvas library that edits it.
+ */
+export type ToolGraphNode = {
+  id: string;
+  type: "start" | "action" | "repeat" | "eachClip" | "comment" | "clipRef" | "frame" | "function" | "call";
+  /** Friendly block id for action nodes, e.g. "add-title". */
+  block?: string;
+  /** Raw operation name for advanced action nodes. */
+  op?: string;
+  args?: Record<string, unknown>;
+  count?: number;
+  select?: string;
+  name?: string;
+  text?: string;
+  clipId?: string;
+  /** Frame number at the project fps. */
+  frame?: number;
+  position?: { x: number; y: number };
+};
+export type ToolGraphEdge = { id: string; source: string; sourceHandle: string; target: string; targetHandle: string };
+export type ToolGraph = { nodes: ToolGraphNode[]; edges: ToolGraphEdge[] };
 
 /** Everything a tool can read about the edit when it runs. */
 export type ToolContext = {
@@ -44,6 +70,8 @@ export type ToolContext = {
   clips: { id: string; kind: "text" | "shape" | "media"; start: number; duration: number; label?: string }[];
   /** Canvas size. */
   resolution: { width: number; height: number };
+  /** Project fps, so frame blocks resolve to seconds. */
+  fps: number;
 };
 
 export const TOOL_PARAM_TYPES: ToolParamType[] = ["text", "number", "color", "select", "json"];
@@ -154,16 +182,98 @@ function resolveValue(value: unknown, vars: ToolVars): unknown {
   apply("clipId", vars.clipId);
   apply("selection", vars.selection.join(","));
   // A template that is now arithmetic ("$playhead + $index * 0.4") is evaluated to a number.
+  // A tiny recursive-descent parser: numbers, + - * / and parentheses only — no Function, no globals.
   if (value.includes("$")) {
-    try { const n = Function(`"use strict";return (${out})`)(); if (Number.isFinite(n)) return n; } catch { /* keep string */ }
+    const n = evalArithmetic(out);
+    if (n !== undefined) return n;
   }
   return out;
+}
+
+/** Evaluate + - * / and parentheses over numbers. Returns undefined for anything else. */
+function evalArithmetic(expr: string): number | undefined {
+  let pos = 0;
+  const skip = () => { while (pos < expr.length && /\s/.test(expr[pos])) pos++; };
+  const parseNum = (): number | undefined => {
+    skip();
+    const m = /^\d+(\.\d+)?/.exec(expr.slice(pos));
+    if (!m) return undefined;
+    pos += m[0].length;
+    return Number(m[0]);
+  };
+  const parsePrimary = (): number | undefined => {
+    skip();
+    if (expr[pos] === "(") { pos++; const v = parseExpr(); skip(); if (expr[pos] !== ")") return undefined; pos++; return v; }
+    if (expr[pos] === "-") { pos++; const v = parsePrimary(); return v === undefined ? undefined : -v; }
+    return parseNum();
+  };
+  const parseMul = (): number | undefined => {
+    let v = parsePrimary();
+    if (v === undefined) return undefined;
+    for (;;) {
+      skip();
+      const op = expr[pos];
+      if (op !== "*" && op !== "/") return v;
+      pos++;
+      const r = parsePrimary();
+      if (r === undefined) return undefined;
+      if (op === "/") { if (r === 0) return undefined; v = v / r; } else v = v * r;
+    }
+  };
+  const parseExpr = (): number | undefined => {
+    let v = parseMul();
+    if (v === undefined) return undefined;
+    for (;;) {
+      skip();
+      const op = expr[pos];
+      if (op !== "+" && op !== "-") return v;
+      pos++;
+      const r = parseMul();
+      if (r === undefined) return undefined;
+      v = op === "+" ? v + r : v - r;
+    }
+  };
+  const result = parseExpr();
+  skip();
+  return result !== undefined && pos === expr.length && Number.isFinite(result) ? result : undefined;
 }
 
 function resolveArgs(args: Record<string, unknown> | undefined, vars: ToolVars): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(args ?? {})) out[k] = resolveValue(v, vars);
   return out;
+}
+
+/**
+ * The shared argument conversions: JSON params parse (update_clip patches merge in),
+ * number params coerce (templates included), id lists become arrays, and the flat
+ * shape fields nest into the shape object.
+ */
+export function convertOpArgs(op: string, args: Record<string, unknown>): Record<string, unknown> {
+  for (const p of OP_PARAMS[op] ?? []) {
+    if (typeof args[p.key] !== "string") continue;
+    if (p.type === "json") {
+      let parsed: unknown;
+      try { parsed = JSON.parse(args[p.key] as string); } catch { throw new Error(`${op}: ${p.label} must be valid JSON`); }
+      if (parsed && typeof parsed === "object") {
+        if (op === "update_clip" && p.key === "patch") { delete args.patch; Object.assign(args, parsed); }
+        else args[p.key] = parsed;
+      }
+    }
+    if (p.type === "number") {
+      const n = Number(args[p.key]);
+      if (Number.isFinite(n)) args[p.key] = n;
+    }
+    if (p.key === "clipIds") {
+      const list = (args[p.key] as string).split(",").map((x) => x.trim()).filter(Boolean);
+      if (list.length) args[p.key] = list;
+    }
+  }
+  if (op === "add_shape_clip" && args.shape === undefined) {
+    args.shape = { type: args.shapeType ?? "rectangle", width: args.width, height: args.height, fill: args.fill };
+    delete args.shapeType; delete args.width; delete args.height; delete args.fill;
+  }
+  return args;
 }
 
 /** Compile a block program into timeline operations for one context. Throws readable errors. */
@@ -174,35 +284,7 @@ export function compileBlocks(blocks: ToolBlock[], ctx: ToolContext, into: Timel
       if (block.kind === "comment") continue;
       if (block.kind === "op") {
         if (!block.op || typeof block.op !== "string") throw new Error("an op block needs an operation name");
-        const args = resolveArgs(block.args, vars);
-        const params = OP_PARAMS[block.op] ?? [];
-        for (const p of params) {
-          if (typeof args[p.key] !== "string") continue;
-          // JSON-typed params (objects or arrays) are parsed; update_clip patches merge into the op args.
-          if (p.type === "json") {
-            let parsed: unknown;
-            try { parsed = JSON.parse(args[p.key] as string); } catch { throw new Error(`${block.op}: ${p.label} must be valid JSON`); }
-            if (parsed && typeof parsed === "object") {
-              if (block.op === "update_clip" && p.key === "patch") { delete args.patch; Object.assign(args, parsed); }
-              else args[p.key] = parsed;
-            }
-          }
-          // Number-typed params become numbers, including templates like "$playhead + 0.4".
-          if (p.type === "number") {
-            const n = Number(args[p.key]);
-            if (Number.isFinite(n)) args[p.key] = n;
-          }
-          // Id lists ("$selection" or "a,b") become arrays.
-          if (p.key === "clipIds") {
-            const list = (args[p.key] as string).split(",").map((x) => x.trim()).filter(Boolean);
-            if (list.length) args[p.key] = list;
-          }
-        }
-        // add_shape_clip takes a nested shape object; the block editor edits it flat.
-        if (block.op === "add_shape_clip" && args.shape === undefined) {
-          args.shape = { type: args.shapeType ?? "rectangle", width: args.width, height: args.height, fill: args.fill };
-          delete args.shapeType; delete args.width; delete args.height; delete args.fill;
-        }
+        const args = convertOpArgs(block.op, resolveArgs(block.args, vars));
         if (into.length >= 100) throw new Error("the tool expands to more than 100 operations; the batch limit");
         into.push({ op: block.op, args });
       } else if (block.kind === "repeat") {
@@ -274,9 +356,300 @@ export function makeCodeApi(ctx: ToolContext) {
   };
 }
 
-/** Run a tool in either mode. */
+/**
+ * The child-friendly block palette for the full-screen studio. Each block maps
+ * to one timeline operation with ready-made arguments; editors only touch the
+ * listed params. Raw operations stay available through the Advanced block.
+ */
+export type FriendlyBlock = {
+  id: string;
+  label: string;
+  group: "Create" | "Animate" | "Style" | "Clips" | "Timing" | "Advanced";
+  op: string;
+  args?: Record<string, unknown>;
+  params: ToolParam[];
+  description: string;
+};
+
+const P = {
+  clipId: { key: "clipId", label: "Clip", type: "text", def: "$clipId", placeholder: "$clipId or connect a clip" } as ToolParam,
+  start: { key: "start", label: "Start (s)", type: "number", def: "$playhead", min: 0, max: 86400, step: 0.1 } as ToolParam,
+  duration: { key: "duration", label: "Duration (s)", type: "number", def: 3, min: 0.1, max: 3600, step: 0.1 } as ToolParam,
+  preset: (id: string) => ({ key: "preset", label: "Preset", type: "select", def: id, options: [id] } as ToolParam),
+};
+
+export const BLOCK_LIBRARY: FriendlyBlock[] = [
+  { id: "add-title", label: "Add title", group: "Create", op: "add_text_clip", description: "Adds a text clip with your words.",
+    args: { text: "Your title", duration: 3 },
+    params: [{ key: "text", label: "Text", type: "text", def: "Your title" }, P.start, P.duration, { key: "font", label: "Font", type: "select", def: "inter", options: ["inter", "playfair-display", "anton", "bebas-neue", "caveat"] }] },
+  { id: "add-shape", label: "Add shape", group: "Create", op: "add_shape_clip", description: "Adds a rectangle, ellipse or line.",
+    args: { duration: 3, shapeType: "rectangle", width: 0.3, height: 0.2, fill: "#f6a447" },
+    params: [{ key: "shapeType", label: "Shape", type: "select", def: "rectangle", options: ["rectangle", "ellipse", "line"] }, { key: "width", label: "Width", type: "number", def: 0.3, min: 0.01, max: 1, step: 0.01 }, { key: "height", label: "Height", type: "number", def: 0.2, min: 0.01, max: 1, step: 0.01 }, { key: "fill", label: "Colour", type: "color", def: "#f6a447" }, P.start, P.duration] },
+  { id: "move", label: "Move", group: "Animate", op: "update_clip", description: "Moves a clip to a position.",
+    args: { x: 0.3, y: 0.5 },
+    params: [P.clipId, { key: "x", label: "X (0..1)", type: "number", def: 0.3, min: 0, max: 1, step: 0.01 }, { key: "y", label: "Y (0..1)", type: "number", def: 0.5, min: 0, max: 1, step: 0.01 }] },
+  { id: "grow", label: "Grow", group: "Animate", op: "set_keyframes", description: "Grows a clip from small to full size.",
+    args: { property: "scale", keyframes: "[{ \"time\": 0, \"value\": 0.2, \"easing\": \"back-out\" }, { \"time\": 0.8, \"value\": 1 }]" },
+    params: [P.clipId, { key: "keyframes", label: "Keyframes (JSON)", type: "json", def: "[{ \"time\": 0, \"value\": 0.2, \"easing\": \"back-out\" }, { \"time\": 0.8, \"value\": 1 }]" }] },
+  { id: "spin", label: "Spin", group: "Animate", op: "set_keyframes", description: "Spins a clip all the way around.",
+    args: { property: "rotation", keyframes: "[{ \"time\": 0, \"value\": 0 }, { \"time\": 1.2, \"value\": 360 }]" },
+    params: [P.clipId, { key: "keyframes", label: "Keyframes (JSON)", type: "json", def: "[{ \"time\": 0, \"value\": 0 }, { \"time\": 1.2, \"value\": 360 }]" }] },
+  { id: "fade-in", label: "Fade in", group: "Animate", op: "apply_motion", description: "Fades a clip in softly.",
+    args: { preset: "fade", duration: 0.8 }, params: [P.clipId, P.preset("fade"), { key: "duration", label: "Duration (s)", type: "number", def: 0.8, min: 0.1, max: 60, step: 0.1 }] },
+  { id: "spring-in", label: "Spring in", group: "Animate", op: "apply_motion", description: "Bounces a clip into place.",
+    args: { preset: "spring", duration: 0.8 }, params: [P.clipId, P.preset("spring"), { key: "duration", label: "Duration (s)", type: "number", def: 0.8, min: 0.1, max: 60, step: 0.1 }] },
+  { id: "bounce-in", label: "Drop in", group: "Animate", op: "apply_motion", description: "Drops a clip from above.",
+    args: { preset: "bounce-in", duration: 0.9 }, params: [P.clipId, P.preset("bounce-in"), { key: "duration", label: "Duration (s)", type: "number", def: 0.9, min: 0.1, max: 60, step: 0.1 }] },
+  { id: "wobble", label: "Wobble", group: "Animate", op: "apply_motion", description: "Rocks a clip side to side.",
+    args: { preset: "wobble", duration: 1 }, params: [P.clipId, P.preset("wobble"), { key: "duration", label: "Duration (s)", type: "number", def: 1, min: 0.1, max: 60, step: 0.1 }] },
+  { id: "orbit", label: "Orbit", group: "Animate", op: "animate_code", description: "Floats a clip in a circle forever.",
+    args: { expressions: "{ \"x\": \"0.5 + 0.15 * cos(t * 1.5)\", \"y\": \"0.5 + 0.15 * sin(t * 1.5)\" }" },
+    params: [P.clipId, { key: "expressions", label: "Expressions (JSON)", type: "json", def: "{ \"x\": \"0.5 + 0.15 * cos(t * 1.5)\", \"y\": \"0.5 + 0.15 * sin(t * 1.5)\" }" }] },
+  { id: "bold-text", label: "Bold text", group: "Style", op: "update_clip", description: "Makes a text clip bold Inter.",
+    args: { patch: "{ \"font\": \"inter\", \"fontWeight\": 700 }" },
+    params: [P.clipId, { key: "patch", label: "Patch (JSON)", type: "json", def: "{ \"font\": \"inter\", \"fontWeight\": 700 }" }] },
+  { id: "color-text", label: "Text colour", group: "Style", op: "update_clip", description: "Changes a text clip's colour.",
+    args: { patch: "{ \"textColor\": \"#f6a447\" }" },
+    params: [P.clipId, { key: "patch", label: "Patch (JSON)", type: "json", def: "{ \"textColor\": \"#f6a447\" }" }] },
+  { id: "delete-clip", label: "Delete clip", group: "Clips", op: "remove_clip", description: "Removes a clip from the timeline.",
+    args: {}, params: [P.clipId] },
+  { id: "duplicate-clip", label: "Duplicate clip", group: "Clips", op: "duplicate_clip", description: "Copies a clip.",
+    args: {}, params: [P.clipId, { key: "start", label: "Start (s)", type: "number", def: "$playhead", min: 0, max: 86400, step: 0.1 }] },
+  { id: "stagger", label: "Stagger selection", group: "Timing", op: "stagger_clips", description: "Spreads the selected clips out in time.",
+    args: { delay: 0.15 }, params: [{ key: "clipIds", label: "Clips", type: "text", def: "$selection", placeholder: "$selection" }, { key: "start", label: "Start (s)", type: "number", def: "$playhead", min: 0, max: 86400, step: 0.1 }, { key: "delay", label: "Gap (s)", type: "number", def: 0.15, min: 0, max: 60, step: 0.05 }] },
+  { id: "beat-markers", label: "Beat markers", group: "Timing", op: "add_beat_markers", description: "Drops markers on every beat.",
+    args: { bpm: 120, count: 8 }, params: [{ key: "bpm", label: "BPM", type: "number", def: 120, min: 20, max: 300, step: 1 }, { key: "count", label: "Count", type: "number", def: 8, min: 2, max: 64, step: 1 }] },
+  { id: "advanced", label: "Advanced op", group: "Advanced", op: "update_clip", description: "Any timeline operation, with raw JSON.",
+    args: { clipId: "$clipId", patch: "{}" },
+    params: [{ key: "__op", label: "Operation", type: "select", def: "update_clip", options: OP_IDS }, { key: "args", label: "Arguments (JSON)", type: "json", def: "{}" }] },
+];
+export const BLOCK_MAP = new Map(BLOCK_LIBRARY.map((b) => [b.id, b]));
+export const BLOCK_GROUPS = ["Create", "Animate", "Style", "Clips", "Timing", "Advanced"] as const;
+
+/** Params of a friendly block that a clip can connect to. */
+export function clipConnectableKeys(block: FriendlyBlock): string[] {
+  return block.params.filter((p) => p.key === "clipId" || p.key === "clipIds").map((p) => p.key);
+}
+
+/** Params of a friendly block that a frame can connect to (they become seconds). */
+export function frameConnectableKeys(block: FriendlyBlock): string[] {
+  return block.params.filter((p) => ["start", "delay"].includes(p.key)).map((p) => p.key);
+}
+
+/** The params of an operation that a clip or frame connection can fill. */
+export function connectableParamKeys(op: string): { clip: string[]; frame: string[] } {
+  const params = OP_PARAMS[op] ?? [];
+  const keys = params.map((p) => p.key);
+  return {
+    clip: keys.filter((k) => k === "clipId" || k === "clipIds"),
+    frame: keys.filter((k) => k === "start" || k === "delay"),
+  };
+}
+
+export type GraphIssue = { nodeId?: string; level: "error" | "warning"; message: string };
+
+/**
+ * Validate a studio graph and return readable, node-specific issues.
+ * Detached blocks are warnings; anything that would break the run is an error.
+ */
+export function validateGraph(graph: ToolGraph, ctx: ToolContext): GraphIssue[] {
+  const issues: GraphIssue[] = [];
+  const nodes = new Map(graph.nodes.map((n) => [n.id, n]));
+  const label = (id: string) => {
+    const n = nodes.get(id);
+    if (!n) return "a deleted block";
+    if (n.type === "action") return n.block ? BLOCK_MAP.get(n.block)?.label ?? n.block : n.op ?? "a block";
+    return n.type;
+  };
+  const starts = graph.nodes.filter((n) => n.type === "start");
+  if (!starts.length) issues.push({ level: "error", message: "The tool needs a Start block." });
+  const nextCount = new Map<string, number>(), bodyCount = new Map<string, number>(), inCount = new Map<string, number>();
+  const outgoing = new Map<string, ToolGraphEdge[]>();
+  for (const e of graph.edges) {
+    if (!nodes.has(e.source) || !nodes.has(e.target)) { issues.push({ level: "error", message: "A connection points at a deleted block." }); continue; }
+    if (e.source === e.target) issues.push({ nodeId: e.source, level: "error", message: "A block cannot connect to itself." });
+    if (e.sourceHandle === "next") nextCount.set(e.source, (nextCount.get(e.source) ?? 0) + 1);
+    if (e.sourceHandle === "body") bodyCount.set(e.source, (bodyCount.get(e.source) ?? 0) + 1);
+    if (e.targetHandle === "in") inCount.set(e.target, (inCount.get(e.target) ?? 0) + 1);
+    if (e.sourceHandle === "next" || e.sourceHandle === "body") {
+      outgoing.set(e.source, [...(outgoing.get(e.source) ?? []), e]);
+    }
+  }
+  for (const [id, c] of Array.from(nextCount)) if (c > 1) issues.push({ nodeId: id, level: "error", message: "A block can only have one block after it." });
+  for (const [id, c] of Array.from(bodyCount)) if (c > 1) issues.push({ nodeId: id, level: "error", message: "A repeat or function can only have one first block in its body." });
+  for (const [id, c] of Array.from(inCount)) if (c > 1) issues.push({ nodeId: id, level: "error", message: "A block can only have one block before it." });
+  // Reachability and cycle detection from every start (and function bodies are entered via "body").
+  const reachable = new Set<string>();
+  const cycle = (startId: string): string | undefined => {
+    const stack: { id: string; path: Set<string> }[] = [{ id: startId, path: new Set() }];
+    while (stack.length) {
+      const { id, path } = stack.pop()!;
+      if (path.has(id)) return id;
+      reachable.add(id);
+      for (const o of Array.from(outgoing.get(id) ?? [])) stack.push({ id: o.target, path: new Set(Array.from(path).concat([id])) });
+    }
+    return undefined;
+  };
+  for (const s of starts) {
+    const c = cycle(s.id);
+    if (c) issues.push({ nodeId: c, level: "error", message: "These blocks form a loop — remove the connection that closes it." });
+  }
+  for (const n of graph.nodes) {
+    if (n.type === "start" || n.type === "clipRef" || n.type === "frame" || n.type === "function" || n.type === "comment") continue;
+    if (!reachable.has(n.id)) issues.push({ nodeId: n.id, level: "warning", message: `"${label(n.id)}" is not connected to Start, so it will not run.` });
+  }
+  // Action nodes: op known, JSON valid.
+  for (const n of graph.nodes) {
+    if (n.type !== "action") continue;
+    const op = n.op ?? (n.block ? BLOCK_MAP.get(n.block)?.op : undefined);
+    if (!op) { issues.push({ nodeId: n.id, level: "error", message: "Choose what this block does." }); continue; }
+    for (const p of OP_PARAMS[op] ?? []) {
+      if (p.type === "json" && typeof n.args?.[p.key] === "string") {
+        try { JSON.parse(n.args[p.key] as string); } catch { issues.push({ nodeId: n.id, level: "error", message: `${p.label} is not valid JSON.` }); }
+      }
+    }
+  }
+  // Control nodes.
+  for (const n of graph.nodes) {
+    if (n.type === "repeat" && !(Number(n.count) >= 1)) issues.push({ nodeId: n.id, level: "error", message: "Repeat needs a count of at least 1." });
+    if (n.type === "eachClip" && !["all", "text", "shape", "media", "selected"].includes(n.select ?? "all")) issues.push({ nodeId: n.id, level: "error", message: "For each clip needs a valid clip filter." });
+  }
+  // Functions: names, calls, recursion.
+  const fnNodes = graph.nodes.filter((n) => n.type === "function");
+  const fnNames = new Map<string, number>();
+  for (const f of fnNodes) if (f.name) fnNames.set(f.name, (fnNames.get(f.name) ?? 0) + 1);
+  for (const [name, c] of Array.from(fnNames)) if (c > 1) issues.push({ level: "error", message: `Two functions are both called "${name}".` });
+  for (const n of graph.nodes) {
+    if (n.type === "call" && !(fnNames.has(n.name ?? "") && (fnNames.get(n.name!) ?? 0) === 1)) issues.push({ nodeId: n.id, level: "error", message: `There is no function called "${n.name ?? ""}".` });
+  }
+  const fnById = new Map<string, ToolGraphNode>();
+  for (const f of fnNodes) if (f.name && (fnNames.get(f.name) ?? 0) === 1) fnById.set(f.name, f);
+  for (const f of fnNodes) {
+    // Recursion: can the function's body reach the function itself (directly or through calls)?
+    const seen = new Set<string>();
+    const stack: string[] = Array.from(outgoing.get(f.id) ?? []).map((o) => o.target);
+    let selfRef = false;
+    while (stack.length) {
+      const id = stack.pop()!;
+      if (id === f.id) { selfRef = true; break; }
+      if (seen.has(id)) continue;
+      seen.add(id);
+      for (const o of Array.from(outgoing.get(id) ?? [])) stack.push(o.target);
+      const n = nodes.get(id);
+      if (n?.type === "call" && n.name && fnById.has(n.name)) stack.push(fnById.get(n.name)!.id);
+    }
+    if (selfRef) issues.push({ nodeId: f.id, level: "error", message: `Function "${f.name}" cannot call itself.` });
+  }
+  // Param connections: clip and frame sources must land on matching fields.
+  for (const e of graph.edges) {
+    if (!e.targetHandle?.startsWith("param:")) continue;
+    const key = e.targetHandle.slice(6);
+    const src = nodes.get(e.source), dst = nodes.get(e.target);
+    if (src?.type === "clipRef" && !["clipId", "clipIds"].includes(key)) issues.push({ nodeId: e.target, level: "error", message: "A clip can only connect to a clip field." });
+    if (src?.type === "frame" && !["start", "delay"].includes(key)) issues.push({ nodeId: e.target, level: "error", message: "A frame can only connect to a time field." });
+    if (dst?.type !== "action") issues.push({ nodeId: e.target, level: "error", message: "Connections only fit on action blocks." });
+  }
+  // Clip references must still exist; frames must be whole numbers.
+  for (const n of graph.nodes) {
+    if (n.type === "clipRef" && n.clipId && !ctx.clips.some((c) => c.id === n.clipId)) issues.push({ nodeId: n.id, level: "error", message: "This clip no longer exists in the timeline." });
+    if (n.type === "frame" && (!(Number(n.frame) >= 0) || !Number.isInteger(Number(n.frame)))) issues.push({ nodeId: n.id, level: "error", message: "A frame needs to be a whole number, 0 or more." });
+  }
+  return issues;
+}
+
+/**
+ * Compile a studio graph into timeline operations: walk the chain from Start,
+ * expand Repeat and For-each-clip bodies, inline function calls, and resolve
+ * clip and frame connections into argument values. Throws on invalid graphs.
+ */
+export function compileGraph(graph: ToolGraph, ctx: ToolContext): TimelineOp[] {
+  const fatal = validateGraph(graph, ctx).find((i) => i.level === "error");
+  if (fatal) throw new Error(fatal.message);
+  const nodes = new Map(graph.nodes.map((n) => [n.id, n]));
+  const next = new Map<string, string>(), body = new Map<string, string>();
+  const paramIn = new Map<string, ToolGraphEdge>();
+  for (const e of graph.edges) {
+    if (e.sourceHandle === "next") next.set(e.source, e.target);
+    else if (e.sourceHandle === "body") body.set(e.source, e.target);
+    else if (e.targetHandle?.startsWith("param:")) paramIn.set(`${e.target}:${e.targetHandle.slice(6)}`, e);
+  }
+  const functions = new Map<string, ToolGraphNode>();
+  for (const n of graph.nodes) if (n.type === "function" && n.name) functions.set(n.name, n);
+  const ops: TimelineOp[] = [];
+  const push = (op: string, args: Record<string, unknown>) => {
+    if (ops.length >= 100) throw new Error("the tool expands to more than 100 operations; the batch limit");
+    ops.push({ op, args });
+  };
+  const connectable = (op: string, key: string, kind: "clipRef" | "frame"): boolean => {
+    if (kind === "clipRef") return ["clipId", "clipIds"].includes(key);
+    return ["start", "delay"].includes(key);
+  };
+  const runChain = (id: string | undefined, vars: ToolVars, visited: Set<string>) => {
+    while (id) {
+      if (visited.has(id)) throw new Error("the blocks form a loop; remove the cycle");
+      visited.add(id);
+      const node = nodes.get(id);
+      if (!node) break;
+      if (node.type === "action") {
+        const op = node.op ?? (node.block ? BLOCK_MAP.get(node.block)?.op : undefined);
+        if (!op) throw new Error("a block is missing its operation");
+        const args = resolveArgs(node.args, vars);
+        // Connected clip and frame values override the editable fields.
+        for (const [slot, e] of Array.from(paramIn)) {
+          if (!slot.startsWith(`${node.id}:`)) continue;
+          const key = slot.split(":")[1];
+          const src = nodes.get(e.source);
+          if (!src || !connectable(op, key, src.type === "clipRef" ? "clipRef" : "frame")) continue;
+          if (src.type === "clipRef") args[key] = src.clipId ?? "";
+          else if (src.type === "frame") args[key] = (src.frame ?? 0) / Math.max(1, ctx.fps);
+        }
+        push(op, convertOpArgs(op, args));
+      } else if (node.type === "repeat") {
+        const count = Math.max(0, Math.min(1000, Math.round(Number(node.count) || 0)));
+        for (let i = 0; i < count; i++) runChain(body.get(id), { ...vars, index: i, count }, new Set(visited));
+      } else if (node.type === "eachClip") {
+        const select = node.select ?? "all";
+        const clips = ctx.clips.filter((c) => select === "all" || (select === "selected" ? ctx.selection.includes(c.id) : c.kind === select));
+        clips.forEach((c, i) => runChain(body.get(id ?? ""), { ...vars, clipId: c.id, index: i, count: clips.length }, new Set(visited)));
+      } else if (node.type === "call") {
+        const fn = functions.get(node.name ?? "");
+        if (!fn) throw new Error(`there is no function called "${node.name ?? ""}"`);
+        runChain(body.get(fn.id), { ...vars }, new Set(visited));
+      }
+      id = next.get(id);
+    }
+  };
+  const start = graph.nodes.find((n) => n.type === "start");
+  runChain(start ? next.get(start.id) : undefined, { ...ctx, index: 0, count: 1, clipId: "" }, new Set());
+  return ops;
+}
+
+/** Migrate a saved nested-blocks tool to the studio graph. */
+export function blocksToGraph(blocks: ToolBlock[]): ToolGraph {
+  const nodes: ToolGraphNode[] = [{ id: "start", type: "start", position: { x: 60, y: 60 } }];
+  const edges: ToolGraphEdge[] = [];
+  let y = 60;
+  const chain = (list: ToolBlock[], parentId: string, parentHandle: "next" | "body") => {
+    for (const block of list) {
+      const id = `n${nodes.length}`;
+      y += 140;
+      if (block.kind === "op") nodes.push({ id, type: "action", op: block.op, args: { ...block.args }, position: { x: 60, y } });
+      else if (block.kind === "comment") nodes.push({ id, type: "comment", text: block.text, position: { x: 60, y } });
+      else if (block.kind === "repeat") { nodes.push({ id, type: "repeat", count: block.count, position: { x: 60, y } }); chain(block.blocks, id, "body"); }
+      else if (block.kind === "eachClip") { nodes.push({ id, type: "eachClip", select: block.select, position: { x: 60, y } }); chain(block.blocks, id, "body"); }
+      edges.push({ id: `e${edges.length}`, source: parentId, sourceHandle: parentHandle, target: id, targetHandle: "in" });
+      parentId = id;
+      parentHandle = "next";
+    }
+  };
+  chain(blocks, "start", "next");
+  return { nodes, edges };
+}
+
+/** Run a tool in any mode. */
 export function runTool(tool: CustomTool, ctx: ToolContext): TimelineOp[] {
   if (tool.mode === "code") return runCodeTool(tool.code ?? "", ctx);
+  if (tool.graph) return compileGraph(tool.graph, ctx);
   return compileBlocks(tool.blocks ?? [], ctx);
 }
 
@@ -298,10 +671,10 @@ export function saveUserTools(tools: CustomTool[], storage: { getItem: (k: strin
 }
 
 /** Build a context from a live timeline. */
-export function toolContext(timeline: { clips: Clip[]; resolution: { width: number; height: number } }, playhead: number, selection: string[], duration: number): ToolContext {
+export function toolContext(timeline: { clips: Clip[]; resolution: { width: number; height: number }; fps?: number }, playhead: number, selection: string[], duration: number): ToolContext {
   const clips = timeline.clips
     .filter((c) => c.track !== "audio")
     .map((c) => ({ id: c.id, kind: (c.shape ? "shape" : c.assetId ? "media" : "text") as "text" | "shape" | "media", start: c.start, duration: (c.outPoint - c.inPoint) / (c.speed ?? 1), label: c.label ?? c.text?.slice(0, 40) }));
-  return { playhead, duration, selection: [...selection], clips, resolution: { ...timeline.resolution } };
+  return { playhead, duration, selection: [...selection], clips, resolution: { ...timeline.resolution }, fps: timeline.fps ?? 30 };
 }
 

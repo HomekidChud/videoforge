@@ -17,12 +17,12 @@ import { type Peer } from "@/components/forge-presence";
 import ForgeEffects, { type Effect } from "@/components/forge-effects";
 import ForgeGraphics, { applyGraphics } from "@/components/forge-graphics";
 import ForgeComposition from "@/components/forge-composition";
-import { applyTimelineOp } from "@shared/editing";
+import { applyTimelineOp, type TimelineOp } from "@shared/editing";
 import { fitReport } from "@shared/layout";
 import { WorkspaceDivider } from "@/components/forge-workspace";
 import ForgeMotion from "@/components/forge-motion";
 import { ForgeTools } from "@/components/forge-tools";
-import { runTool, toolContext, type CustomTool } from "@shared/custom-tools";
+import { toolContext } from "@shared/custom-tools";
 
 type SaveState = "empty" | "saved" | "dirty" | "saving" | "error" | "readonly";
 type Me = { id: string; scope: "read" | "write" | "admin" };
@@ -223,16 +223,15 @@ export default function EditorPage() {
     const clip: Clip = { id: uid(), assetId: "", track: "overlay", start: round(time), inPoint: 0, outPoint: 3, volume: 1, muted: false, text: preset?.text ?? "Your title", textSize: preset?.textSize ?? 8, ...(preset ? { y: preset.y, textBg: preset.textBg, font: preset.font, fontWeight: preset.fontWeight, lineHeight: preset.lineHeight, textTransform: preset.textTransform } : {}) };
     mutate((t) => ({ ...t, clips: [...t.clips, normalizeClip(clip)] })); setSelectedId(clip.id);
   };
-  const runCustomTool = (tool: CustomTool) => {
+  const runOps = (ops: TimelineOp[], label = "tool") => {
     if (readOnly) return;
     try {
-      const ctx = toolContext(tlRef.current, timeRef.current, selectedIds, timelineDuration(tlRef.current));
-      const ops = runTool(tool, ctx);
       if (!ops.length) return toast("The tool produced no operations.");
       mutate(() => ops.reduce((t, op) => applyTimelineOp(t, op, (id) => byId.get(id)), tlRef.current));
-      toast(`Ran ${tool.name}: ${ops.length} operation${ops.length === 1 ? "" : "s"}`);
+      toast(`Ran ${label}: ${ops.length} operation${ops.length === 1 ? "" : "s"}`);
     } catch (e: any) { toast(e.message || "The tool failed", "error"); }
   };
+  const getToolCtx = () => toolContext(tlRef.current, timeRef.current, selectedIds, timelineDuration(tlRef.current));
   const selectedIds = useMemo(() => sel.filter((id) => timeline.clips.some((c) => c.id === id)), [sel, timeline.clips]);
   const selIdsRef = useRef<string[]>([]); selIdsRef.current = selectedIds;
   const selected = timeline.clips.find((c) => c.id === selectedIds[selectedIds.length - 1]) ?? null;
@@ -500,7 +499,7 @@ export default function EditorPage() {
       style={{"--library-width":`${libraryOpen?libraryWidth:0}px`,"--inspector-width":`${inspectorOpen?inspectorWidth:0}px`,"--timeline-height":`${timelineHeight}px`} as React.CSSProperties}>
       <aside className="library" aria-label="Library">
         <div className="panel-tabs"><button className={panel === "media" ? "active" : ""} onClick={() => setPanel("media")}>Media</button><button className={panel === "effects" ? "active" : ""} onClick={() => setPanel("effects")} data-testid="tab-effects">Effects</button><button className={panel === "graphics" ? "active" : ""} onClick={() => setPanel("graphics")} data-testid="tab-graphics">Graphics</button><button className={panel === "tools" ? "active" : ""} onClick={() => setPanel("tools")} data-testid="tab-tools">Tools</button><button className={panel === "projects" ? "active" : ""} onClick={() => setPanel("projects")}>Projects</button></div>
-        {panel === "tools" ? <ForgeTools disabled={readOnly} onRun={runCustomTool} /> : panel === "graphics" ? <ForgeGraphics disabled={readOnly} onApply={op=>{if(readOnly)return;try{const t=tlRef.current,next=applyGraphics(t,op,timeRef.current),ids=next.clips.filter(c=>!t.clips.some(o=>o.id===c.id)).map(c=>c.id);mutate(()=>next);setSel(ids);toast(`Added ${ids.length} editable graphics clip${ids.length===1?"":"s"}`);}catch(e:any){toast(e.message,"error");}}}/> : panel === "effects" ? <ForgeEffects disabled={readOnly} onApply={(e) => applyEffect(e)} /> : panel === "media" ? <>
+        {panel === "tools" ? <ForgeTools disabled={readOnly} onRun={(ops) => runOps(ops)} onError={(m) => toast(m, "error")} getCtx={getToolCtx} /> : panel === "graphics" ? <ForgeGraphics disabled={readOnly} onApply={op=>{if(readOnly)return;try{const t=tlRef.current,next=applyGraphics(t,op,timeRef.current),ids=next.clips.filter(c=>!t.clips.some(o=>o.id===c.id)).map(c=>c.id);mutate(()=>next);setSel(ids);toast(`Added ${ids.length} editable graphics clip${ids.length===1?"":"s"}`);}catch(e:any){toast(e.message,"error");}}}/> : panel === "effects" ? <ForgeEffects disabled={readOnly} onApply={(e) => applyEffect(e)} /> : panel === "media" ? <>
           <label className={`dropzone ${readOnly ? "disabled" : ""}`} data-testid="button-upload">{upload ? <><Loader2 className="spin" size={18} /><span>Uploading {Math.round(upload.pct * 100)}%</span><i style={{ width: `${upload.pct * 100}%` }} /></> : <><Upload size={19} /><b>Import media</b><span>Video, audio or images — or drop files anywhere</span></>}
             <input type="file" multiple accept="video/*,audio/*,image/*" disabled={readOnly || !!upload} onChange={(e) => { if (e.target.files?.length) importFiles(e.target.files); e.target.value = ""; }} /></label>
           <div className="asset-list">

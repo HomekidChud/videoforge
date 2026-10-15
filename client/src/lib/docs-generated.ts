@@ -1327,7 +1327,7 @@ export const DOC_PAGES: DocPage[] = [
     "slug": "custom-tools",
     "group": "Studio",
     "title": "Custom tools",
-    "description": "Write your own one-click automations in JavaScript or snap them together from building blocks.",
+    "description": "Write your own one-click automations in JavaScript or snap them together in a full-screen block studio.",
     "sections": [
       {
         "title": "Your own tools",
@@ -1335,33 +1335,49 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Two ways to write one",
-        "text": "Every tool has a name, a description, and a program written in one of two modes. - **Blocks** snap together like building blocks, no code required: operation steps, repeat groups, for-each loops over clips, and notes. - **Code** is a short JavaScript function that receives a `vf` helper and returns operations. Duplicate a built-in example to get started; your tools are stored in your browser and run only against the timeline you have open."
+        "text": "Every tool has a name, a description, and a program written in one of two modes, both edited in the full-screen block studio. - **Blocks** is a canvas like Scratch: drag friendly blocks, connect them with lines, and run them — no code required. - **Code** is a short JavaScript function that receives a `vf` helper and returns operations. The studio's Code tab is a plain editor for coders. Duplicate a built-in example to get started; your tools are stored in your browser and run only against the timeline you have open."
       },
       {
-        "title": "Building blocks",
-        "text": "A block tool is a list of steps. Operation steps run one timeline operation, repeat groups run their steps N times, and for-each groups run their steps for every clip that matches a filter (all, text, shape, media, or the current selection). Inside those groups, `$clipId` refers to the current clip.",
+        "title": "The block studio",
+        "text": "Open any tool (or create one) and the studio takes over the screen. Blocks live in the palette on the left — drag them onto the canvas. Connect a block's bottom dot to the next block's top dot to say \"then do this\": the line snaps in place and that becomes the run order. A tool starts at the **Start** block and follows the lines. Control blocks (Repeat, For each clip, Function) have a second dot on their right side: connect blocks there to fill their body.",
         "rows": [
           [
-            "Block",
+            "Block family",
             "What it does"
           ],
           [
-            "Operation",
-            "runs one timeline operation such as add_text_clip or apply_motion"
+            "Create",
+            "add a title, shape or sticker"
           ],
           [
-            "Repeat",
-            "runs its steps N times with $index and $count"
+            "Animate",
+            "spin, grow, spring in, fade in, orbit, and more"
           ],
           [
-            "For each clip",
-            "runs its steps for every matching clip with $clipId"
+            "Style",
+            "bold or colour the text of a clip"
           ],
           [
-            "Note",
-            "a comment for future you; does nothing"
+            "Clips",
+            "delete or duplicate clips, stagger a selection, beat markers"
+          ],
+          [
+            "Timing",
+            "Repeat and For each clip run their connected blocks several times"
+          ],
+          [
+            "Flow",
+            "Function defines a named group; Call runs it by name"
           ]
         ]
+      },
+      {
+        "title": "Clips and frames",
+        "text": "Two special blocks plug your project straight into a tool. - **Import clips** lists every clip in the timeline — add one and it becomes a clip block on the canvas. - **Add frame** adds a frame block: a frame number that knows the project fps, so it shows the real seconds it stands for. Connect a clip block's right dot into a block's **clip** field (a purple dot on its left edge) to make that block act on that clip. Connect a frame block into a **time** field and it becomes that many seconds. One connection per field — dragging a new one replaces the old."
+      },
+      {
+        "title": "Errors, live",
+        "text": "The studio checks the graph as you edit. Problems turn the block red and collect in the error panel at the bottom of the screen: click a message to jump to the block. A missing Start, a block with two blocks after it, a loop that never ends, a function that calls itself, a clip that no longer exists — all are caught before anything runs. Disconnected blocks only get a warning, and running with errors is disabled until they are fixed. Run failures land in the same panel."
       },
       {
         "title": "Templates",

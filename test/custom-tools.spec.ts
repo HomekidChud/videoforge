@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { compileBlocks, runCodeTool, runTool, normalizeOps, loadUserTools, saveUserTools, toolContext, BUILT_IN_TOOLS, OP_PARAMS } from "../shared/custom-tools";
+import { compileBlocks, runCodeTool, runTool, normalizeOps, loadUserTools, saveUserTools, toolContext, BUILT_IN_TOOLS, OP_PARAMS, validateGraph, compileGraph, blocksToGraph } from "../shared/custom-tools";
 import { normalizeTimeline } from "../shared/timeline";
 import { applyTimelineOp } from "../shared/editing";
 
@@ -9,7 +9,7 @@ async function check(label: string, fn: () => void | Promise<void>) { await fn()
 const TOOL_TYPES = ["text", "number", "color", "select", "json"];
 
 const ctx = {
-  playhead: 2.5, duration: 12, selection: ["a", "b"],
+  playhead: 2.5, duration: 12, selection: ["a", "b"], fps: 30,
   clips: [
     { id: "a", kind: "text" as const, start: 0, duration: 4 },
     { id: "b", kind: "shape" as const, start: 1, duration: 4 },
@@ -140,6 +140,161 @@ await check("block limit", async () => {
   assert.throws(() => compileBlocks(blocks, ctx), /more than 100 operations/);
   const ok = compileBlocks([{ kind: "repeat", count: 50, blocks: [{ kind: "op", op: "add_text_clip", args: { text: "x" } }] }] as any, ctx);
   assert.equal(ok.length, 50);
+});
+
+console.log(`custom-tools.spec: ${checks} checks passed`);
+
+// ── Graph studio engine ──────────────────────────────────────────
+const G = (nodes: any[], edges: any[]) => ({ nodes, edges });
+const e = (source: string, sourceHandle: string, target: string, targetHandle: string) => ({ id: `e-${source}-${target}-${Math.random().toString(36).slice(2, 6)}`, source, sourceHandle, target, targetHandle });
+const pos = { x: 0, y: 0 };
+
+// The studio graph compiles a chain from Start.
+await check("compile graph chain", async () => {
+  const ops = compileGraph(G([
+    { id: "s", type: "start", position: pos },
+    { id: "t", type: "action", block: "add-title", args: { text: "Hi", start: "$playhead", duration: 2 }, position: pos },
+  ], [e("s", "next", "t", "in")]), ctx);
+  assert.equal(ops.length, 1);
+  assert.equal(ops[0].op, "add_text_clip");
+  assert.equal(ops[0].args.start, 2.5);
+});
+
+// Repeat and eachClip run their body; clip connections override param fields.
+await check("graph repeat, eachClip and clip connection", async () => {
+  const ops = compileGraph(G([
+    { id: "s", type: "start", position: pos },
+    { id: "r", type: "repeat", count: 2, position: pos },
+    { id: "m", type: "action", block: "spin", args: { clipId: "a" }, position: pos },
+    { id: "each", type: "eachClip", select: "shape", position: pos },
+    { id: "u", type: "action", block: "fade-in", args: { clipId: "a", duration: 1 }, position: pos },
+    { id: "clip", type: "clipRef", clipId: "b", select: "shape", position: pos },
+  ], [
+    e("s", "next", "r", "in"), e("r", "body", "m", "in"), e("r", "next", "each", "in"),
+    e("each", "body", "u", "in"), e("clip", "clip", "u", "param:clipId"),
+  ]), ctx);
+  assert.equal(ops.length, 3); // 2 spins + 1 fade-in for clip b (connected)
+  assert.deepEqual(ops[2].args, { clipId: "b", duration: 1 });
+});
+
+// A frame node connects into a time field and becomes seconds at the project fps.
+await check("graph frame connection becomes seconds", async () => {
+  const run = (frame: number) => compileGraph(G([
+    { id: "s", type: "start", position: pos },
+    { id: "f", type: "frame", frame, position: pos },
+    { id: "t", type: "action", block: "add-title", args: { text: "x", duration: 2 }, position: pos },
+  ], [e("s", "next", "t", "in"), e("f", "time", "t", "param:start")]), ctx);
+  assert.equal(run(60)[0].args.start, 2); // 60 frames / 30 fps
+  assert.ok(Math.abs((run(1)[0].args.start as number) - 1 / 30) < 1e-9); // frame 1 is not rounded away
+  assert.ok(Math.abs((run(29)[0].args.start as number) - 29 / 30) < 1e-9);
+});
+
+// A repeat can only have one first block in its body.
+await check("graph body multiplicity", async () => {
+  const issues = validateGraph(G([
+    { id: "s", type: "start", position: pos },
+    { id: "r", type: "repeat", count: 2, position: pos },
+    { id: "a", type: "action", block: "spin", args: { clipId: "a" }, position: pos },
+    { id: "b", type: "action", block: "spin", args: { clipId: "a" }, position: pos },
+  ], [e("s", "next", "r", "in"), e("r", "body", "a", "in"), e("r", "body", "b", "in")]), ctx);
+  assert.ok(issues.some((i) => i.level === "error" && /one first block/.test(i.message)));
+});
+
+// Functions are defined by name and inlined at call sites.
+await check("graph functions and calls", async () => {
+  const ops = compileGraph(G([
+    { id: "s", type: "start", position: pos },
+    { id: "c", type: "call", name: "intro", position: pos },
+    { id: "fn", type: "function", name: "intro", position: pos },
+    { id: "t", type: "action", block: "add-title", args: { text: "Intro" }, position: pos },
+  ], [
+    e("s", "next", "c", "in"), e("fn", "body", "t", "in"),
+  ]), ctx);
+  assert.equal(ops.length, 1);
+  assert.equal(ops[0].args.text, "Intro");
+  assert.throws(() => compileGraph(G([
+    { id: "s", type: "start", position: pos },
+    { id: "c", type: "call", name: "nope", position: pos },
+  ], [e("s", "next", "c", "in")]), ctx), /no function called/);
+});
+
+// Validation errors block running: cycles, missing start, two successors.
+await check("validate graph", async () => {
+  const two = validateGraph(G([
+    { id: "s", type: "start", position: pos },
+    { id: "a", type: "action", block: "spin", args: { clipId: "a" }, position: pos },
+    { id: "b", type: "action", block: "spin", args: { clipId: "a" }, position: pos },
+  ], [e("s", "next", "a", "in"), e("s", "next", "b", "in")]), ctx);
+  assert.ok(two.some((i) => i.level === "error" && /one block after/.test(i.message)));
+
+  const noStart = validateGraph(G([{ id: "a", type: "action", block: "spin", args: { clipId: "a" }, position: pos }], []), ctx);
+  assert.ok(noStart.some((i) => /Start block/.test(i.message)));
+
+  const cycle = G([
+    { id: "s", type: "start", position: pos },
+    { id: "a", type: "action", block: "spin", args: { clipId: "a" }, position: pos },
+    { id: "b", type: "action", block: "spin", args: { clipId: "a" }, position: pos },
+  ], [e("s", "next", "a", "in"), e("a", "next", "b", "in"), e("b", "next", "a", "in")]);
+  const cycleIssues = validateGraph(cycle, ctx);
+  assert.ok(cycleIssues.some((i) => i.level === "error" && /loop/.test(i.message)));
+  assert.throws(() => compileGraph(cycle, ctx), /loop|cycle|before it/);
+
+  const unreachable = validateGraph(G([
+    { id: "s", type: "start", position: pos },
+    { id: "a", type: "action", block: "spin", args: { clipId: "a" }, position: pos },
+    { id: "lost", type: "action", block: "spin", args: { clipId: "a" }, position: pos },
+  ], [e("s", "next", "a", "in")]), ctx);
+  assert.ok(unreachable.some((i) => i.level === "warning" && /not connected/.test(i.message)));
+
+  const badJson = validateGraph(G([
+    { id: "s", type: "start", position: pos },
+    { id: "t", type: "action", block: "bold-text", args: { clipId: "a", patch: "{oops" }, position: pos },
+  ], [e("s", "next", "t", "in")]), ctx);
+  assert.ok(badJson.some((i) => i.level === "error" && /JSON/.test(i.message)));
+
+  const recursion = validateGraph(G([
+    { id: "s", type: "start", position: pos },
+    { id: "c", type: "call", name: "f", position: pos },
+    { id: "fn", type: "function", name: "f", position: pos },
+    { id: "t", type: "action", block: "spin", args: { clipId: "a" }, position: pos },
+  ], [e("s", "next", "c", "in"), e("fn", "body", "t", "in"), e("t", "next", "c", "in")]), ctx);
+  assert.ok(recursion.some((i) => i.level === "error" && /itself/.test(i.message)));
+});
+
+// Old nested tools migrate to the graph without changing behaviour.
+await check("blocks migrate to graph", async () => {
+  const graph = blocksToGraph([
+    { kind: "comment", text: "note" },
+    { kind: "op", op: "add_text_clip", args: { text: "Hi" } },
+    { kind: "repeat", count: 2, blocks: [{ kind: "op", op: "remove_clip", args: { clipId: "a" } }] },
+  ]);
+  assert.ok(graph.nodes.some((n) => n.type === "start"));
+  assert.equal(graph.nodes.filter((n) => n.type === "repeat").length, 1);
+  const ops = compileGraph(graph, ctx);
+  assert.equal(ops.length, 3); // 1 add + 2 removes
+  assert.equal(ops[0].args.text, "Hi");
+});
+
+// runTool prefers the graph when present.
+await check("runTool with graph", async () => {
+  const graph = G([
+    { id: "s", type: "start", position: pos },
+    { id: "t", type: "action", block: "add-title", args: { text: "G", start: "$playhead", duration: 1 }, position: pos },
+  ], [e("s", "next", "t", "in")]);
+  const ops = runTool({ id: "x", name: "g", description: "", mode: "blocks", graph } as any, ctx);
+  assert.equal(ops.length, 1);
+});
+
+// The graph engine enforces the same 100-op cap.
+await check("graph op limit", async () => {
+  const nodes: any[] = [{ id: "s", type: "start", position: pos }];
+  const edges: any[] = [];
+  for (let i = 0; i < 60; i++) {
+    const id = `r${i}`;
+    nodes.push({ id, type: "repeat", count: 3, position: pos }, { id: `a${i}`, type: "action", block: "spin", args: { clipId: "a" }, position: pos });
+    edges.push(e(i === 0 ? "s" : `a${i - 1}`, "next", id, "in"), e(id, "body", `a${i}`, "in"));
+  }
+  assert.throws(() => compileGraph(G(nodes, edges), ctx), /more than 100 operations/);
 });
 
 console.log(`custom-tools.spec: ${checks} checks passed`);
