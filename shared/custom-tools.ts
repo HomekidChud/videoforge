@@ -1,6 +1,8 @@
 /** Custom tools: user-authored timeline automations, written in JavaScript or assembled from blocks. */
 import type { TimelineOp } from "./editing";
 import type { Clip } from "./timeline";
+import { MOTION_PRESETS } from "./presets";
+import { ANIMATABLE, EASINGS } from "./animation";
 
 export type ToolParamType = "text" | "number" | "color" | "select" | "json";
 export type ToolParam = {
@@ -247,7 +249,8 @@ function resolveArgs(args: Record<string, unknown> | undefined, vars: ToolVars):
 /**
  * The shared argument conversions: JSON params parse (update_clip patches merge in),
  * number params coerce (templates included), id lists become arrays, and the flat
- * shape fields nest into the shape object.
+ * shape fields nest into the shape object. Friendly from/to animation and text
+ * effect blocks expand here into the keyframes and patches the timeline ops need.
  */
 export function convertOpArgs(op: string, args: Record<string, unknown>): Record<string, unknown> {
   for (const p of OP_PARAMS[op] ?? []) {
@@ -269,11 +272,74 @@ export function convertOpArgs(op: string, args: Record<string, unknown>): Record
       if (list.length) args[p.key] = list;
     }
   }
+  // Animate-property blocks: from/to/duration/delay/easing expand into keyframes.
+  if (op === "set_keyframes" && args.keyframes === undefined && args.from !== undefined && args.to !== undefined) {
+    const from = Number(args.from), to = Number(args.to);
+    const duration = Math.max(0.01, Number(args.duration) || 1);
+    const delay = Math.max(0, Number(args.delay) || 0);
+    const easing = typeof args.easing === "string" && args.easing ? args.easing : "ease-out";
+    delete args.from; delete args.to; delete args.duration; delete args.delay; delete args.easing;
+    if (!Number.isFinite(from) || !Number.isFinite(to)) throw new Error("set_keyframes: from and to must be numbers");
+    args.keyframes = keyframesFromTo(from, to, duration, delay, easing);
+  }
+  // Text-effect blocks: mode/duration/delay expand into the textReveal patch.
+  if (op === "update_clip" && typeof args.__textRevealMode === "string") {
+    const mode = args.__textRevealMode;
+    delete args.__textRevealMode;
+    if (mode === "typewriter" || mode === "words" || mode === "lines") {
+      const duration = Math.max(0.1, Number(args.duration) || 1.5);
+      const delay = Math.max(0, Number(args.delay) || 0);
+      delete args.duration; delete args.delay;
+      args.textReveal = { mode, duration, delay };
+    }
+  }
+  // Colour-cycle blocks: the colour list and cycle time expand into the textColorCycle patch.
+  if (op === "update_clip" && typeof args.__colorCycle === "string") {
+    const steps = String(args.__colorCycle).split(",").map((s) => s.trim()).filter((s) => /^#[0-9a-fA-F]{6}$/.test(s)).slice(0, 8);
+    const duration = Math.max(0.2, Number(args.cycleDuration) || 2);
+    delete args.__colorCycle; delete args.cycleDuration;
+    if (steps.length >= 2) args.textColorCycle = { steps, duration };
+  }
   if (op === "add_shape_clip" && args.shape === undefined) {
     args.shape = { type: args.shapeType ?? "rectangle", width: args.width, height: args.height, fill: args.fill };
     delete args.shapeType; delete args.width; delete args.height; delete args.fill;
   }
   return args;
+}
+
+/** Standard ease-out bounce (a ball landing). */
+function bounceOut(t: number): number {
+  const n1 = 7.5625, d1 = 2.75;
+  if (t < 1 / d1) return n1 * t * t;
+  if (t < 2 / d1) { t -= 1.5 / d1; return n1 * t * t + 0.75; }
+  if (t < 2.5 / d1) { t -= 2.25 / d1; return n1 * t * t + 0.9375; }
+  t -= 2.625 / d1; return n1 * t * t + 0.984375;
+}
+
+/** Standard ease-out elastic (a spring wobbling to rest). */
+function elasticOut(t: number): number {
+  const c4 = (2 * Math.PI) / 3;
+  return t <= 0 ? 0 : t >= 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
+}
+
+/**
+ * Two keyframes from → to, or — for bounce/elastic, which the engine's bezier
+ * easings cannot express — a sampled curve of linear keyframes that approximates
+ * the same motion. Used identically by blocks and by the vf code helper.
+ */
+export function keyframesFromTo(from: number, to: number, duration: number, delay: number, easing: string): { time: number; value: number; easing?: string }[] {
+  const r = (n: number) => Math.round(n * 1000) / 1000;
+  if (easing === "bounce-out" || easing === "elastic-out") {
+    const curve = easing === "bounce-out" ? bounceOut : elasticOut;
+    const steps = 14;
+    const out: { time: number; value: number; easing?: string }[] = [];
+    for (let i = 0; i <= steps; i++) {
+      const p = curve(i / steps);
+      out.push({ time: r(delay + (duration * i) / steps), value: r(from + (to - from) * p) });
+    }
+    return out;
+  }
+  return [{ time: r(delay), value: from, easing }, { time: r(delay + duration), value: to }];
 }
 
 /** Compile a block program into timeline operations for one context. Throws readable errors. */
@@ -388,6 +454,18 @@ export function makeCodeApi(ctx: ToolContext) {
     keyframes: (id: string, property: string, keyframes: unknown[]) => op({ op: "set_keyframes", args: { clipId: needId(id), property, keyframes } }),
     animate: (id: string, expressions: Record<string, string>) => op({ op: "animate_code", args: { clipId: needId(id), expressions } }),
     markers: (bpm = 120, count = 8) => op({ op: "add_beat_markers", args: { bpm, count } }),
+    /** Animate a property from one value to another — the friendly keyframe block as code. */
+    animateProperty: (id: string, property: string, from: number, to: number, opts: { duration?: number; delay?: number; easing?: string } = {}) =>
+      op({ op: "set_keyframes", args: { clipId: needId(id), property, keyframes: keyframesFromTo(from, to, Math.max(0.01, opts.duration ?? 1), Math.max(0, opts.delay ?? 0), opts.easing ?? "ease-out") } }),
+    /** Type text on (typewriter), or reveal it word by word / line by line. */
+    textEffect: (id: string, mode: "typewriter" | "words" | "lines", opts: { duration?: number; delay?: number } = {}) =>
+      op({ op: "update_clip", args: { clipId: needId(id), textReveal: { mode, duration: Math.max(0.1, opts.duration ?? 1.5), delay: Math.max(0, opts.delay ?? 0) } } }),
+    /** Step a text clip's colour through a list of colours. */
+    colorCycle: (id: string, steps: string[], duration = 2) => {
+      const clean = steps.filter((s) => /^#[0-9a-fA-F]{6}$/.test(s)).slice(0, 8);
+      if (clean.length < 2) throw new Error("colorCycle needs at least two colours, like #e74c3c");
+      return op({ op: "update_clip", args: { clipId: needId(id), textColorCycle: { steps: clean, duration: Math.max(0.2, duration) } } });
+    },
   };
 }
 
@@ -415,6 +493,9 @@ export const VF_HELPERS: VfHelperDoc[] = [
   { name: "vf.stagger", signature: "vf.stagger(ids, opts?)", description: "Spreads clips out in time, one after another.", example: `return [vf.stagger(vf.selection, { delay: 0.2 })];` },
   { name: "vf.keyframes", signature: "vf.keyframes(id, property, keys)", description: "Animates a property over time with keyframes.", example: `return [vf.keyframes("clip1", "scale", [{ time: 0, value: 0.2, easing: "back-out" }, { time: 0.8, value: 1 }])];` },
   { name: "vf.animate", signature: "vf.animate(id, expressions)", description: "Animates with small formulas of t, like wiggle(2, 4).", example: `return [vf.animate("clip1", { rotation: "wiggle(2, 4)" })];` },
+  { name: "vf.animateProperty", signature: "vf.animateProperty(id, property, from, to, opts)", description: "Animates any property from one value to another, with an easing.", example: `return [vf.animateProperty("clip1", "scale", 0.2, 1, { duration: 0.8, easing: "back-out" })];` },
+  { name: "vf.textEffect", signature: "vf.textEffect(id, mode, opts)", description: "Types text on (typewriter) or reveals it word by word / line by line.", example: `return [vf.textEffect("clip1", "typewriter", { duration: 1.5 })];` },
+  { name: "vf.colorCycle", signature: "vf.colorCycle(id, colors, duration)", description: "Steps a text clip's colour through a list of colours.", example: `return [vf.colorCycle("clip1", ["#e74c3c", "#f1c40f", "#2ecc71"], 2)];` },
   { name: "vf.markers", signature: "vf.markers(bpm, count)", description: "Drops timeline markers on every beat.", example: `return [vf.markers(120, 8)];` },
 ];
 
@@ -441,7 +522,7 @@ export function codeErrorLine(error: string): number | null {
 export type FriendlyBlock = {
   id: string;
   label: string;
-  group: "Create" | "Animate" | "Style" | "Clips" | "Timing" | "Advanced";
+  group: "Create" | "Entrances" | "Exits" | "Attention" | "Springy" | "Camera" | "Animate" | "Text" | "Style" | "Clips" | "Timing" | "Advanced";
   op: string;
   args?: Record<string, unknown>;
   params: ToolParam[];
@@ -453,7 +534,26 @@ const P = {
   start: { key: "start", label: "Start (s)", type: "number", def: "$playhead", min: 0, max: 86400, step: 0.1 } as ToolParam,
   duration: { key: "duration", label: "Duration (s)", type: "number", def: 3, min: 0.1, max: 3600, step: 0.1 } as ToolParam,
   preset: (id: string) => ({ key: "preset", label: "Preset", type: "select", def: id, options: [id] } as ToolParam),
+  motionDuration: { key: "duration", label: "Duration (s)", type: "number", def: 0.8, min: 0.1, max: 60, step: 0.1 } as ToolParam,
+  motionDelay: { key: "delay", label: "Delay (s)", type: "number", def: 0, min: 0, max: 60, step: 0.1 } as ToolParam,
+  strength: { key: "strength", label: "Strength", type: "number", def: 1, min: 0.1, max: 2, step: 0.1 } as ToolParam,
+  animDuration: { key: "duration", label: "Duration (s)", type: "number", def: 1, min: 0.1, max: 60, step: 0.1 } as ToolParam,
+  animDelay: { key: "delay", label: "Delay (s)", type: "number", def: 0, min: 0, max: 60, step: 0.1 } as ToolParam,
 };
+
+/** The motion presets, grouped the way the palette shows them. */
+const PRESET_IDS: string[] = MOTION_PRESETS.map((p) => p.id);
+const presetOptions = (ids: string[]) => ({ key: "preset", label: "Move", type: "select", def: ids[0], options: ids } as ToolParam);
+const MOTION_GROUPS: { group: "Entrances" | "Exits" | "Attention" | "Springy" | "Camera"; ids: string[]; label: string; description: string }[] = [
+  { group: "Entrances", ids: ["fade", "slide-left", "slide-right", "rise", "drop", "pop", "zoom-out", "swing", "spin", "reveal"], label: "Enter the scene", description: "Brings a clip in with a move like fade, slide, pop or swing." },
+  { group: "Exits", ids: ["exit-left", "exit-right", "exit-up", "exit-down", "fade-out", "shrink-out", "spin-out", "pop-out", "reveal-out"], label: "Make an exit", description: "Sends a clip away — slide out, fade out, shrink or spin." },
+  { group: "Attention", ids: ["pulse", "shake", "wobble", "tada", "heartbeat", "blink", "flash", "glitch"], label: "Get attention", description: "Shakes, pulses or wobbles a clip so people look at it." },
+  { group: "Springy", ids: ["spring", "whip", "rubber", "bounce-in"], label: "Springy move", description: "Bouncy, elastic moves that overshoot and settle." },
+  { group: "Camera", ids: ["zoom", "drift"], label: "Camera move", description: "Slow zooms and drifts, like a camera moving." },
+];
+
+const ANIMATE_PROPERTY_OPTIONS = ["x", "y", "scale", "rotation", "opacity", "brightness", "contrast", "saturation", "reveal", "volume"];
+const EASING_OPTIONS = ["ease-out", "ease-in", "ease-in-out", "linear", "back-out", "snappy", "anticipate", "bounce-out", "elastic-out", "hold"];
 
 export const BLOCK_LIBRARY: FriendlyBlock[] = [
   { id: "add-title", label: "Add title", group: "Create", op: "add_text_clip", description: "Adds a text clip with your words.",
@@ -499,9 +599,80 @@ export const BLOCK_LIBRARY: FriendlyBlock[] = [
   { id: "advanced", label: "Advanced op", group: "Advanced", op: "update_clip", description: "Any timeline operation, with raw JSON.",
     args: { clipId: "$clipId", patch: "{}" },
     params: [{ key: "__op", label: "Operation", type: "select", def: "update_clip", options: OP_IDS }, { key: "args", label: "Arguments (JSON)", type: "json", def: "{}" }] },
+  // Motion presets, grouped for the palette.
+  ...MOTION_GROUPS.map((g) => ({
+    id: `motion-${g.group.toLowerCase()}`, label: g.label, group: g.group, op: "apply_motion", description: g.description,
+    args: { preset: g.ids[0], duration: 0.8 },
+    params: [P.clipId, presetOptions(g.ids), P.motionDuration, P.motionDelay, P.strength],
+  })),
+  // Keyframe animation: any property, from one value to another, with an easing.
+  { id: "animate-property", label: "Animate a property", group: "Animate", op: "set_keyframes", description: "Changes any property over time — position, size, spin, see-through, colour and more.",
+    args: { property: "scale", from: 0.2, to: 1, duration: 1, delay: 0, easing: "back-out" },
+    params: [P.clipId, { key: "property", label: "Property", type: "select", def: "scale", options: ANIMATE_PROPERTY_OPTIONS }, { key: "from", label: "From", type: "number", def: 0.2, min: -360, max: 360, step: 0.01 }, { key: "to", label: "To", type: "number", def: 1, min: -360, max: 360, step: 0.01 }, P.animDuration, P.animDelay, { key: "easing", label: "Easing", type: "select", def: "back-out", options: EASING_OPTIONS }] },
+  { id: "slide-in-left", label: "Slide in from left", group: "Animate", op: "set_keyframes", description: "Slides a clip in from the left edge.",
+    args: { property: "x", from: 0.15, to: 0.5, duration: 0.8, easing: "ease-out" },
+    params: [P.clipId, { key: "from", label: "From", type: "number", def: 0.15, min: 0, max: 1, step: 0.01 }, { key: "to", label: "To", type: "number", def: 0.5, min: 0, max: 1, step: 0.01 }, P.animDuration, P.animDelay, { key: "easing", label: "Easing", type: "select", def: "ease-out", options: EASING_OPTIONS }] },
+  { id: "slide-in-right", label: "Slide in from right", group: "Animate", op: "set_keyframes", description: "Slides a clip in from the right edge.",
+    args: { property: "x", from: 0.85, to: 0.5, duration: 0.8, easing: "ease-out" },
+    params: [P.clipId, { key: "from", label: "From", type: "number", def: 0.85, min: 0, max: 1, step: 0.01 }, { key: "to", label: "To", type: "number", def: 0.5, min: 0, max: 1, step: 0.01 }, P.animDuration, P.animDelay, { key: "easing", label: "Easing", type: "select", def: "ease-out", options: EASING_OPTIONS }] },
+  { id: "rise-up", label: "Rise up", group: "Animate", op: "set_keyframes", description: "Floats a clip up into place.",
+    args: { property: "y", from: 0.65, to: 0.5, duration: 0.9, easing: "ease-out" },
+    params: [P.clipId, { key: "from", label: "From", type: "number", def: 0.65, min: 0, max: 1, step: 0.01 }, { key: "to", label: "To", type: "number", def: 0.5, min: 0, max: 1, step: 0.01 }, P.animDuration, P.animDelay, { key: "easing", label: "Easing", type: "select", def: "ease-out", options: EASING_OPTIONS }] },
+  { id: "drop-down", label: "Drop down", group: "Animate", op: "set_keyframes", description: "Drops a clip down into place.",
+    args: { property: "y", from: 0.35, to: 0.5, duration: 0.9, easing: "bounce-out" },
+    params: [P.clipId, { key: "from", label: "From", type: "number", def: 0.35, min: 0, max: 1, step: 0.01 }, { key: "to", label: "To", type: "number", def: 0.5, min: 0, max: 1, step: 0.01 }, P.animDuration, P.animDelay, { key: "easing", label: "Easing", type: "select", def: "bounce-out", options: EASING_OPTIONS }] },
+  { id: "zoom-in", label: "Zoom in", group: "Animate", op: "set_keyframes", description: "Grows a clip from small to full size.",
+    args: { property: "scale", from: 0.3, to: 1, duration: 1, easing: "back-out" },
+    params: [P.clipId, { key: "from", label: "From", type: "number", def: 0.3, min: 0.1, max: 2, step: 0.01 }, { key: "to", label: "To", type: "number", def: 1, min: 0.1, max: 2, step: 0.01 }, P.animDuration, P.animDelay, { key: "easing", label: "Easing", type: "select", def: "back-out", options: EASING_OPTIONS }] },
+  { id: "spin-in", label: "Spin in", group: "Animate", op: "set_keyframes", description: "Twists a clip into place.",
+    args: { property: "rotation", from: -120, to: 0, duration: 1, easing: "ease-out" },
+    params: [P.clipId, { key: "from", label: "From", type: "number", def: -120, min: -360, max: 360, step: 1 }, { key: "to", label: "To", type: "number", def: 0, min: -360, max: 360, step: 1 }, P.animDuration, P.animDelay, { key: "easing", label: "Easing", type: "select", def: "ease-out", options: EASING_OPTIONS }] },
+  { id: "fade-in-soft", label: "Fade in slowly", group: "Animate", op: "set_keyframes", description: "Fades a clip in over time — great for subtitles.",
+    args: { property: "opacity", from: 0, to: 1, duration: 2, easing: "ease-out" },
+    params: [P.clipId, P.animDuration, P.animDelay, { key: "easing", label: "Easing", type: "select", def: "ease-out", options: EASING_OPTIONS }] },
+  { id: "fade-out-soft", label: "Fade out slowly", group: "Animate", op: "set_keyframes", description: "Fades a clip out over time.",
+    args: { property: "opacity", from: 1, to: 0, duration: 2, easing: "ease-in" },
+    params: [P.clipId, P.animDuration, P.animDelay, { key: "easing", label: "Easing", type: "select", def: "ease-in", options: EASING_OPTIONS }] },
+  { id: "draw-on", label: "Draw on", group: "Animate", op: "set_keyframes", description: "Uncovers a shape or video left to right, like it is being drawn.",
+    args: { property: "reveal", from: 0, to: 1, duration: 1.2, easing: "linear" },
+    params: [P.clipId, P.animDuration, P.animDelay] },
+  { id: "pulse-glow", label: "Pulsing glow", group: "Animate", op: "animate_code", description: "Makes a clip gently pulse brighter and dimmer, forever.",
+    args: { expressions: "{ \"brightness\": \"0.15 * sin(t * 3)\" }" },
+    params: [P.clipId, { key: "expressions", label: "Expressions (JSON)", type: "json", def: "{ \"brightness\": \"0.15 * sin(t * 3)\" }" }] },
+  { id: "parallax", label: "Parallax float", group: "Animate", op: "animate_code", description: "Floats a clip slowly sideways and up-down, like a background layer.",
+    args: { expressions: "{ \"x\": \"0.5 + 0.05 * sin(t * 0.4)\", \"y\": \"0.5 + 0.03 * cos(t * 0.3)\" }" },
+    params: [P.clipId, { key: "expressions", label: "Expressions (JSON)", type: "json", def: "{ \"x\": \"0.5 + 0.05 * sin(t * 0.4)\", \"y\": \"0.5 + 0.03 * cos(t * 0.3)\" }" }] },
+  // Text effects.
+  { id: "typewriter", label: "Typewriter", group: "Text", op: "update_clip", description: "Types a text clip on, character by character.",
+    args: { __textRevealMode: "typewriter", duration: 1.5, delay: 0 },
+    params: [P.clipId, { key: "duration", label: "Type time (s)", type: "number", def: 1.5, min: 0.2, max: 30, step: 0.1 }, { key: "delay", label: "Wait (s)", type: "number", def: 0, min: 0, max: 60, step: 0.1 }] },
+  { id: "reveal-words", label: "Reveal word by word", group: "Text", op: "update_clip", description: "Shows a text clip one word at a time.",
+    args: { __textRevealMode: "words", duration: 1.5, delay: 0 },
+    params: [P.clipId, { key: "duration", label: "Reveal time (s)", type: "number", def: 1.5, min: 0.2, max: 30, step: 0.1 }, { key: "delay", label: "Wait (s)", type: "number", def: 0, min: 0, max: 60, step: 0.1 }] },
+  { id: "reveal-lines", label: "Reveal line by line", group: "Text", op: "update_clip", description: "Shows a text clip one line at a time.",
+    args: { __textRevealMode: "lines", duration: 1.5, delay: 0 },
+    params: [P.clipId, { key: "duration", label: "Reveal time (s)", type: "number", def: 1.5, min: 0.2, max: 30, step: 0.1 }, { key: "delay", label: "Wait (s)", type: "number", def: 0, min: 0, max: 60, step: 0.1 }] },
+  { id: "color-cycle-text", label: "Colour cycle", group: "Text", op: "update_clip", description: "Steps a text clip through a rainbow of colours over time.",
+    args: { __colorCycle: "#e74c3c,#f1c40f,#2ecc71,#3498db,#9b59b6", cycleDuration: 2 },
+    params: [P.clipId, { key: "__colorCycle", label: "Colours (comma separated)", type: "text", def: "#e74c3c,#f1c40f,#2ecc71,#3498db,#9b59b6" }, { key: "cycleDuration", label: "Cycle time (s)", type: "number", def: 2, min: 0.5, max: 60, step: 0.1 }] },
+  { id: "stop-text-effects", label: "Stop text effects", group: "Text", op: "update_clip", description: "Turns the typewriter and colour effects off.",
+    args: { patch: "{ \"textReveal\": null, \"textColorCycle\": null }" },
+    params: [P.clipId, { key: "patch", label: "Patch (JSON)", type: "json", def: "{ \"textReveal\": null, \"textColorCycle\": null }" }] },
+  // Timing.
+  { id: "speed-up", label: "Speed up", group: "Timing", op: "update_clip", description: "Plays a clip faster (2 = double speed).",
+    args: { patch: "{ \"speed\": 1.5 }" },
+    params: [P.clipId, { key: "patch", label: "Patch (JSON)", type: "json", def: "{ \"speed\": 1.5 }" }] },
+  { id: "slow-mo", label: "Slow motion", group: "Timing", op: "update_clip", description: "Plays a clip in slow motion (0.5 = half speed).",
+    args: { patch: "{ \"speed\": 0.5 }" },
+    params: [P.clipId, { key: "patch", label: "Patch (JSON)", type: "json", def: "{ \"speed\": 0.5 }" }] },
+  { id: "reverse-motion", label: "Play motion backwards", group: "Timing", op: "reverse_animation", description: "Reverses a clip's animation, so it plays backwards.",
+    args: {}, params: [P.clipId] },
+  { id: "retime-motion", label: "Stretch motion", group: "Timing", op: "retime_animation", description: "Stretches or squeezes a clip's animation into a new time window.",
+    args: { duration: 2, delay: 0 },
+    params: [P.clipId, { key: "duration", label: "New duration (s)", type: "number", def: 2, min: 0.1, max: 60, step: 0.1 }, { key: "delay", label: "Delay (s)", type: "number", def: 0, min: 0, max: 60, step: 0.1 }] },
 ];
 export const BLOCK_MAP = new Map(BLOCK_LIBRARY.map((b) => [b.id, b]));
-export const BLOCK_GROUPS = ["Create", "Animate", "Style", "Clips", "Timing", "Advanced"] as const;
+export const BLOCK_GROUPS = ["Create", "Entrances", "Exits", "Attention", "Springy", "Camera", "Animate", "Text", "Style", "Clips", "Timing", "Advanced"] as const;
 
 /** Params of a friendly block that a clip can connect to. */
 export function clipConnectableKeys(block: FriendlyBlock): string[] {
@@ -575,7 +746,10 @@ export function validateGraph(graph: ToolGraph, ctx: ToolContext): GraphIssue[] 
     if (n.type === "start" || n.type === "clipRef" || n.type === "frame" || n.type === "function" || n.type === "comment") continue;
     if (!reachable.has(n.id)) issues.push({ nodeId: n.id, level: "warning", message: `"${label(n.id)}" is not connected to Start, so it will not run.` });
   }
-  // Action nodes: op known, JSON valid.
+  // Action nodes: op known, JSON valid, friendly fields sane.
+  const ANIMATABLE_KEYS = Object.keys(ANIMATABLE);
+  const EASING_IDS = [...Object.keys(EASINGS), "hold", "step-start", "bounce-out", "elastic-out"];
+  const numericish = (v: unknown) => typeof v === "number" || (typeof v === "string" && v.trim() !== "" && (v.includes("$") || Number.isFinite(Number(v))));
   for (const n of graph.nodes) {
     if (n.type !== "action") continue;
     const op = n.op ?? (n.block ? BLOCK_MAP.get(n.block)?.op : undefined);
@@ -584,6 +758,20 @@ export function validateGraph(graph: ToolGraph, ctx: ToolContext): GraphIssue[] 
       if (p.type === "json" && typeof n.args?.[p.key] === "string") {
         try { JSON.parse(n.args[p.key] as string); } catch { issues.push({ nodeId: n.id, level: "error", message: `${p.label} is not valid JSON.` }); }
       }
+    }
+    // Motion blocks: the preset must exist in the engine.
+    if (op === "apply_motion" && typeof n.args?.preset === "string" && !PRESET_IDS.includes(n.args.preset)) {
+      issues.push({ nodeId: n.id, level: "error", message: `"${n.args.preset}" is not a motion preset — pick one from the list.` });
+    }
+    // Animate-property blocks: property, easing and from/to must make sense.
+    if (op === "set_keyframes" && n.args?.keyframes === undefined && n.args?.from !== undefined) {
+      if (typeof n.args.property !== "string" || !ANIMATABLE_KEYS.includes(n.args.property)) issues.push({ nodeId: n.id, level: "error", message: "Pick a property to animate." });
+      if (typeof n.args.easing === "string" && n.args.easing && !EASING_IDS.includes(n.args.easing)) issues.push({ nodeId: n.id, level: "error", message: `"${n.args.easing}" is not an easing — pick one from the list.` });
+      if (!numericish(n.args.from) || !numericish(n.args.to)) issues.push({ nodeId: n.id, level: "error", message: "From and To must be numbers." });
+    }
+    // Text-effect blocks: mode, duration and delay must make sense.
+    if (op === "update_clip" && typeof n.args?.__textRevealMode === "string" && !["typewriter", "words", "lines"].includes(n.args.__textRevealMode)) {
+      issues.push({ nodeId: n.id, level: "error", message: "Pick a text effect: typewriter, words or lines." });
     }
   }
   // Control nodes.
@@ -820,12 +1008,23 @@ function argExpr(key: string, value: unknown, op: string, vars: CodeVars): strin
 function renderArgs(op: string, args: Record<string, unknown>, vars: CodeVars): { exprs: string[]; shape?: string } {
   const exprs: string[] = [];
   let shape: string | undefined;
+  const textRevealBlock = op === "update_clip" && typeof args.__textRevealMode === "string";
+  const colorCycleBlock = op === "update_clip" && typeof args.__colorCycle === "string";
   for (const key of Object.keys(args)) {
     if (op === "update_clip" && key === "patch") continue; // merged below
+    if (textRevealBlock && (key === "__textRevealMode" || key === "duration" || key === "delay")) continue; // synthesized below
+    if (colorCycleBlock && (key === "__colorCycle" || key === "cycleDuration")) continue; // synthesized below
     if (op === "add_shape_clip" && ["shapeType", "width", "height", "fill"].includes(key)) continue; // nested into shape
     exprs.push(`${JSON.stringify(key)}: ${argExpr(key, args[key], op, vars)}`);
   }
   if (op === "update_clip" && typeof args.patch === "string") exprs.push(`...(${jsonArgExpr(args.patch, vars)})`);
+  if (textRevealBlock && ["typewriter", "words", "lines"].includes(args.__textRevealMode as string)) {
+    exprs.push(`textReveal: { mode: ${JSON.stringify(args.__textRevealMode)}, duration: Math.max(0.1, Number(${argExpr("duration", args.duration ?? 1.5, op, vars)}) || 1.5), delay: Math.max(0, Number(${argExpr("delay", args.delay ?? 0, op, vars)}) || 0) }`);
+  }
+  if (colorCycleBlock) {
+    const steps = String(args.__colorCycle).split(",").map((s) => s.trim()).filter((s) => /^#[0-9a-fA-F]{6}$/.test(s)).slice(0, 8);
+    if (steps.length >= 2) exprs.push(`textColorCycle: { steps: ${JSON.stringify(steps)}, duration: Math.max(0.2, Number(${argExpr("cycleDuration", args.cycleDuration ?? 2, op, vars)}) || 2) }`);
+  }
   if (op === "add_shape_clip" && args.shape === undefined) {
     shape = `{ type: ${argExpr("shapeType", args.shapeType ?? "rectangle", op, vars)}, width: ${argExpr("width", args.width ?? 0.35, op, vars)}, height: ${argExpr("height", args.height ?? 0.2, op, vars)}, fill: ${argExpr("fill", args.fill ?? "#f6a447", op, vars)} }`;
   }
@@ -897,7 +1096,16 @@ export function graphToCode(graph: ToolGraph): string {
     const idExpr = argExpr("clipId", args.clipId ?? "$clipId", op, vars);
     const rawPush = () => `ops.push({ op: ${JSON.stringify(op)}, args: ${obj(rendered.exprs)} });`;
     let stmt: string;
-    if (op === "update_clip" && safeId(idExpr)) {
+    if (op === "update_clip" && typeof args.__textRevealMode === "string" && safeId(idExpr)) {
+      const mode = JSON.stringify(args.__textRevealMode);
+      const dur = `Math.max(0.1, Number(${argExpr("duration", args.duration ?? 1.5, op, vars)}) || 1.5)`;
+      const del = `Math.max(0, Number(${argExpr("delay", args.delay ?? 0, op, vars)}) || 0)`;
+      stmt = `ops.push(vf.textEffect(${idExpr}, ${mode}, { duration: ${dur}, delay: ${del} }));`;
+    } else if (op === "update_clip" && typeof args.__colorCycle === "string" && safeId(idExpr)) {
+      const steps = JSON.stringify(String(args.__colorCycle).split(",").map((s) => s.trim()).filter((s) => /^#[0-9a-fA-F]{6}$/.test(s)).slice(0, 8));
+      const dur = `Math.max(0.2, Number(${argExpr("cycleDuration", args.cycleDuration ?? 2, op, vars)}) || 2)`;
+      stmt = `ops.push(vf.colorCycle(${idExpr}, ${steps}, ${dur}));`;
+    } else if (op === "update_clip" && safeId(idExpr)) {
       const patch = obj(entries(["clipId"]));
       stmt = `ops.push(vf.update(${idExpr}, ${patch}));`;
     } else if (op === "remove_clip" && safeId(idExpr)) {
@@ -912,6 +1120,15 @@ export function graphToCode(graph: ToolGraph): string {
       const prop = argExpr("property", args.property, op, vars);
       const keys = argExpr("keyframes", args.keyframes, op, vars);
       stmt = `ops.push(vf.keyframes(${idExpr}, ${prop}, ${keys}));`;
+    } else if (op === "set_keyframes" && args.keyframes === undefined && args.from !== undefined && args.to !== undefined && safeId(idExpr)) {
+      // The friendly from/to animation block, as readable code.
+      const prop = argExpr("property", args.property ?? "scale", op, vars);
+      const from = `Number(${argExpr("from", args.from, op, vars)})`;
+      const to = `Number(${argExpr("to", args.to, op, vars)})`;
+      const dur = `Math.max(0.01, Number(${argExpr("duration", args.duration ?? 1, op, vars)}) || 1)`;
+      const del = `Math.max(0, Number(${argExpr("delay", args.delay ?? 0, op, vars)}) || 0)`;
+      const ease = argExpr("easing", args.easing ?? "ease-out", op, vars);
+      stmt = `ops.push(vf.animateProperty(${idExpr}, ${prop}, ${from}, ${to}, { duration: ${dur}, delay: ${del}, easing: ${ease} }));`;
     } else if (op === "animate_code" && ["clipId", "expressions"].every((k) => k in args) && safeId(idExpr)) {
       const expr = argExpr("expressions", args.expressions, op, vars);
       stmt = `ops.push(vf.animate(${idExpr}, ${expr}));`;

@@ -53,6 +53,10 @@ export type Clip = {
   lineHeight?: number; // 1..2, default 1.4
   letterSpacing?: number; // -0.05..0.25 em
   textTransform?: "none" | "uppercase";
+  /** Animated text reveal: typewriter (per character), words, or lines. */
+  textReveal?: { mode: "typewriter" | "words" | "lines"; duration?: number; delay?: number };
+  /** Steps the text colour through a list of colours over time. */
+  textColorCycle?: { steps: string[]; duration?: number };
 };
 
 export type Timeline = {
@@ -146,6 +150,18 @@ export function normalizeClip(raw: any): Clip {
   opt("textSize", raw.textSize, 2, 20, 6);
   if (FILTERS.includes(raw.filter) && raw.filter !== "none") clip.filter = raw.filter;
   if (typeof raw.textColor === "string" && /^#[0-9a-fA-F]{6}$/.test(raw.textColor) && raw.textColor.toLowerCase() !== "#ffffff") clip.textColor = raw.textColor.toLowerCase();
+  if (raw.textReveal && typeof raw.textReveal === "object" && text) {
+    const mode = raw.textReveal.mode;
+    if (mode === "typewriter" || mode === "words" || mode === "lines") {
+      const duration = round(num(raw.textReveal.duration, 0.1, 60, 1.5));
+      const delay = round(num(raw.textReveal.delay, 0, 60, 0));
+      clip.textReveal = delay > 0 ? { mode, duration, delay } : { mode, duration };
+    }
+  }
+  if (raw.textColorCycle && typeof raw.textColorCycle === "object" && text) {
+    const steps = Array.isArray(raw.textColorCycle.steps) ? raw.textColorCycle.steps.filter((s: unknown): s is string => typeof s === "string" && /^#[0-9a-fA-F]{6}$/.test(s)).slice(0, 8) : [];
+    if (steps.length >= 2) clip.textColorCycle = { steps, duration: round(num(raw.textColorCycle.duration, 0.2, 60, 2)) };
+  }
   if (raw.textBg === true) clip.textBg = true;
   if (raw.textFit === "none") clip.textFit = "none";
   opt("textMaxWidth", raw.textMaxWidth, .1, 1, .9);

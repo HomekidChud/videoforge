@@ -186,6 +186,30 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     const font = fontFile ? `:fontfile='${escPath(fontFile)}'` : process.env.VIDEOFORGE_FONT ? `:fontfile='${escPath(process.env.VIDEOFORGE_FONT)}'` : "";
     const tc:Clip=c.assetId ? {...c,assetId:"",x:.5,y:.82,scale:1,rotation:0,keyframes:undefined,expressions:undefined} : c;
     const n = files.length;
+    // Text reveal: lines get time windows; typewriter/word modes draw one step per window.
+    const reveal = c.textReveal && ["typewriter", "words", "lines"].includes(c.textReveal.mode) ? c.textReveal : undefined;
+    const rStart = c.start + (reveal?.delay ?? 0);
+    const lineWin = reveal ? (reveal.duration ?? 1.5) / Math.max(1, n) : 0;
+    const lineEnable = (j: number) => reveal ? `:enable='between(t,${(rStart + j * lineWin).toFixed(3)},1e5)'` : "";
+    const cycle = c.textColorCycle && c.textColorCycle.steps.length >= 2 ? c.textColorCycle : undefined;
+    const cycleDur = cycle?.duration ?? 2;
+    const cyclePer = cycle ? cycleDur / cycle.steps.length : 0;
+    const colorAt = (t: number) => cycle
+      ? cycle.steps[Math.max(0, Math.floor(((t - c.start) / cycleDur) * cycle.steps.length)) % cycle.steps.length]
+      : (c.textColor ?? "#ffffff");
+    const cumulativeChars = (text: string): string[] => {
+      const chars = Array.from(text);
+      const steps = Math.max(1, Math.min(chars.length, 64));
+      const out: string[] = [];
+      for (let k = 1; k <= steps; k++) out.push(chars.slice(0, Math.ceil((chars.length * k) / steps)).join(""));
+      return out;
+    };
+    const cumulativeWords = (text: string): string[] => {
+      const words = text.split(/\s+/).filter(Boolean);
+      const out: string[] = [];
+      for (let k = 1; k <= words.length; k++) out.push(words.slice(0, k).join(" "));
+      return out.length ? out : [text];
+    };
     // Optional line height and alignment, measured with the same metrics as the fit engine.
     const lh = c.lineHeight ? Math.round(size * c.lineHeight * 100) / 100 : undefined;
     const lineY = (j: number) => lh ? `(h-${n}*${lh})/2+${j}*${lh}+(${lh}-${size})/2` : n === 1 ? "(h-text_h)/2" : `(h-${n}*line_h)/2+${j}*line_h`;
@@ -215,7 +239,7 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
           fs.writeFileSync(file, ch);
           tempFiles.push(file);
           const x = align === "center" ? `(w-${px(lineW[j])})/2+${px(charX)}` : align === "left" ? `(w-${px(maxW)})/2+${px(charX)}` : `(w-${px(maxW)})/2+${px(maxW - lineW[j] + charX)}`;
-          lineFilters.push(draw(file, x, j, `:fontcolor=${color}:borderw=${Math.max(1, Math.round(size / 18))}:bordercolor=black@0.7`));
+          lineFilters.push(draw(file, x, j, `:fontcolor=${color}:borderw=${Math.max(1, Math.round(size / 18))}:bordercolor=black@0.7${lineEnable(j)}`));
         }
       });
       if (c.textBg) {
@@ -241,11 +265,36 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
         lineFilters = [...boxPass, "format=rgba", "colorchannelmixer=aa=0.55", "format=yuva420p", ...lineFilters];
       }
     } else if (c.textBg) {
-      lineFilters = n === 1 ? [draw(files[0], lineX(0), 0, `:fontcolor=${color}${box}`)]
+      lineFilters = n === 1 ? [draw(files[0], lineX(0), 0, `:fontcolor=${color}${box}${lineEnable(0)}`)]
         // Boxes are drawn opaque first and made translucent together, so overlapping lines do not darken twice.
-        : [...files.map((file, j) => draw(file, lineX(j), j, `:fontcolor=black@0:box=1:boxcolor=black@1:boxborderw=${Math.round(size * 0.35)}`)), "format=rgba", "colorchannelmixer=aa=0.55", "format=yuva420p", ...files.map((file, j) => draw(file, lineX(j), j, `:fontcolor=${color}`))];
+        : [...files.map((file, j) => draw(file, lineX(j), j, `:fontcolor=black@0:box=1:boxcolor=black@1:boxborderw=${Math.round(size * 0.35)}${lineEnable(j)}`)), "format=rgba", "colorchannelmixer=aa=0.55", "format=yuva420p", ...files.map((file, j) => draw(file, lineX(j), j, `:fontcolor=${color}${lineEnable(j)}`))];
+    } else if (reveal && reveal.mode !== "lines") {
+      // Typewriter / word-by-word: one drawtext per step, each in its own time window.
+      lineFilters = [];
+      lay.lines.forEach((line, j) => {
+        const parts = reveal.mode === "words" ? cumulativeWords(line) : cumulativeChars(line);
+        const step = Math.max(1 / fps, lineWin / Math.max(1, parts.length));
+        parts.forEach((part, k) => {
+          const file = path.join(tmpDir, `${jobId}_r${i}_${j}_${k}.txt`);
+          fs.writeFileSync(file, part);
+          tempFiles.push(file);
+          const hex = colorAt(rStart + j * lineWin + k * step).replace("#", "");
+          lineFilters.push(draw(file, lineX(j), j, `:fontcolor=0x${hex}${box}:enable='between(t,${(rStart + j * lineWin + k * step).toFixed(3)},1e5)'`));
+        });
+      });
     } else {
-      lineFilters = files.map((file, j) => draw(file, lineX(j), j, `:fontcolor=${color}${box}`));
+      // Plain text: one drawtext per line — plus one per colour step when cycling, each in its time window.
+      lineFilters = [];
+      const colors = cycle ? cycle.steps : [(c.textColor ?? "#ffffff")];
+      files.forEach((file, j) => {
+        colors.forEach((hex, k) => {
+          const enableParts: string[] = [];
+          if (reveal) enableParts.push(`between(t,${(rStart + j * lineWin).toFixed(3)},1e5)`);
+          if (cycle) enableParts.push(`between(mod(t-${f(c.start)},${f(cycleDur)}),${f(k * cyclePer)},${f((k + 1) * cyclePer)})`);
+          const enable = enableParts.length ? `:enable='${enableParts.join("*")}'` : "";
+          lineFilters.push(draw(file, lineX(j), j, `:fontcolor=0x${hex.replace("#", "")}${box}${enable}`));
+        });
+      });
     }
     const textChain=[`color=c=black@0:s=${W}x${H}:r=${fps}:d=${f(dur)}`,"format=yuva420p",...lineFilters,...transformFilters(tc,W,H,dur,true),`setpts=PTS+${f(c.start)}/TB`];
     filters.push(`${textChain.join(",")}[ct${i}]`);

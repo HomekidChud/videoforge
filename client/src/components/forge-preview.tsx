@@ -58,6 +58,26 @@ function MediaLayer({clip,asset,time,playing,source,hidden,muted,onError,timelin
 }
 
 type PreviewProps={timeline:Timeline;assets:AssetDTO[];time:number;playing:boolean;selectedId:string|null;readOnly:boolean;gesture:TimelineGesture;mediaUrl:(id:string,url:string)=>string;onError:(message:string)=>void;onValues:(id:string,values:Record<string,number>,live:boolean)=>void;onSelect?:(id:string|null,mode?:"replace"|"toggle")=>void;muted?:boolean;onDropEffect?:(effect:any)=>void;peers?:Peer[];onCursor?:(c:{area:"preview";x:number;y:number}|null)=>void};
+/** The visible part of a text clip's text at a moment in time, for reveal effects. */
+function revealedText(text: string, reveal: { mode: "typewriter" | "words" | "lines"; duration?: number; delay?: number } | undefined, start: number, time: number): string {
+  if (!reveal) return text;
+  const p = Math.min(1, Math.max(0, (time - start - (reveal.delay ?? 0)) / Math.max(0.01, reveal.duration ?? 1.5)));
+  if (p <= 0) return "";
+  if (reveal.mode === "words") { const words = text.split(/\s+/); return words.slice(0, Math.ceil(p * words.length)).join(" "); }
+  if (reveal.mode === "lines") { const lines = text.split("\n"); return lines.slice(0, Math.ceil(p * lines.length)).join("\n"); }
+  const chars = Array.from(text);
+  return chars.slice(0, Math.ceil(p * chars.length)).join("");
+}
+
+/** The current colour of a cycling text clip. */
+function cycledColor(cycle: { steps: string[]; duration?: number } | undefined, start: number, time: number): string | undefined {
+  if (!cycle || !cycle.steps.length) return undefined;
+  const per = Math.max(0.05, (cycle.duration ?? 2) / cycle.steps.length);
+  const elapsed = time - start;
+  if (elapsed < 0) return cycle.steps[0];
+  return cycle.steps[Math.floor(elapsed / per) % cycle.steps.length];
+}
+
 export default function ForgePreview({timeline,assets,time,playing,selectedId,readOnly,gesture,mediaUrl,onError,onValues,onSelect,muted,onDropEffect,peers,onCursor}:PreviewProps) {
   const [dropHot,setDropHot]=useState(false);
   const area=useRef<HTMLDivElement>(null),stage=useRef<HTMLDivElement>(null);
@@ -116,7 +136,7 @@ export default function ForgePreview({timeline,assets,time,playing,selectedId,re
           clipPath:revealClip(ev.reveal),opacity:(ev.opacity??1)*envelope(c,time),transform:`${g.transform} scale(${g.scale})`,filter:previewFilter(ev,size.width/timeline.resolution.width),
         }}/>;
       })}
-      {texts.map(c=>{const ev=evaluateClip(c,time),g=layerTransform(c.assetId?{...c,assetId:"",x:.5,y:.82,rotation:0,scale:1,keyframes:undefined}:ev),lay=textLayout(c,timeline.resolution),fitted=c.textFit!=="none";return <div key={`${c.id}-text`} data-layer={c.assetId?undefined:c.id} className="preview-caption" style={{left:`${g.x*100}%`,top:`${g.y*100}%`,fontSize:fitted?lay.fontSize*size.height/timeline.resolution.height*g.scale:Math.round(size.height*(c.textSize??6)/100*g.scale),maxWidth:fitted?"none":undefined,whiteSpace:fitted?"pre":undefined,color:c.textColor??"#ffffff",fontFamily:getFont(c.font).stack,fontWeight:c.fontWeight??400,textAlign:c.textAlign,lineHeight:c.lineHeight,letterSpacing:c.letterSpacing?`${c.letterSpacing}em`:undefined,textTransform:c.textTransform==="uppercase"?"uppercase":undefined,background:c.textBg?"rgba(0,0,0,.55)":undefined,padding:c.textBg?".25em .35em":0,opacity:(c.assetId?1:(ev.opacity??1))*envelope(c,time),transform:g.transform,filter:c.blur?`blur(${c.blur*.6}px)`:undefined,textShadow:c.textBg?"none":"0 1px 3px #000"}}>{fitted?lay.text:c.text}</div>;})}
+      {texts.map(c=>{const ev=evaluateClip(c,time),g=layerTransform(c.assetId?{...c,assetId:"",x:.5,y:.82,rotation:0,scale:1,keyframes:undefined}:ev),lay=textLayout(c,timeline.resolution),fitted=c.textFit!=="none",shown=revealedText(fitted?lay.text:(c.text??""),c.textReveal,c.start,time);return <div key={`${c.id}-text`} data-layer={c.assetId?undefined:c.id} className="preview-caption" style={{left:`${g.x*100}%`,top:`${g.y*100}%`,fontSize:fitted?lay.fontSize*size.height/timeline.resolution.height*g.scale:Math.round(size.height*(c.textSize??6)/100*g.scale),maxWidth:fitted?"none":undefined,whiteSpace:fitted?"pre":undefined,color:cycledColor(c.textColorCycle,c.start,time)??c.textColor??"#ffffff",fontFamily:getFont(c.font).stack,fontWeight:c.fontWeight??400,textAlign:c.textAlign,lineHeight:c.lineHeight,letterSpacing:c.letterSpacing?`${c.letterSpacing}em`:undefined,textTransform:c.textTransform==="uppercase"?"uppercase":undefined,background:c.textBg?"rgba(0,0,0,.55)":undefined,padding:c.textBg?".25em .35em":0,opacity:(c.assetId?1:(ev.opacity??1))*envelope(c,time),transform:g.transform,filter:c.blur?`blur(${c.blur*.6}px)`:undefined,textShadow:c.textBg?"none":"0 1px 3px #000"}}>{shown}</div>;})}
       {box&&!playing&&<div className="selection-frame" style={{left:box.l,top:box.t,width:box.w,height:box.h}} onPointerDown={e=>startDrag(e,"move")} data-testid="selection-frame"><span className="scale-handle" onPointerDown={e=>startDrag(e,"scale")} aria-label="Drag to scale"/></div>}
       {peers&&<PreviewCursors peers={peers}/>}
       {!timeline.clips.length&&<div className="preview-empty"><Film size={28}/><h3>Your next story starts here.</h3><p>Import media or add a title to begin.</p></div>}

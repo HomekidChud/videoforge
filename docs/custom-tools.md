@@ -26,11 +26,25 @@ Open any tool (or create one) and the studio takes over the screen. Blocks live 
 | Block family | What it does |
 |---|---|
 | Create | add a title, shape or sticker |
-| Animate | spin, grow, spring in, fade in, orbit, and more |
+| Entrances | every entrance move: fade, slide, rise, drop, pop, spring, swing, spin, wipe reveal and more |
+| Exits | slide out, fade out, shrink, spin out, pop out |
+| Attention | pulse, shake, wobble, tada, heartbeat, blink, flash, glitch |
+| Springy | spring, whip, rubber, bounce — the bouncy ones |
+| Camera | slow zoom and drift, like a moving camera |
+| Animate | animate any property from one value to another with an easing, plus ready-made moves and expression-driven floats and glows |
+| Text | typewriter, word-by-word and line-by-line reveal, colour cycling |
 | Style | bold or colour the text of a clip |
 | Clips | delete or duplicate clips, stagger a selection, beat markers |
-| Timing | Repeat and For each clip run their connected blocks several times |
+| Timing | stagger to beats, speed changes, reverse and stretch motion, Repeat and For each clip |
 | Flow | Function defines a named group; Call runs it by name |
+
+### Animating anything
+
+**Animate a property** is the keyframe block: pick a property (position, size, rotation, opacity, colour filters, reveal, volume), a **from** and a **to** value, a duration, a delay and an easing — including bounce and elastic, which the studio converts into keyframe curves for you. Ready-made variants cover the popular moves (slide in, rise up, drop, zoom, spin, fade), and **Draw on** uncovers shapes and videos left to right. Expression blocks like **Pulsing glow** and **Parallax float** animate forever with small formulas of time.
+
+### Text effects
+
+Text clips can be revealed over time: **Typewriter** types them on character by character, **Reveal word by word** and **Reveal line by line** show them progressively, and **Colour cycle** steps the colour through a rainbow. All of them preview in the editor and export to video. **Stop text effects** turns them off.
 
 Control blocks (Repeat, For each clip, Function) have a second dot on their right side: connect blocks there to fill their body.
 
@@ -60,6 +74,8 @@ Any string value in a block can hold a template that is resolved when the tool r
 | $selection | the selected clip ids, comma separated |
 
 Arithmetic works too: `"$playhead + $index * 0.4"` staggers each step from the playhead. Fields marked JSON (patches, keyframes, expressions) are parsed into objects, so an update step can carry any clip fields, including the new text style.
+
+Switching a blocks tool to the Code tab converts the graph into readable JavaScript that produces the same operations; the `vf` helpers cover everything the blocks can do, including `vf.animateProperty`, `vf.textEffect` and `vf.colorCycle`.
 
 ## Blocks ↔ code
 

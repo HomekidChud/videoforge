@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { compileBlocks, runCodeTool, runTool, normalizeOps, loadUserTools, saveUserTools, toolContext, BUILT_IN_TOOLS, OP_PARAMS, validateGraph, compileGraph, blocksToGraph, graphToCode, codeErrorLine, VF_HELPERS, TEMPLATE_DOCS } from "../shared/custom-tools";
+import { compileBlocks, runCodeTool, runTool, normalizeOps, loadUserTools, saveUserTools, toolContext, BUILT_IN_TOOLS, OP_PARAMS, validateGraph, compileGraph, blocksToGraph, graphToCode, codeErrorLine, VF_HELPERS, TEMPLATE_DOCS, BLOCK_LIBRARY, convertOpArgs } from "../shared/custom-tools";
+import { MOTION_PRESETS } from "../shared/presets";
 import { normalizeTimeline } from "../shared/timeline";
 import { applyTimelineOp } from "../shared/editing";
 
@@ -131,6 +132,94 @@ await check("graph compiles to code", async () => {
   assert.deepEqual(runCodeTool(code, ctxA), opsA, "converted code produces identical ops (ctx A)");
   assert.deepEqual(runCodeTool(code, ctxB), compileGraph(graph, ctxB), "converted code produces identical ops (ctx B)");
   assert.deepEqual(runCodeTool(code, { ...ctxB, fps: 60 }), compileGraph(graph, { ...ctxB, fps: 60 }), "fps changes are runtime-faithful");
+});
+
+// The animation expansion: motion groups, from/to keyframe synthesis, text effects.
+await check("motion and animation blocks", async () => {
+  const ids = BLOCK_LIBRARY.map((b) => b.id);
+  for (const id of ["motion-entrances", "motion-exits", "motion-attention", "motion-springy", "motion-camera", "animate-property", "slide-in-left", "slide-in-right", "rise-up", "drop-down", "zoom-in", "spin-in", "fade-in-soft", "fade-out-soft", "draw-on", "pulse-glow", "parallax", "typewriter", "reveal-words", "reveal-lines", "color-cycle-text", "stop-text-effects", "speed-up", "slow-mo", "reverse-motion", "retime-motion"]) {
+    assert.ok(ids.includes(id), `${id} is in the library`);
+  }
+  // Every motion preset option the palette offers exists in the engine.
+  const engineIds = MOTION_PRESETS.map((p) => p.id);
+  for (const block of BLOCK_LIBRARY.filter((b) => b.op === "apply_motion" && b.id.startsWith("motion-"))) {
+    const options = (block.params.find((p) => p.key === "preset")?.options ?? []);
+    assert.ok(options.length >= 2, `${block.id} offers presets`);
+    for (const o of options) assert.ok(engineIds.includes(o), `${block.id}: preset "${o}" exists in MOTION_PRESETS`);
+  }
+  // Animate-property blocks carry the full parameter set.
+  const ap = BLOCK_LIBRARY.find((b) => b.id === "animate-property");
+  assert.ok(ap && ap.params.some((p) => p.key === "property" && (p.options ?? []).includes("volume")), "property options include volume");
+  assert.ok(ap && ap.params.some((p) => p.key === "easing" && (p.options ?? []).includes("bounce-out")), "easing options include bounce-out");
+});
+
+await check("from/to blocks synthesize keyframes", async () => {
+  const graph: ToolGraph = {
+    nodes: [
+      { id: "start", type: "start" },
+      { id: "a", type: "action", block: "animate-property", args: { clipId: "a", property: "scale", from: 0.2, to: 1, duration: 1, delay: 0.5, easing: "back-out" } },
+      { id: "b", type: "action", block: "drop-down", args: { clipId: "a", property: "y", from: 0.35, to: 0.5, duration: 1, easing: "bounce-out" } },
+    ],
+    edges: [
+      { id: "e1", source: "start", sourceHandle: "next", target: "a", targetHandle: "in" },
+      { id: "e2", source: "a", sourceHandle: "next", target: "b", targetHandle: "in" },
+    ],
+  };
+  const ops = compileGraph(graph, ctx);
+  assert.deepEqual(ops[0].args.keyframes, [{ time: 0.5, value: 0.2, easing: "back-out" }, { time: 1.5, value: 1 }]);
+  const bounce = ops[1].args.keyframes as { time: number; value: number }[];
+  assert.equal(bounce.length, 15, "bounce easing is sampled into 15 linear keyframes");
+  assert.equal(bounce[0].value, 0.35);
+  assert.equal(bounce[14].value, 0.5);
+  assert.ok(bounce.every((k) => k.value >= 0.35 - 1e-9 && k.value <= 0.35 + (0.5 - 0.35) * 1.5), "bounce stays near the from..to range");
+  // The converted code runs the same ops.
+  const code = graphToCode(graph);
+  assert.ok(code.includes("vf.animateProperty"), "from/to blocks become vf.animateProperty");
+  assert.deepEqual(runCodeTool(code, ctx), ops);
+  // Non-numeric from/to is rejected with a readable error.
+  assert.throws(() => convertOpArgs("set_keyframes", { from: "abc", to: 1 }), /from and to must be numbers/);
+});
+
+await check("text effect blocks synthesize patches", async () => {
+  const graph: ToolGraph = {
+    nodes: [
+      { id: "start", type: "start" },
+      { id: "t", type: "action", block: "typewriter", args: { clipId: "a", __textRevealMode: "typewriter", duration: 2, delay: 0.5 } },
+      { id: "c", type: "action", block: "color-cycle-text", args: { clipId: "a", __colorCycle: "#e74c3c, #f1c40f, #2ecc71", cycleDuration: 3 } },
+    ],
+    edges: [
+      { id: "e1", source: "start", sourceHandle: "next", target: "t", targetHandle: "in" },
+      { id: "e2", source: "t", sourceHandle: "next", target: "c", targetHandle: "in" },
+    ],
+  };
+  const ops = compileGraph(graph, ctx);
+  assert.deepEqual(ops[0].args.textReveal, { mode: "typewriter", duration: 2, delay: 0.5 });
+  assert.deepEqual(ops[1].args.textColorCycle, { steps: ["#e74c3c", "#f1c40f", "#2ecc71"], duration: 3 });
+  const code = graphToCode(graph);
+  assert.ok(code.includes("vf.textEffect") && code.includes("vf.colorCycle"), "text blocks use the vf helpers");
+  assert.deepEqual(runCodeTool(code, ctx), ops);
+  // The vf helpers work directly in code tools too.
+  const direct = runCodeTool("return [vf.textEffect(\"a\", \"words\", { duration: 2 }), vf.colorCycle(\"a\", [\"#e74c3c\", \"#f1c40f\"], 2)];", ctx);
+  assert.deepEqual(direct[0].args.textReveal, { mode: "words", duration: 2, delay: 0 });
+  assert.deepEqual(direct[1].args.textColorCycle, { steps: ["#e74c3c", "#f1c40f"], duration: 2 });
+  assert.throws(() => runCodeTool("return [vf.colorCycle(\"a\", [\"#e74c3c\"], 2)];", ctx), /at least two colours/);
+});
+
+await check("animation validation is live", async () => {
+  const graph = (args: Record<string, unknown>, block = "animate-property"): ToolGraph => ({
+    nodes: [
+      { id: "start", type: "start" },
+      { id: "a", type: "action", block, args },
+    ],
+    edges: [{ id: "e1", source: "start", sourceHandle: "next", target: "a", targetHandle: "in" }],
+  });
+  const issues = (g: ToolGraph) => validateGraph(g, ctx).filter((i) => i.level === "error");
+  assert.equal(issues(graph({ clipId: "a", property: "scale", from: 0, to: 1 })).length, 0, "valid animate-property has no errors");
+  assert.ok(issues(graph({ clipId: "a", property: "nope", from: 0, to: 1 })).some((i) => /property/i.test(i.message)), "unknown property is flagged");
+  assert.ok(issues(graph({ clipId: "a", property: "scale", from: "abc", to: 1 })).some((i) => /numbers/i.test(i.message)), "non-numeric from/to is flagged");
+  assert.ok(issues(graph({ clipId: "a", property: "scale", from: 0, to: 1, easing: "warp" })).some((i) => /easing/i.test(i.message)), "unknown easing is flagged");
+  const motion = { nodes: [{ id: "start", type: "start" }, { id: "m", type: "action", block: "motion-entrances", args: { clipId: "a", preset: "teleport" } }], edges: [{ id: "e1", source: "start", sourceHandle: "next", target: "m", targetHandle: "in" }] } as ToolGraph;
+  assert.ok(validateGraph(motion, ctx).some((i) => i.level === "error" && /motion preset/i.test(i.message)), "unknown motion preset is flagged");
 });
 
 // Generated ops actually run against the timeline, atomically.

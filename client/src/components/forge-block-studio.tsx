@@ -112,7 +112,7 @@ function ActionNode({ data, selected }: NodeProps) {
   const update = (key: string, value: unknown) => { (data as any).__update(node.id, { args: { ...(node.args ?? {}), [key]: value } }); };
   return (
     <NodeShell tone="action" hasError={d.hasError} hasWarning={d.hasWarning}
-      title={block?.label ?? node.op ?? "Advanced op"} icon={block?.group === "Create" ? "＋" : block?.group === "Animate" ? "✦" : "★"}
+      title={block?.label ?? node.op ?? "Advanced op"} icon={block ? ({ Create: "＋", Entrances: "↗", Exits: "↘", Attention: "❗", Springy: "🌀", Camera: "🎥", Animate: "✦", Text: "T", Style: "✎", Clips: "🎞", Timing: "⏱" } as Record<string, string>)[block.group] ?? "★" : "★"}
       onDelete={(data as any).__delete ? () => (data as any).__delete(node.id) : undefined}>
       {block?.description ? <p className="bs-hint">{block.description}</p> : null}
       {advanced ? (
