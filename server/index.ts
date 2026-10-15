@@ -3,6 +3,7 @@ import express, { Response, NextFunction } from 'express';
 import type { Request } from 'express';
 import { registerRoutes } from "./routes";
 import { registerKeyRoutes, ensureOwnerKeyExists } from "./auth";
+import { storageDegraded } from "./storage";
 import { serveStatic } from "./static";
 import { createServer } from "node:http";
 
@@ -94,8 +95,32 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // ensure an admin key exists on first boot (writes data/OWNER_KEY.txt)
-  try { await ensureOwnerKeyExists(); } catch (e) { console.error("failed to create owner key:", e); }
+  // If the configured database could not be opened (e.g. the env points
+  // outside the mounted Render disk), the server boots on an in-memory DB for
+  // reads and health, but every mutating /api request is rejected with a 503
+  // that says exactly what to fix. Writes are REFUSED, never silently accepted
+  // into a disposable database that would lose them on redeploy.
+  if (storageDegraded) {
+    console.error(
+      "[boot] storage is degraded: the configured VIDEOFORGE_DB could not be opened. " +
+      "API write requests will be rejected with 503 until VIDEOFORGE_DB points at a " +
+      "writable file inside a mounted persistent disk. No owner key is created in this state."
+    );
+    app.use("/api", (req, res, next) => {
+      const mutating = !["GET", "HEAD", "OPTIONS"].includes(req.method);
+      if (mutating) {
+        return res.status(503).json({
+          message:
+            "storage is degraded: the configured database path is not writable, so nothing can be saved. " +
+            "Point VIDEOFORGE_DB at a file inside a mounted, writable persistent disk (e.g. /var/lib/<disk>/data.db) and redeploy.",
+        });
+      }
+      next();
+    });
+  } else {
+    // ensure an admin key exists on first boot (writes data/OWNER_KEY.txt)
+    try { await ensureOwnerKeyExists(); } catch (e) { console.error("failed to create owner key:", e); }
+  }
   registerKeyRoutes(app);
   await registerRoutes(httpServer, app);
 
@@ -137,4 +162,16 @@ app.use((req, res, next) => {
       log(`serving on port ${port}`);
     },
   );
+
+  // Graceful shutdown: close the optional MongoDB pool (no-op when not
+  // configured) and stop accepting connections.
+  const shutdown = async (signal: string) => {
+    log(`received ${signal}, shutting down`);
+    const { closeMongo } = await import("./mongo");
+    await closeMongo().catch(() => undefined);
+    httpServer.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 5_000).unref?.();
+  };
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
 })();

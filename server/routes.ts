@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import type { Server } from "node:http";
-import { storage } from "./storage";
+import { storage, storageDegraded } from "./storage";
 import { pipeline } from "node:stream/promises";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
@@ -17,11 +17,26 @@ import { GRAPHICS_SCHEMA, MOTION_TEMPLATES } from "@shared/graphics";
 import { buildRenderPlan, runFfmpeg } from "./render";
 import { requireScope, requireMediaAccess, projectAllowed, assetAllowed, keyRestrictions } from "./auth";
 import { actorOf, syncTimeline, logEvent, renameLive, dropLive, registerLiveRoutes } from "./live";
+import { mongoConfigured } from "./mongo";
 
 const MEDIA_DIR = path.resolve(process.env.VIDEOFORGE_MEDIA_DIR || "data/media");
 const OUTPUT_DIR = path.resolve(process.env.VIDEOFORGE_RENDER_DIR || "data/renders");
-fs.mkdirSync(MEDIA_DIR, { recursive: true });
-fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+
+// Best-effort: an unwritable directory must not crash the server at import
+// time (the same failure mode as an unmounted Render disk). Requests that
+// need these directories fail with a clear per-request error instead.
+function ensureDir(dir: string, label: string): void {
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch (e: any) {
+    console.warn(
+      `[routes] WARNING: cannot create the ${label} directory ${dir} (${e.code ?? e.message}). ` +
+      `Uploads and renders will fail until it points inside a mounted, writable disk.`
+    );
+  }
+}
+ensureDir(MEDIA_DIR, "media");
+ensureDir(OUTPUT_DIR, "renders");
 
 const MAX_UPLOAD_BYTES = Number(process.env.VIDEOFORGE_MAX_UPLOAD_MB || 2048) * 1048576;
 const now = () => Date.now();
@@ -106,7 +121,7 @@ function parseTimeline(json: string): Timeline {
 // ---------------------------------------------------------------
 
 const TMP_DIR = path.resolve("data/tmp");
-fs.mkdirSync(TMP_DIR, { recursive: true });
+ensureDir(TMP_DIR, "tmp");
 
 const SYSTEM = { id: "system", label: "VideoForge", scope: "admin" };
 async function runRender(jobId: string, projectId: string) {
@@ -154,7 +169,22 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   // ---------- health ----------
-  app.get("/api/health", (_req, res) => res.json({ ok: true, service: "videoforge-api", version: 1 }));
+  // mongo is optional: only reported when MONGODB_URI is configured, and a
+  // mongo outage never marks the whole API unhealthy (SQLite is the datastore).
+  app.get("/api/health", (_req, res) => {
+    const warnings: string[] = [];
+    if (storageDegraded) warnings.push("configured database path is not writable; the server is running on an in-memory database and rejects write requests (503) until VIDEOFORGE_DB points inside a mounted, writable persistent disk");
+    // Configuration status only — never pings the cluster, so an unreachable
+    // optional integration cannot delay or fail app liveness. Use
+    // `npm run mongo:check` to verify connectivity on demand.
+    res.json({
+      ok: !storageDegraded,
+      service: "videoforge-api",
+      version: 1,
+      ...(mongoConfigured() ? { mongo: "configured" } : {}),
+      ...(warnings.length ? { warnings } : {}),
+    });
+  });
 
   // Public sharing is read-only and opt-in. Never expose source assets or keys.
   app.get("/api/public/projects/:id", (req, res) => {

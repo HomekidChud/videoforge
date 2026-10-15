@@ -20,9 +20,46 @@ const DATA_ROOT = path.dirname(path.resolve(process.env.VIDEOFORGE_DB || "data.d
 // Preserve the original default media dir (data/media) so existing asset paths
 // keep working; VIDEOFORGE_MEDIA_DIR / VIDEOFORGE_RENDER_DIR are only opt-in.
 const DEFAULT_MEDIA_DIR = path.resolve("data/media");
-mkdirSync(DEFAULT_MEDIA_DIR, { recursive: true });
 
-const sqlite = new Database(process.env.VIDEOFORGE_DB || "data.db");
+// Non-fatal best-effort helper: a missing directory should produce clear
+// per-request errors, never an import-time crash of the whole server.
+function ensureDir(dir: string, label: string): void {
+  try {
+    mkdirSync(dir, { recursive: true });
+  } catch (e: any) {
+    console.warn(
+      `[storage] WARNING: cannot create the ${label} directory ${dir} (${e.code ?? e.message}). ` +
+      `Operations that write there will fail until this is fixed — check that the path ` +
+      `points inside a mounted, writable persistent disk.`
+    );
+  }
+}
+ensureDir(DEFAULT_MEDIA_DIR, "media");
+ensureDir(DATA_ROOT, "database");
+
+let sqlite: ReturnType<typeof Database>;
+const dbPath = process.env.VIDEOFORGE_DB || "data.db";
+/** True when the configured DB path failed and an in-memory fallback is in use. */
+export let storageDegraded = false;
+try {
+  sqlite = new Database(dbPath);
+} catch (e: any) {
+  // A configured-but-unopenable DB (e.g. the env points outside the mounted
+  // Render disk) must not crash the process at import time, but it must also
+  // never accept data into a disposable database: writes would be silently
+  // lost on redeploy. So the server boots on an IN-MEMORY database for reads
+  // and health, marks itself degraded, and every mutating /api request is
+  // rejected with a 503 carrying the fix (see index.ts). Fixing the env
+  // (point VIDEOFORGE_DB inside the disk mount) restores normal operation.
+  console.warn(
+    `[storage] WARNING: cannot open the configured database at ${dbPath} (${e.code ?? e.message}). ` +
+    `The server is booting on an IN-MEMORY database and WRITE REQUESTS ARE REJECTED (503) ` +
+    `until this is fixed — nothing can be saved. Point VIDEOFORGE_DB at a file inside ` +
+    `a mounted, writable persistent disk (e.g. /var/lib/<disk>/data.db).`
+  );
+  sqlite = new Database(":memory:");
+  storageDegraded = true;
+}
 sqlite.pragma("journal_mode = WAL");
 
 export const db = drizzle(sqlite);
@@ -35,7 +72,10 @@ export const db = drizzle(sqlite);
 // It is written continuously (as the DB changes) so the snapshot stays fresh,
 // and can be restored by hand via `npm run durable:restore` if a rebuild loses
 // the DB. It never contains a plaintext key — only hashes, same as the DB.
-if (process.env.VIDEOFORGE_SYNC_DIR) {
+// Never back up a degraded (in-memory) database: the manifest must only ever
+// mirror the real configured database, and restoring a backup of a real DB
+// over an empty fallback would be the one way to corrupt it.
+if (process.env.VIDEOFORGE_SYNC_DIR && !storageDegraded) {
   const raw = sqlite;
   const lastSave: { [key: string]: string } = {};
   const touch = () => {
