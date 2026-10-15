@@ -63,7 +63,7 @@ Arithmetic works too: `"$playhead + $index * 0.4"` staggers each step from the p
 
 ## Code tools
 
-A code tool is the body of a JavaScript function. It receives one argument, `vf`, and returns one operation or an array of them.
+A code tool is the body of a JavaScript function. It receives one argument, `vf`, and returns one operation or an array of them. The Code tab is a real editor: line numbers, tab-key support, and a reference panel listing every `vf` helper — click an example to insert it at the cursor. The `$templates` the blocks use (like `$playhead`) are listed with their code equivalents (`vf.playhead`). When a run fails, the error shows inline above the code with the offending line highlighted in the gutter, as well as in the error console.
 
 ```js
 // vf has the playhead, selection and every clip

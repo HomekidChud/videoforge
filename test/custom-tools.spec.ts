@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { compileBlocks, runCodeTool, runTool, normalizeOps, loadUserTools, saveUserTools, toolContext, BUILT_IN_TOOLS, OP_PARAMS, validateGraph, compileGraph, blocksToGraph } from "../shared/custom-tools";
+import { compileBlocks, runCodeTool, runTool, normalizeOps, loadUserTools, saveUserTools, toolContext, BUILT_IN_TOOLS, OP_PARAMS, validateGraph, compileGraph, blocksToGraph, codeErrorLine, VF_HELPERS, TEMPLATE_DOCS } from "../shared/custom-tools";
 import { normalizeTimeline } from "../shared/timeline";
 import { applyTimelineOp } from "../shared/editing";
 
@@ -61,6 +61,23 @@ await check("code tools", async () => {
   // Selection is a copy: mutating it inside the tool does not leak.
   runCodeTool(`vf.selection.push("z"); return [];`, ctx);
   assert.equal(ctx.selection.length, 2);
+});
+
+// Runtime errors point at the user's line (line 1 is the injected "use strict").
+await check("code error line hints", async () => {
+  assert.throws(() => runCodeTool("const a = 1;\nconst b = 2;\nthrow new Error(\"boom\");", ctx), /code error: boom \(line 3\)/);
+  assert.throws(() => runCodeTool("return notDefinedAtAll;", ctx), /code error: .*\(line 1\)/);
+  assert.throws(() => runCodeTool("const ops = ;", ctx), /code error: /); // syntax error: no line hint
+  assert.throws(() => runCodeTool("return vf.motion(\"\", \"spring\");", ctx), /needs a clip id/);
+  assert.equal(codeErrorLine("code error: boom (line 3)"), 3);
+  assert.equal(codeErrorLine("code error: boom"), null);
+});
+
+// The editor's reference catalog stays in sync with the vf API.
+await check("vf reference catalog", async () => {
+  assert.ok(VF_HELPERS.length >= 14, "every vf helper is documented");
+  for (const h of VF_HELPERS) assert.ok(h.name.startsWith("vf.") && h.signature && h.description && h.example, `${h.name} malformed`);
+  for (const t of TEMPLATE_DOCS) assert.ok(t.template.startsWith("$") && t.becomes && t.code, `${t.template} malformed`);
 });
 
 // Generated ops actually run against the timeline, atomically.

@@ -308,6 +308,26 @@
 .bs-code-side { width: 300px; overflow-y: auto; background: #14161a; border-left: 1px solid #26292f; padding: 14px; }
 .bs-code-side .bs-hint { margin: 0 0 12px; }
 
+/* code editor: gutter, inline errors, reference sidebar */
+.bs-editor-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.bs-editor { flex: 1; min-height: 0; display: flex; background: #101215; font-family: ui-monospace, "JetBrains Mono", monospace; font-size: 14px; line-height: 22px; }
+.bs-editor-gutter { padding: 14px 0; text-align: right; color: #565b63; user-select: none; overflow: hidden; min-width: 48px; border-right: 1px solid #26292f; font-variant-numeric: tabular-nums; flex: none; }
+.bs-editor-gutter div { padding: 0 10px 0 6px; }
+.bs-editor-gutter div.err { color: #ff9d9d; background: rgba(214,69,69,.18); }
+.bs-editor textarea.bs-code-main { flex: 1; min-width: 0; padding: 14px 16px; font-size: 14px; line-height: 22px; white-space: pre; overflow: auto; }
+.bs-inline-error { display: flex; gap: 10px; align-items: baseline; background: #2e1616; color: #ff9d9d; border-bottom: 1px solid #6b2424; padding: 8px 14px; font-size: 12.5px; flex: none; }
+.bs-inline-error span:first-child { font-weight: 700; }
+.bs-inline-error-jump { margin-left: auto; flex: none; background: #3a1d1d; color: #ffb3b3; border: 1px solid #6b2424; border-radius: 7px; padding: 3px 9px; cursor: pointer; font-size: 11.5px; }
+.bs-inline-error-jump:hover { background: #4a2222; }
+.bs-ref-title { color: #9aa0a8; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; margin: 4px 0 7px; }
+.bs-ref-item { display: block; width: 100%; text-align: left; background: #17191d; border: 1px solid #26292f; border-radius: 8px; padding: 7px 9px; margin-bottom: 6px; cursor: pointer; }
+.bs-ref-item:hover { border-color: #4a8fd6; }
+.bs-ref-item:disabled { opacity: .5; cursor: default; }
+.bs-ref-sig { display: block; color: #7fc4f0; font-size: 11.5px; font-family: ui-monospace, "JetBrains Mono", monospace; }
+.bs-ref-desc { display: block; color: #9aa0a8; font-size: 11px; margin-top: 2px; line-height: 1.4; }
+.bs-ref-tpl { font-size: 11.5px; color: #9aa0a8; line-height: 1.55; margin-bottom: 12px; }
+.bs-ref-tpl code { color: #e3c04b; font-family: ui-monospace, "JetBrains Mono", monospace; }
+
 /* connect handles sit inline with their field label */
 .bs-field-row { display: flex; align-items: center; gap: 6px; }
 .bs-field-row .bs-handle-param { position: relative !important; left: auto !important; top: auto !important; transform: none !important; display: inline-block; margin: 0; flex: none; }

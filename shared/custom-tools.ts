@@ -320,7 +320,24 @@ export function normalizeOps(result: unknown): TimelineOp[] {
 /**
  * Run a JavaScript tool. The code sees one argument, `vf`, with the context and
  * helper functions that build operations; it returns them for an atomic batch.
+ * Runtime errors carry a "(line N)" hint pointing at the user's code.
  */
+let userLineOffset: number | null | undefined;
+
+/** Engines number `new Function` bodies with an engine-specific header offset; measure it once. */
+function measureUserLineOffset(): number | null {
+  if (userLineOffset !== undefined) return userLineOffset;
+  userLineOffset = null;
+  try {
+    // The throw sits on user line 1; whatever line the stack reports tells us the offset.
+    new Function("vf", '"use strict";\nthrow new Error("calibrate");')({});
+  } catch (e: any) {
+    const m = /<anonymous>:(\d+):\d+/.exec(typeof e?.stack === "string" ? e.stack : "");
+    if (m) userLineOffset = Number(m[1]) - 1;
+  }
+  return userLineOffset;
+}
+
 export function runCodeTool(code: string, ctx: ToolContext): TimelineOp[] {
   const vf = makeCodeApi(ctx);
   let result: unknown;
@@ -328,12 +345,29 @@ export function runCodeTool(code: string, ctx: ToolContext): TimelineOp[] {
     const fn = new Function("vf", `"use strict";\n${code}`);
     result = fn(vf);
   } catch (e: any) {
-    throw new Error(e?.message ? `code error: ${e.message}` : "the code could not run");
+    throw new Error(`${codeErrorMessage(e)}${codeErrorLineHint(e)}`);
   }
   return normalizeOps(result);
 }
 
-/** The helper API exposed to code tools. */
+function codeErrorMessage(e: any): string {
+  const raw = typeof e?.message === "string" && e.message ? e.message : "the code could not run";
+  return raw.startsWith("code error:") ? raw : `code error: ${raw}`;
+}
+
+/** The user's code starts after the injected "use strict"; the measured offset converts stack lines. */
+function codeErrorLineHint(e: any): string {
+  const offset = measureUserLineOffset();
+  if (offset == null) return "";
+  const m = /<anonymous>:(\d+):\d+/.exec(typeof e?.stack === "string" ? e.stack : "");
+  if (!m) return "";
+  const line = Number(m[1]) - offset;
+  return line >= 1 ? ` (line ${line})` : "";
+}
+
+/**
+ * The helper API exposed to code tools.
+ */
 export function makeCodeApi(ctx: ToolContext) {
   const op = (o: TimelineOp) => o;
   const needId = (id: unknown) => { if (!id || typeof id !== "string") throw new Error("this helper needs a clip id"); return id; };
@@ -354,6 +388,47 @@ export function makeCodeApi(ctx: ToolContext) {
     animate: (id: string, expressions: Record<string, string>) => op({ op: "animate_code", args: { clipId: needId(id), expressions } }),
     markers: (bpm = 120, count = 8) => op({ op: "add_beat_markers", args: { bpm, count } }),
   };
+}
+
+/** One entry of the code editor's helper reference. */
+export type VfHelperDoc = { name: string; signature: string; description: string; example: string };
+
+/**
+ * The code editor's live reference: every `vf` helper with a signature, a
+ * friendly description and a one-line example you can click to insert.
+ * Keep in sync with makeCodeApi.
+ */
+export const VF_HELPERS: VfHelperDoc[] = [
+  { name: "vf.playhead", signature: "vf.playhead", description: "Where the playhead is right now, in seconds.", example: `return [vf.addText({ text: "At " + vf.playhead })];` },
+  { name: "vf.duration", signature: "vf.duration", description: "How long the timeline is, in seconds.", example: `return [vf.addText({ text: vf.duration + "s long" })];` },
+  { name: "vf.selection", signature: "vf.selection", description: "The ids of the clips you selected.", example: `const ops = [];\nfor (const id of vf.selection) ops.push(vf.motion(id, "spring"));\nreturn ops;` },
+  { name: "vf.clips", signature: "vf.clips", description: "Every visual clip: id, kind, start and duration.", example: `const ops = [];\nfor (const c of vf.clips) if (c.kind === "text") ops.push(vf.update(c.id, { fontWeight: 700 }));\nreturn ops;` },
+  { name: "vf.resolution", signature: "vf.resolution", description: "The canvas size: { width, height }.", example: `return [vf.addShape({ shape: { type: "ellipse", width: 0.3, height: 0.3, fill: "#f6a447" } })];` },
+  { name: "vf.addText", signature: "vf.addText({ text, start?, duration?, ... })", description: "Adds a text clip. start defaults to the playhead.", example: `return [vf.addText({ text: "Hello", duration: 3 })];` },
+  { name: "vf.addShape", signature: "vf.addShape({ shape, duration? })", description: "Adds a rectangle, ellipse or line.", example: `return [vf.addShape({ shape: { type: "rectangle", width: 0.3, height: 0.2, fill: "#4a8fd6" } })];` },
+  { name: "vf.update", signature: "vf.update(id, patch)", description: "Changes any clip fields: position, colour, speed and more.", example: `return [vf.update("clip1", { x: 0.5, y: 0.4 })];` },
+  { name: "vf.remove", signature: "vf.remove(id)", description: "Deletes a clip.", example: `return [vf.remove("clip1")];` },
+  { name: "vf.duplicate", signature: "vf.duplicate(id, start?)", description: "Copies a clip, optionally at a new start time.", example: `return [vf.duplicate("clip1", vf.playhead + 1)];` },
+  { name: "vf.motion", signature: "vf.motion(id, preset, opts?)", description: "Applies a motion preset: fade, spring, pop, shake...", example: `return [vf.motion("clip1", "spring", { duration: 0.8 })];` },
+  { name: "vf.stagger", signature: "vf.stagger(ids, opts?)", description: "Spreads clips out in time, one after another.", example: `return [vf.stagger(vf.selection, { delay: 0.2 })];` },
+  { name: "vf.keyframes", signature: "vf.keyframes(id, property, keys)", description: "Animates a property over time with keyframes.", example: `return [vf.keyframes("clip1", "scale", [{ time: 0, value: 0.2, easing: "back-out" }, { time: 0.8, value: 1 }])];` },
+  { name: "vf.animate", signature: "vf.animate(id, expressions)", description: "Animates with small formulas of t, like wiggle(2, 4).", example: `return [vf.animate("clip1", { rotation: "wiggle(2, 4)" })];` },
+  { name: "vf.markers", signature: "vf.markers(bpm, count)", description: "Drops timeline markers on every beat.", example: `return [vf.markers(120, 8)];` },
+];
+
+/** The $-templates available in block fields, with their vf equivalents for code. */
+export const TEMPLATE_DOCS: { template: string; becomes: string; code: string }[] = [
+  { template: "$playhead", becomes: "the playhead position in seconds", code: "vf.playhead" },
+  { template: "$duration", becomes: "the timeline duration in seconds", code: "vf.duration" },
+  { template: "$index / $count", becomes: "position inside a repeat or for-each group", code: "your loop variable" },
+  { template: "$clipId", becomes: "the current clip inside a for-each group", code: "c.id" },
+  { template: "$selection", becomes: "the selected clip ids", code: "vf.selection" },
+];
+
+/** Run errors from code tools, with the offending line when it can be found. */
+export function codeErrorLine(error: string): number | null {
+  const m = /\(line (\d+)\)/.exec(error);
+  return m ? Number(m[1]) : null;
 }
 
 /**

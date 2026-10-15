@@ -8,7 +8,8 @@ import {
 import "@xyflow/react/dist/style.css";
 import {
   BLOCK_GROUPS, BLOCK_LIBRARY, BLOCK_MAP, OP_IDS, OP_PARAMS, blocksToGraph, connectableParamKeys,
-  validateGraph, runTool, type CustomTool, type ToolContext, type ToolGraph, type ToolGraphNode, type ToolParam,
+  codeErrorLine, validateGraph, runTool, TEMPLATE_DOCS, VF_HELPERS,
+  type CustomTool, type ToolContext, type ToolGraph, type ToolGraphNode, type ToolParam,
 } from "@shared/custom-tools";
 import type { TimelineOp } from "@shared/editing";
 
@@ -278,6 +279,81 @@ const nodeTypes = {
 };
 
 const edgeTypes = { snap: SnapEdge };
+
+/**
+ * The Code tab's editor: line numbers, tab-key support, inline run errors and a
+ * live reference of every vf helper (click an example to insert it at the cursor).
+ */
+function CodeTab({ tool, ctx, readOnly, onChange, runError }: { tool: CustomTool; ctx: ToolContext; readOnly: boolean; onChange: (t: CustomTool) => void; runError: string | null }) {
+  const ta = useRef<HTMLTextAreaElement>(null);
+  const gutter = useRef<HTMLDivElement>(null);
+  const value = tool.code ?? "";
+  const lineCount = Math.max(1, value.split("\n").length);
+  const errLine = runError ? codeErrorLine(runError) : null;
+
+  /** Insert a snippet at the caret, replacing the selection, and keep focus. */
+  const insert = (snippet: string) => {
+    const el = ta.current;
+    if (!el || readOnly) return;
+    const start = el.selectionStart, end = el.selectionEnd;
+    onChange({ ...tool, code: value.slice(0, start) + snippet + value.slice(end) });
+    requestAnimationFrame(() => { el.focus(); const at = start + snippet.length; el.setSelectionRange(at, at); });
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Tab" && !readOnly) { e.preventDefault(); insert("  "); }
+  };
+
+  return (
+    <div className="bs-code-wrap" data-testid="bs-code-panel">
+      <div className="bs-code-main-row">
+        <div className="bs-editor-col">
+          {runError && (
+            <div className="bs-inline-error" data-testid="bs-inline-error">
+              <span>✕</span>
+              <span>Run failed: {runError}</span>
+              {errLine ? <button className="bs-inline-error-jump" onClick={() => {
+                const el = ta.current; if (!el) return;
+                const lines = value.split("\n");
+                const before = lines.slice(0, errLine - 1).join("\n").length + (errLine > 1 ? 1 : 0);
+                el.focus(); el.setSelectionRange(before, before + (lines[errLine - 1] ?? "").length);
+              }}>Go to line {errLine}</button> : null}
+            </div>
+          )}
+          <div className="bs-editor">
+            <div className="bs-editor-gutter" ref={gutter} aria-hidden="true" data-testid="bs-code-gutter">
+              {Array.from({ length: lineCount }, (_, i) => (
+                <div key={i} className={i + 1 === errLine ? "err" : ""}>{i + 1}</div>
+              ))}
+            </div>
+            <textarea ref={ta} className="bs-code-main" spellCheck={false} wrap="off" aria-label="Tool code"
+              data-testid="bs-code" value={value}
+              onChange={(e) => onChange({ ...tool, code: e.target.value })}
+              onKeyDown={onKeyDown} readOnly={readOnly}
+              onScroll={(e) => { if (gutter.current) gutter.current.scrollTop = e.currentTarget.scrollTop; }} />
+          </div>
+        </div>
+        <div className="bs-code-side" data-testid="bs-code-ref">
+          <p className="bs-ref-title">vf helpers — click to insert</p>
+          {VF_HELPERS.map((h) => (
+            <button key={h.name} className="bs-ref-item" onClick={() => insert(h.example)} disabled={readOnly} title={h.description} data-testid={`bs-ref-${h.name}`}>
+              <code className="bs-ref-sig">{h.signature}</code>
+              <span className="bs-ref-desc">{h.description}</span>
+            </button>
+          ))}
+          <p className="bs-ref-title">$ templates (blocks) → code</p>
+          <div className="bs-ref-tpl">
+            {TEMPLATE_DOCS.map((t) => (
+              <div key={t.template}><code>{t.template}</code> becomes {t.becomes}. In code: <code>{t.code}</code>.</div>
+            ))}
+            <div>Arithmetic works in block fields: <code>"$playhead + $index * 0.4"</code>. In code, write it in JavaScript.</div>
+          </div>
+          <p className="bs-hint">Return an array of operations. Code runs in your browser, unsandboxed — only run code you trust.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function edgeStyle(edge: Edge) {
   if (edge.sourceHandle === "body") return { strokeDasharray: "6 4" };
@@ -565,19 +641,9 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun }: StudioProps) 
           </div>
         </div>
       ) : (
-        <div className="bs-code-wrap" data-testid="bs-code-panel">
-          <div className="bs-code-main-row">
-          <textarea className="bs-code bs-code-main" spellCheck={false} aria-label="Tool code" value={tool.code ?? ""}
-            onChange={(e) => onChange({ ...tool, code: e.target.value })} data-testid="bs-code" />
-          <div className="bs-code-side">
-            <p className="bs-hint">vf.playhead, vf.duration, vf.selection, vf.clips</p>
-            <p className="bs-hint">vf.addText(opts) · vf.addShape(opts) · vf.update(id, patch) · vf.motion(id, preset, opts) · vf.stagger(ids, opts) · vf.keyframes(id, prop, keys) · vf.animate(id, exprs) · vf.remove(id) · vf.duplicate(id) · vf.markers(bpm, count)</p>
-            <p className="bs-hint">Return an array of operations. Code runs in your browser, unsandboxed — only run code you trust.</p>
-          </div>
-          </div>
-          {errorsBar}
-        </div>
+        <CodeTab tool={tool} ctx={ctx} readOnly={readOnly} onChange={onChange} runError={runError} />
       )}
+      {tab === "code" && errorsBar}
     </div>
   );
 }
