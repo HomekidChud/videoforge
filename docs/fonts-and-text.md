@@ -71,7 +71,7 @@ The shrink-to-fit engine measures every family with its own width table, scaled 
 
 ## Rendering notes
 
-Preview and export agree because both use the same metrics and the same font files. Two approximations remain: character positions for letter spacing and left/right alignment use the estimated advances, so long lines can drift a few pixels, and letter spacing on a text clip with a background box is exported without the spacing (keep the box or the spacing, not both). Set `VIDEOFORGE_FONT` to render every clip with one server font file instead of the catalog.
+Preview and export agree because both use the same metrics and the same font files. Two approximations remain: character positions for letter spacing and left/right alignment use the estimated advances, so long lines can drift a few pixels. Letter spacing works with a background box too: the box is drawn from the same per-character estimates, so it can be a few pixels off the exact glyph extents. Set `VIDEOFORGE_FONT` to render every clip with one server font file instead of the catalog.
 
 - [Fit & layout](fit-and-layout)
 - [Using the editor](editor)

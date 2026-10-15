@@ -71,7 +71,7 @@ return ops;
 
 ## Safety and limits
 
-Tools run in your browser against the open project; the server still validates every operation and rejects anything invalid, atomically. A tool may produce at most 100 operations, matching the batch limit. Because tools are just operations, they respect scopes, undo, dry runs and everything else in the operation catalog.
+Code tools run as ordinary JavaScript in your own browser page — there is no sandbox, so only run tools you wrote or trust. The server still validates every operation a tool produces and rejects anything invalid, atomically. Both block and code tools may produce at most 100 operations, matching the batch limit. Because tools are just operations, they respect scopes, undo, dry runs and everything else in the operation catalog.
 
 - [Using the editor](editor)
 - [Batch operations](batch-operations)

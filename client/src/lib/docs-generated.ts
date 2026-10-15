@@ -753,7 +753,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Rendering notes",
-        "text": "Preview and export agree because both use the same metrics and the same font files. Two approximations remain: character positions for letter spacing and left/right alignment use the estimated advances, so long lines can drift a few pixels, and letter spacing on a text clip with a background box is exported without the spacing (keep the box or the spacing, not both). Set `VIDEOFORGE_FONT` to render every clip with one server font file instead of the catalog.",
+        "text": "Preview and export agree because both use the same metrics and the same font files. Two approximations remain: character positions for letter spacing and left/right alignment use the estimated advances, so long lines can drift a few pixels. Letter spacing works with a background box too: the box is drawn from the same per-character estimates, so it can be a few pixels off the exact glyph extents. Set `VIDEOFORGE_FONT` to render every clip with one server font file instead of the catalog.",
         "links": [
           {
             "label": "Fit & layout",
@@ -1443,7 +1443,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Safety and limits",
-        "text": "Tools run in your browser against the open project; the server still validates every operation and rejects anything invalid, atomically. A tool may produce at most 100 operations, matching the batch limit. Because tools are just operations, they respect scopes, undo, dry runs and everything else in the operation catalog.",
+        "text": "Code tools run as ordinary JavaScript in your own browser page — there is no sandbox, so only run tools you wrote or trust. The server still validates every operation a tool produces and rejects anything invalid, atomically. Both block and code tools may produce at most 100 operations, matching the batch limit. Because tools are just operations, they respect scopes, undo, dry runs and everything else in the operation catalog.",
         "links": [
           {
             "label": "Using the editor",

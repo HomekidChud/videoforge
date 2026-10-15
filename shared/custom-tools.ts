@@ -175,16 +175,35 @@ export function compileBlocks(blocks: ToolBlock[], ctx: ToolContext, into: Timel
       if (block.kind === "op") {
         if (!block.op || typeof block.op !== "string") throw new Error("an op block needs an operation name");
         const args = resolveArgs(block.args, vars);
-        // JSON-typed params are parsed into objects; update_clip patches merge into the op args.
-        for (const p of OP_PARAMS[block.op] ?? []) {
-          if (p.type !== "json" || typeof args[p.key] !== "string") continue;
-          let parsed: unknown;
-          try { parsed = JSON.parse(args[p.key] as string); } catch { throw new Error(`${block.op}: ${p.label} must be valid JSON`); }
-          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-            if (block.op === "update_clip" && p.key === "patch") { delete args.patch; Object.assign(args, parsed); }
-            else args[p.key] = parsed;
+        const params = OP_PARAMS[block.op] ?? [];
+        for (const p of params) {
+          if (typeof args[p.key] !== "string") continue;
+          // JSON-typed params (objects or arrays) are parsed; update_clip patches merge into the op args.
+          if (p.type === "json") {
+            let parsed: unknown;
+            try { parsed = JSON.parse(args[p.key] as string); } catch { throw new Error(`${block.op}: ${p.label} must be valid JSON`); }
+            if (parsed && typeof parsed === "object") {
+              if (block.op === "update_clip" && p.key === "patch") { delete args.patch; Object.assign(args, parsed); }
+              else args[p.key] = parsed;
+            }
+          }
+          // Number-typed params become numbers, including templates like "$playhead + 0.4".
+          if (p.type === "number") {
+            const n = Number(args[p.key]);
+            if (Number.isFinite(n)) args[p.key] = n;
+          }
+          // Id lists ("$selection" or "a,b") become arrays.
+          if (p.key === "clipIds") {
+            const list = (args[p.key] as string).split(",").map((x) => x.trim()).filter(Boolean);
+            if (list.length) args[p.key] = list;
           }
         }
+        // add_shape_clip takes a nested shape object; the block editor edits it flat.
+        if (block.op === "add_shape_clip" && args.shape === undefined) {
+          args.shape = { type: args.shapeType ?? "rectangle", width: args.width, height: args.height, fill: args.fill };
+          delete args.shapeType; delete args.width; delete args.height; delete args.fill;
+        }
+        if (into.length >= 100) throw new Error("the tool expands to more than 100 operations; the batch limit");
         into.push({ op: block.op, args });
       } else if (block.kind === "repeat") {
         const count = Math.max(0, Math.min(1000, Math.round(Number(block.count) || 0)));

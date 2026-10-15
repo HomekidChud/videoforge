@@ -197,16 +197,19 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     const lineX = (j: number) => align === "center" ? "(w-text_w)/2" : `(w-${px(maxW)})/2${align === "right" ? `+${px(maxW - lineW[j])}` : ""}`;
     const draw = (file: string, x: string, j: number, style: string) => `drawtext=expansion=none:textfile='${escPath(file)}'${font}:fontsize=${size}${style}:x=${x}:y=${lineY(j)}`;
     let lineFilters: string[];
-    if (Math.abs(c.letterSpacing ?? 0) > 0.005 && !c.textBg && Array.from(lay.lines.join("")).length <= 240) {
+    if (Math.abs(c.letterSpacing ?? 0) > 0.005 && Array.from(lay.text).length <= 500) {
       // Letter spacing: draw each character at its estimated advance so the export matches the preview.
+      // The 500-character cap is the text limit itself, so spacing is never silently dropped.
       lineFilters = [];
+      const ls = c.letterSpacing ?? 0;
       lay.lines.forEach((line, j) => {
         let advance = 0;
         const chars = Array.from(line);
         for (let k = 0; k < chars.length; k++) {
           const ch = chars[k];
           const charX = advance;
-          advance += textAdvance(ch, measure);
+          // A single character has no gaps of its own, so the spacing is added between characters.
+          advance += textAdvance(ch, measure) + ls;
           if (ch.trim() === "") continue;
           const file = path.join(tmpDir, `${jobId}_t${i}_${j}_${k}.txt`);
           fs.writeFileSync(file, ch);
@@ -215,6 +218,28 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
           lineFilters.push(draw(file, x, j, `:fontcolor=${color}:borderw=${Math.max(1, Math.round(size / 18))}:bordercolor=black@0.7`));
         }
       });
+      if (c.textBg) {
+        // Background box: each character draws an opaque box (the glyph itself is transparent),
+        // the whole layer is made translucent once, then the glyphs are drawn again on top.
+        const pad = Math.round(size * 0.35);
+        const boxPass: string[] = [];
+        lay.lines.forEach((line, j) => {
+          let advance = 0;
+          const chars = Array.from(line);
+          for (let k = 0; k < chars.length; k++) {
+            const ch = chars[k];
+            const charX = advance;
+            advance += textAdvance(ch, measure) + ls;
+            if (ch.trim() === "") continue;
+            const file = path.join(tmpDir, `${jobId}_b${i}_${j}_${k}.txt`);
+            fs.writeFileSync(file, ch);
+            tempFiles.push(file);
+            const x = align === "center" ? `(w-${px(lineW[j])})/2+${px(charX)}` : align === "left" ? `(w-${px(maxW)})/2+${px(charX)}` : `(w-${px(maxW)})/2+${px(maxW - lineW[j] + charX)}`;
+            boxPass.push(draw(file, x, j, `:fontcolor=black@0:box=1:boxcolor=black@1:boxborderw=${pad}`));
+          }
+        });
+        lineFilters = [...boxPass, "format=rgba", "colorchannelmixer=aa=0.55", "format=yuva420p", ...lineFilters];
+      }
     } else if (c.textBg) {
       lineFilters = n === 1 ? [draw(files[0], lineX(0), 0, `:fontcolor=${color}${box}`)]
         // Boxes are drawn opaque first and made translucent together, so overlapping lines do not darken twice.

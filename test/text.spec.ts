@@ -110,7 +110,7 @@ await check("render plan carries text style", () => {
   assert.match(plan.filter, /fontfile=/);
   assert.match(plan.filter, /fontcolor=0x[a-f0-9]{6}/);
   // Left alignment anchors lines at the estimated block edge instead of centring.
-  assert.ok(!/x=\(w-text_w\)\/2/.test(plan.filter.split("textfile")[0]) || plan.filter.includes("(w-"), "alignment expression present");
+  assert.ok(/x=\(w-[0-9.]+\)\/2/.test(plan.filter), "left-aligned lines anchor at the block edge");
   // Letter spacing emits one drawtext per character.
   const spaced = plan.filter.split("drawtext").length - 1;
   assert.ok(spaced >= 5, `per-character drawtext expected, got ${spaced}`);
@@ -138,6 +138,41 @@ await check("google fonts downloadable", async () => {
     assert.equal(fontFileCached("inter", 400), file);
     fs.rmSync(file, { force: true });
   } catch { /* offline environment */ }
+});
+
+// Font weight fallback resolves regular (undefined) to 400, not undefined.
+await check("weight fallback", async () => {
+  assert.equal(effectiveWeight("inter", undefined), 400);
+  assert.equal(effectiveWeight("inter", 400), 400);
+  assert.equal(effectiveWeight("bebas-neue", 700), 400);
+  const cached = await ensureFontFile("inter", 400); // make the font file deterministic
+  const tl = normalizeTimeline({ fps: 30, resolution: { width: 1280, height: 720 }, clips: [textClip({ id: "w", font: "inter" })] });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vf-weight-"));
+  const plan = buildRenderPlan(tl, new Map(), dir, dir, "w1", path.join(dir, "o.mp4"));
+  if (cached) assert.ok(plan.filter.includes("fontfile="));
+  else assert.ok(!plan.filter.includes("fontfile="), "offline: the plan falls back to the default font");
+  for (const f of plan.tempFiles) fs.rmSync(f, { force: true });
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// Letter spacing exports with the gap between characters, and with a background box.
+await check("spaced export", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vf-spaced-"));
+  const tl = normalizeTimeline({ fps: 30, resolution: { width: 1280, height: 720 }, clips: [
+    textClip({ id: "s1", text: "SPACE", letterSpacing: 0.1 }),
+    textClip({ id: "s2", text: "BOXED", letterSpacing: 0.1, textBg: true }),
+  ] });
+  const plan = buildRenderPlan(tl, new Map(), dir, dir, "sp", path.join(dir, "o.mp4"));
+  // Character x positions advance by the glyph estimate plus the spacing.
+  const xs = [...plan.filter.matchAll(/x=\(w-[0-9.]+\)\/2\+([0-9.]+)/g)].map((m) => Number(m[1]));
+  assert.ok(xs.length >= 10, "one x per spaced character");
+  const gaps = xs.slice(0, 4).map((v, i) => xs[i + 1] - v);
+  assert.ok(gaps.every((g) => g > 0), "characters advance");
+  // The boxed spaced clip draws a background box: opaque char boxes, one translucent pass, glyphs on top.
+  assert.ok(plan.filter.includes("fontcolor=black@0:box=1"), "spaced text with a box still gets a box");
+  assert.ok(plan.filter.includes("colorchannelmixer=aa=0.55"), "the box layer is made translucent once");
+  for (const f of plan.tempFiles) fs.rmSync(f, { force: true });
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 console.log(`text.spec: ${checks} checks passed`);

@@ -52,7 +52,7 @@ function defaultArgs(op: string): Record<string, unknown> {
 function ParamField({ param, value, onChange, disabled }: { param: ToolParam; value: unknown; onChange: (v: unknown) => void; disabled: boolean }) {
   const common = { disabled, value: String(value ?? ""), onChange: (e: any) => onChange(e.target.value), "aria-label": param.label, "data-testid": `tool-param-${param.key}` } as const;
   return <label className="field">{param.label}
-    {param.type === "number" ? <input type="number" min={param.min} max={param.max} step={param.step} {...common} onChange={(e) => onChange(e.target.value)} />
+    {param.type === "number" ? <input type="text" inputMode="decimal" placeholder={`e.g. ${param.def}`} {...common} onChange={(e) => onChange(e.target.value)} />
       : param.type === "color" ? <input type="color" {...common} />
       : param.type === "select" ? <select {...common}>{(param.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}</select>
       : param.type === "json" ? <textarea rows={3} className="code-input" spellCheck={false} {...common} />
