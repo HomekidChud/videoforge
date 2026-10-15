@@ -1,5 +1,41 @@
 # VideoForge motion graphics upgrade
 
+## Fit, animate with code and a bigger motion library
+
+Capabilities version 6, timeline schema still v4 (every new field is optional and ignored by older clients).
+
+### What is new
+
+- Animate with code: any animatable property accepts an expression of `t`, `d`, `p` and `base` (clip field `expressions`). The same parsed expression is evaluated in the browser preview and compiled to an FFmpeg expression. 33 functions plus `wiggle(freq, amount)`, a 300 character limit, no loops, strings or property access. Ops: `animate_code`, `apply_code_motion` (13 looping recipes), `bake_expression`.
+- Perfect fit: text wraps and shrinks to its box by default (`textMaxWidth`, `textMaxHeight`, opt out with `textFit: "none"`), footage supports `fit: "fill"` besides contain and cover, ops `fit_clip` and `fit_all`, `set_project` with `refit: true`, and `GET /api/projects/:id/fit-report`. Studio gets a Fit to frame section, an auto-fit toggle, a Fit everything button and an automatic refit when the canvas changes.
+- Presets: 33 (was 14), grouped into entrances, emphasis and exits. New: `slide-right`, `drop`, `bounce-in`, `zoom-out`, `swing`, `wobble`, `rubber`, `tada`, `heartbeat`, `blink`, `flash`, `glitch`, `exit-right`, `exit-up`, `exit-down`, `shrink-out`, `spin-out`, `pop-out`, `reveal-out`.
+- Easings: `ease-in-cubic`, `ease-out-cubic`, `ease-in-out-cubic`, `ease-in-expo`, `ease-in-back`.
+- Templates: `bullet-list`, `social-handle`, `chapter-number`, `starburst` (thirteen in total).
+- Transitions: `barn-h`, `barn-v`, `diamond`, `wipe-diagonal` (ten in total).
+- Examples: 17 (was 8), including entrance, emphasis and exit samplers, an orbit built from expressions, all 13 code recipes and a text-fit demo. A second transitions reel shows the new transitions.
+- Docs: new Fit & layout and Animate with code pages.
+
+### Compatibility
+
+- The six original presets produce the same keyframes as before. Applying a preset to a property drops any expression on that property, so the preset takes effect.
+- Existing text that already fits renders as before. Text that overflowed now wraps and shrinks; set `textFit: "none"` on a clip to keep the old behaviour.
+- Multi-line text is now centred in renders. This needs FFmpeg 6.1 or newer; older builds keep the previous left-aligned block automatically.
+
+### Known boundaries
+
+- Text width uses a Noto Sans based estimate with about 12% spare room. An unusual font can fit more loosely or tightly.
+- Fit looks at the static position and the peak animated scale and rotation, not at x/y travel of entrance animations.
+- Division by zero or invalid maths in an expression falls back to the property's static value. FFmpeg builds `mod` and `noise` from `mod` and `sin` sums, so values match to display precision rather than bit for bit.
+- Spring, shake, bounce-in, rubber, tada, wobble, swing and heartbeat are sampled keyframes. Reveal expressions and the reveal presets are not allowed on text.
+- Still no SVG, Lottie, 3D or nested scene graph.
+
+### Verification
+
+- `npm run check`, `npm run build` and `npm test`.
+- FFmpeg pixel checks that an `x` expression renders where the preview evaluates it, that every code recipe and preset renders, and that wrapped text keeps the frame edges clear. Unit checks cover rejected expressions, layout, fit reports and fixes.
+
+---
+
 ## Motion engine v2
 
 Built on top of the motion graphics release below. Capabilities version 5, timeline schema still v4 (new fields are optional and ignored by older clients).

@@ -387,3 +387,10 @@
 .secondary-btn.danger { color:#ff8a8a; }
 @media (max-width: 760px) { .presence-bar .follow-chip { display:none; } }
 .lane .clip { z-index:1; } .lane .clip.selected { z-index:2; }
+
+.preset-group-title { margin:8px 0 4px; font-size:var(--text-xs); font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--forge-muted); }
+.code-input { width:100%; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; line-height:1.5; resize:vertical; background:#101011; color:#f2f1f4; border:1px solid #2e2e32; border-radius:6px; padding:8px; }
+.code-input:focus-visible { outline:2px solid #f6a447; outline-offset:1px; }
+.code-error { margin:4px 0; font-size:12px; color:#ff9b8f; }
+.code-panel .toggle-row { margin:6px 0; }
+.code-panel .two-col .secondary-btn { align-self:end; height:34px; }

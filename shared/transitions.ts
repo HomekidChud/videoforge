@@ -1,6 +1,6 @@
 import { clipDuration, clipEnd, normalizeTimeline, TRANSITION_TYPES, type Clip, type Timeline } from './timeline';
 export const TRANSITIONS = TRANSITION_TYPES;
-export const TRANSITION_LABELS: Record<string,string> = { none: 'None', dissolve: 'Dissolve', 'wipe-left': 'Wipe from left', 'wipe-right': 'Wipe from right', 'wipe-up': 'Wipe from bottom', 'wipe-down': 'Wipe from top', iris: 'Iris open' };
+export const TRANSITION_LABELS: Record<string,string> = { none: 'None', dissolve: 'Dissolve', 'wipe-left': 'Wipe from left', 'wipe-right': 'Wipe from right', 'wipe-up': 'Wipe from bottom', 'wipe-down': 'Wipe from top', iris: 'Iris open', 'barn-h': 'Barn doors (horizontal)', 'barn-v': 'Barn doors (vertical)', diamond: 'Diamond open', 'wipe-diagonal': 'Diagonal wipe' };
 export type TransitionType = typeof TRANSITIONS[number];
 export type Transition = { fromClipId: string; type: TransitionType; duration: number };
 export function incomingTransition(t: Timeline, c: Clip): Transition | undefined {
@@ -16,6 +16,10 @@ export function transitionClipPath(type: string, p: number): string | undefined 
     case 'wipe-up': return `inset(${(1-p)*100}% 0 0 0)`;
     case 'wipe-down': return `inset(0 0 ${(1-p)*100}% 0)`;
     case 'iris': return `circle(${p*70.711}% at 50% 50%)`;
+    case 'barn-h': return `inset(0 ${(1-p)*50}% 0 ${(1-p)*50}%)`;
+    case 'barn-v': return `inset(${(1-p)*50}% 0 ${(1-p)*50}% 0)`;
+    case 'diamond': return `polygon(50% ${50-p*100}%, ${50+p*100}% 50%, 50% ${50+p*100}%, ${50-p*100}% 50%)`;
+    case 'wipe-diagonal': { const q=p*2*100; return p<=.5 ? `polygon(0 0, ${q}% 0, 0 ${q}%)` : `polygon(0 0, 100% 0, 100% ${q-100}%, ${q-100}% 100%, 0 100%)`; }
   }
 }
 export function transitionProgress(t: Timeline, c: Clip, time: number) {

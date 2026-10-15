@@ -1,3 +1,4 @@
+import { textAdvance } from "./textmetrics";
 /** Asset-free primitives. Dimensions are canvas fractions; stroke/radius are output pixels. */
 export const SHAPE_TYPES = ["rectangle", "ellipse", "line"] as const;
 export type Shape = { type: typeof SHAPE_TYPES[number]; width: number; height: number; fill: string; stroke: string; strokeWidth: number; radius: number };
@@ -29,6 +30,10 @@ export const MOTION_TEMPLATES = [
   { id: "split-reveal", label: "Split reveal", description: "Two accent rules wipe open around a rising headline." },
   { id: "progress-bar", label: "Progress bar", description: "A rounded track fills with a headline above and caption below." },
   { id: "stat-highlight", label: "Stat highlight", description: "A big number inside a springing accent ring with a caption." },
+  { id: "bullet-list", label: "Bullet list", description: "A headline with up to six points that slide in one by one." },
+  { id: "social-handle", label: "Social handle", description: "A rounded pill with a handle and a short call to action." },
+  { id: "chapter-number", label: "Chapter number", description: "A huge chapter number, a rule and the chapter title." },
+  { id: "starburst", label: "Starburst badge", description: "A rocking two-square burst with a short label, driven by code." },
 ] as const;
 /** Templates compile to normal, independently editable clips, never arbitrary code. */
 export function templateClips(args: Record<string, any>, id: () => string, aspect = 16/9): Record<string, any>[] {
@@ -86,6 +91,43 @@ export function templateClips(args: Record<string, any>, id: () => string, aspec
       const ring = { ...base("stat ring"), x: .5, y: .46, shape: { type: "ellipse", width, height: tall, fill: "transparent", stroke: color, strokeWidth: 10 },
         keyframes: { scale: [{ time: 0, value: .5, easing: "back-out" }, { time: Math.min(.7, duration / 2), value: 1 }] } };
       return [ring, { ...text(title, .46, 12), textColor: color, keyframes: { scale: [{ time: 0, value: .6, easing: "back-out" }, { time: intro, value: 1 }], opacity: [{ time: 0, value: 0 }, { time: intro, value: 1 }] }, y: .46 }, ...(subtitle ? [text(subtitle, .86, 4)] : [])];
+    }
+    case "bullet-list": {
+      const items: string[] = Array.isArray(args.items) ? args.items.map((x: unknown) => String(x).trim().slice(0, 80)).filter(Boolean) : ["Fast", "Flexible", "Free"];
+      if (!items.length || items.length > 6) throw new Error("bullet-list takes 1..6 items");
+      const size = 5, gap = Math.min(.1, .52 / items.length), top = .5 - gap * (items.length - 1) / 2 + .08;
+      const rows = items.flatMap((item, i) => {
+        const at = start + Math.min(.3 + i * .25, duration / 2), length = duration - (at - start), y = top + i * gap;
+        const widthFraction = Math.min(.55, textAdvance(item) / 1.12 * size / 100 / aspect);
+        const dotW = .016;
+        return [
+          { ...base(`bullet ${i + 1}`, at, length), x: .31, y, shape: { type: "ellipse", width: dotW, height: dotW * aspect, fill: color }, keyframes: { scale: [{ time: 0, value: .1, easing: "back-out" }, { time: Math.min(.35, length), value: 1 }] } },
+          { ...text(item, y, size, at, length), x: .34 + widthFraction / 2, keyframes: { x: [{ time: 0, value: .31, easing: "ease-out" }, { time: Math.min(.4, length), value: .34 + widthFraction / 2 }], opacity: [{ time: 0, value: 0 }, { time: Math.min(.3, length), value: 1 }] } },
+        ];
+      });
+      return [{ ...text(title, top - .2, 7), textColor: color }, plate(top - .13, .22, .007), ...rows];
+    }
+    case "social-handle": {
+      const widthFraction = Math.min(.8, Math.max(.2, textAdvance(title) * 5 / 100 / aspect + .1));
+      return [
+        { ...base("handle pill"), x: .5, y: .5, shape: { type: "rectangle", width: widthFraction, height: .13, fill: color, radius: 80 }, keyframes: { reveal: [{ time: 0, value: 0, easing: "snappy" }, { time: Math.min(.6, duration / 3), value: 1 }] } },
+        { ...text(title, .5, 5), textColor: "#111112", keyframes: { opacity: [{ time: 0, value: 0 }, { time: Math.min(.5, duration / 3), value: 0 }, { time: Math.min(.8, duration / 2), value: 1 }] } },
+        ...(subtitle ? [text(subtitle, .66, 3.5, start + Math.min(.5, duration / 4), duration - Math.min(.5, duration / 4))] : []),
+      ];
+    }
+    case "chapter-number": {
+      const number = String(args.number ?? "01").trim().slice(0, 4) || "01";
+      return [
+        { ...text(number, .38, 24), textColor: color, keyframes: { scale: [{ time: 0, value: .7, easing: "snappy" }, { time: Math.min(.7, duration / 2), value: 1 }], opacity: [{ time: 0, value: 0 }, { time: intro, value: 1 }] }, y: .38 },
+        plate(.56, .1, .006),
+        text(title, .66, 7, start + Math.min(.3, duration / 6), duration - Math.min(.3, duration / 6)),
+        ...(subtitle ? [text(subtitle, .76, 3.5, start + Math.min(.5, duration / 4), duration - Math.min(.5, duration / 4))] : []),
+      ];
+    }
+    case "starburst": {
+      const sq = (rot: number, fill: string, id: string) => ({ ...base(id), x: .5, y: .5, rotation: rot, shape: { type: "rectangle", width: Math.min(.3, .3 / aspect), height: .3, fill, radius: 6 },
+        keyframes: { scale: [{ time: 0, value: .2, easing: "back-out" }, { time: Math.min(.6, duration / 3), value: 1 }] }, expressions: { rotation: `clamp(base + 10 * sin(t * 1.8), -360, 360)` } });
+      return [sq(0, color, "burst back"), sq(45, "#ffffff", "burst front"), { ...text(title, .5, 7), textColor: "#111112", keyframes: { scale: [{ time: 0, value: .3, easing: "back-out" }, { time: Math.min(.6, duration / 3), value: 1 }] } }];
     }
     case "countdown": {
       const step = duration / 4;

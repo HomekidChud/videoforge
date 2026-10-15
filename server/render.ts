@@ -1,11 +1,12 @@
 import { incomingTransition } from "@shared/transitions";
+import { textLayout } from "@shared/layout";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import type { Asset } from "@shared/schema";
 import { clipDuration, clipScale, clipSpeed, clipX, clipY, normalizeTimeline, timelineDuration, type Clip, type Timeline } from "@shared/timeline";
 
-import { animationExpression, baseValue, type AnimationProperty } from "@shared/animation";
+import { animationExpression, baseValue, isAnimated, valueAt, type AnimationProperty } from "@shared/animation";
 
 const f = (n: number) => Number(n.toFixed(3));
 
@@ -29,7 +30,7 @@ function colorFilters(c: Clip): string[] {
     case "warm": out.push("colorbalance=rs=.12:bs=-.12"); break;
     case "faded": out.push("eq=saturation=0.7:contrast=0.88:brightness=0.04"); break;
   }
-  if (c.keyframes?.brightness || c.keyframes?.contrast || c.keyframes?.saturation || (c.brightness ?? 0) !== 0 || (c.contrast ?? 1) !== 1 || (c.saturation ?? 1) !== 1) {
+  if (isAnimated(c,"brightness") || isAnimated(c,"contrast") || isAnimated(c,"saturation") || (c.brightness ?? 0) !== 0 || (c.contrast ?? 1) !== 1 || (c.saturation ?? 1) !== 1) {
     out.push(`eq=brightness='${animationExpression(c,"brightness")}':contrast='${animationExpression(c,"contrast")}':saturation='${animationExpression(c,"saturation")}':eval=frame`);
   }
   if(c.blur) out.push(`gblur=sigma=${c.blur}`);
@@ -39,24 +40,24 @@ function colorFilters(c: Clip): string[] {
 
 function transformFilters(c:Clip, width:number, height:number, dur:number, text=false):string[] {
   const chain:string[]=[];
-  const dynamicScale=!!c.keyframes?.scale, rotation=!!c.rotation || !!c.keyframes?.rotation;
+  const dynamicScale=isAnimated(c,"scale"), rotation=!!c.rotation || isAnimated(c,"rotation");
   // Keep a constant transparent bounding box when scaling. This avoids downstream
   // filters caching old dimensions and clipping a growing/rotating layer.
-  const scale=animationExpression(c,"scale"), maxScale=Math.min(2,Math.max(baseValue(c,"scale"),...(c.keyframes?.scale??[]).map(k=>k.value))*1.5);
+  const scale=animationExpression(c,"scale"), maxScale=Math.min(2,Math.max(baseValue(c,"scale"),...(c.keyframes?.scale??[]).map(k=>k.value),...(c.expressions?.scale?Array.from({length:49},(_,i)=>valueAt(c,"scale",dur*i/48)):[]))*1.5);
   if(!text) {
-    chain.push(`scale=${width}:${height}:force_original_aspect_ratio=${c.fit==="cover"?"increase":"decrease"}`);
+    chain.push(c.fit==="fill" ? `scale=${width}:${height}` : `scale=${width}:${height}:force_original_aspect_ratio=${c.fit==="cover"?"increase":"decrease"}`);
     if(c.fit==="cover") chain.push(`crop=${width}:${height}`);
     chain.push("format=yuva420p",`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black@0`);
   }
   // Wipe reveal: a left-to-right alpha mask on the unscaled layer, so it follows later scale/rotation.
-  if(c.keyframes?.reveal||(c.reveal??1)<1) chain.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*lt(X,W*(${animationExpression(c,"reveal","T")}))'`);
+  if(isAnimated(c,"reveal")||(c.reveal??1)<1) chain.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*lt(X,W*(${animationExpression(c,"reveal","T")}))'`);
   if((c.scale??(c.track==="overlay"&&!text? .35:1))!==1||dynamicScale) {
     chain.push(`scale=w='max(2,trunc(${width}*(${scale})/2)*2)':h='max(2,trunc(${height}*(${scale})/2)*2)':eval=frame`);
   }
   if(dynamicScale) { const w=Math.ceil(width*maxScale/2)*2,h=Math.ceil(height*maxScale/2)*2; chain.push(`pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=black@0:eval=frame`); }
   if(c.flipX) chain.push("hflip"); if(c.flipY) chain.push("vflip");
   if(rotation) chain.push(`rotate=a='(${animationExpression(c,"rotation")})*PI/180':ow='ceil(hypot(iw,ih)/2)*2':oh=ow:c=black@0`);
-  if(c.keyframes?.opacity) chain.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*(${animationExpression(c,"opacity","T")})'`);
+  if(isAnimated(c,"opacity")) chain.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*(${animationExpression(c,"opacity","T")})'`);
   else if((c.opacity??1)<1) chain.push(`colorchannelmixer=aa=${f(c.opacity!)}`);
   if((c.fadeIn??0)>0) chain.push(`fade=t=in:st=0:d=${f(Math.min(c.fadeIn!,dur))}:alpha=1`);
   if((c.fadeOut??0)>0) chain.push(`fade=t=out:st=${f(Math.max(0,dur-c.fadeOut!))}:d=${f(Math.min(c.fadeOut!,dur))}:alpha=1`);
@@ -88,7 +89,7 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     .sort((p, q) => (p.c.track === q.c.track ? p.c.start - q.c.start : p.c.track === "video" ? -1 : 1));
 
   const audioSources: { c: Clip; a: Asset }[] = tl.clips
-    .filter((c) => c.assetId && !c.muted && !tl.tracks?.[c.track]?.muted && (c.volume > 0 || c.keyframes?.volume))
+    .filter((c) => c.assetId && !c.muted && !tl.tracks?.[c.track]?.muted && (c.volume > 0 || isAnimated(c,"volume")))
     .map((c) => ({ c, a: assets.get(c.assetId) }))
     .filter((x): x is { c: Clip; a: Asset } => !!x.a && x.a.hasAudio === 1 && x.a.kind !== "image")
     .filter((x) => x.c.track === "audio" || x.a.kind === "video");
@@ -123,7 +124,7 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     const width=c.track==="overlay" ? W : W, height=c.track==="overlay" ? Math.max(2,Math.round(W/aspect/2)*2) : H;
     chain.push(...transformFilters(c,width,height,dur));
     const tr = incomingTransition(tl,c);
-    if(tr) { const p=`min(1,max(0,T/${f(tr.duration)}))`, alpha=({dissolve:p,'wipe-left':`lte(X,W*(${p}))`,'wipe-right':`gte(X,W*(1-(${p})))`,'wipe-up':`gte(Y,H*(1-(${p})))`,'wipe-down':`lte(Y,H*(${p}))`,iris:`lte(hypot(X-W/2,Y-H/2),hypot(W/2,H/2)*(${p}))`} as Record<string,string>)[tr.type];
+    if(tr) { const p=`min(1,max(0,T/${f(tr.duration)}))`, alpha=({dissolve:p,'wipe-left':`lte(X,W*(${p}))`,'wipe-right':`gte(X,W*(1-(${p})))`,'wipe-up':`gte(Y,H*(1-(${p})))`,'wipe-down':`lte(Y,H*(${p}))`,iris:`lte(hypot(X-W/2,Y-H/2),hypot(W/2,H/2)*(${p}))`,'barn-h':`lte(abs(X-W/2),W/2*(${p}))`,'barn-v':`lte(abs(Y-H/2),H/2*(${p}))`,diamond:`lte(abs(X-W/2)/W+abs(Y-H/2)/H,${p})`,'wipe-diagonal':`lte(X/W+Y/H,2*(${p}))`} as Record<string,string>)[tr.type];
       chain.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*(${alpha})'`); }
 
     chain.push(`setpts=PTS+${f(c.start)}/TB`);
@@ -167,17 +168,24 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
   const texts = tl.clips.filter((c) => c.text && c.text.trim() && !tl.tracks?.[c.track]?.hidden);
   const escPath = (p: string) => p.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
   texts.forEach((c, i) => {
-    const file = path.join(tmpDir, `${jobId}_t${i}.txt`);
-    fs.writeFileSync(file, c.text!.replace(/\r/g, ""));
-    tempFiles.push(file);
+    const lay = textLayout(c, { width: W, height: H });
+    // One drawtext per line: centred without relying on text_align (FFmpeg 6.1+), and no stray newline glyphs.
+    const files = lay.lines.map((line, j) => { const file = path.join(tmpDir, `${jobId}_t${i}_${j}.txt`); fs.writeFileSync(file, line.replace(/\r/g, "")); tempFiles.push(file); return file; });
     const dur = clipDuration(c);
     const next = `base${layer + 1}`;
-    const size = Math.round((H * (c.textSize ?? 6)) / 100);
+    const size = Math.max(1, Math.round(lay.fontSize));
     const color = (c.textColor ?? "#ffffff").replace("#", "0x");
     const box = c.textBg ? `:box=1:boxcolor=black@0.55:boxborderw=${Math.round(size * 0.35)}` : `:borderw=${Math.max(1, Math.round(size / 18))}:bordercolor=black@0.7`;
     const font = process.env.VIDEOFORGE_FONT ? `:fontfile='${escPath(process.env.VIDEOFORGE_FONT)}'` : "";
-    const tc:Clip=c.assetId ? {...c,assetId:"",x:.5,y:.82,scale:1,rotation:0,keyframes:undefined} : c;
-    const textChain=[`color=c=black@0:s=${W}x${H}:r=${fps}:d=${f(dur)}`,"format=yuva420p",`drawtext=expansion=none:textfile='${escPath(file)}'${font}:fontsize=${size}:fontcolor=${color}${box}:x=(w-text_w)/2:y=(h-text_h)/2`,...transformFilters(tc,W,H,dur,true),`setpts=PTS+${f(c.start)}/TB`];
+    const tc:Clip=c.assetId ? {...c,assetId:"",x:.5,y:.82,scale:1,rotation:0,keyframes:undefined,expressions:undefined} : c;
+    const n = files.length, lineY = (j: number) => n === 1 ? "(h-text_h)/2" : `(h-${n}*line_h)/2+${j}*line_h`;
+    const draw = (j: number, style: string) => `drawtext=expansion=none:textfile='${escPath(files[j])}'${font}:fontsize=${size}${style}:x=(w-text_w)/2:y=${lineY(j)}`;
+    const lineFilters = c.textBg
+      ? n === 1 ? [draw(0, `:fontcolor=${color}${box}`)]
+        // Boxes are drawn opaque first and made translucent together, so overlapping lines do not darken twice.
+        : [...files.map((_, j) => draw(j, `:fontcolor=black@0:box=1:boxcolor=black@1:boxborderw=${Math.round(size * 0.35)}`)), "format=rgba", "colorchannelmixer=aa=0.55", "format=yuva420p", ...files.map((_, j) => draw(j, `:fontcolor=${color}`))]
+      : files.map((_, j) => draw(j, `:fontcolor=${color}${box}`));
+    const textChain=[`color=c=black@0:s=${W}x${H}:r=${fps}:d=${f(dur)}`,"format=yuva420p",...lineFilters,...transformFilters(tc,W,H,dur,true),`setpts=PTS+${f(c.start)}/TB`];
     filters.push(`${textChain.join(",")}[ct${i}]`);
     const x=`main_w*(${animationExpression(tc,"x",`(t-${f(c.start)})`)})-overlay_w/2`;
     const y=`main_h*(${animationExpression(tc,"y",`(t-${f(c.start)})`)})-overlay_h/2`;

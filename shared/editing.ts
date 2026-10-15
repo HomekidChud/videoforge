@@ -4,9 +4,22 @@ import { normalizeKeyframes, isProperty, sliceKeyframes, type AnimationProperty,
 import { motionPreset } from "./presets";
 import { templateClips } from "./graphics";
 import { beatTimes, retimeAnimation, reverseAnimation } from "./motion";
+import { codeRecipe } from "./expr";
+import { fitClip, type FitMode } from "./layout";
+import { normalizeExpressions, valueAt, ANIMATABLE } from "./animation";
 const uid = () => Math.random().toString(36).slice(2,14);
 export type TimelineOp = { op: string; args?: any };
 export function splitKeyframes(c:Clip, at:number) { return [sliceKeyframes(c,0,at),sliceKeyframes(c,at,clipDuration(c))]; }
+/** A preset that animates a property takes over from any code expression on it. */
+function usePreset(c: Clip, preset: string, options: { duration?: number; delay?: number; strength?: number }) {
+  const patch = motionPreset(c, preset, options);
+  if (c.expressions) {
+    const rest = { ...c.expressions };
+    for (const p of Object.keys(patch.keyframes ?? {}) as AnimationProperty[]) if (patch.keyframes![p] !== c.keyframes?.[p]) delete rest[p];
+    if (Object.keys(rest).length) c.expressions = rest; else delete c.expressions;
+  }
+  Object.assign(c, patch);
+}
 export function patchWithAnimation(c:Clip, patch:Partial<Clip>):Clip {
   const next={...c,...patch}; const dur=clipDuration(next), oldDur=clipDuration(c);
   const windowChanged = Math.abs(dur-oldDur)>1e-6 || next.speed!==c.speed || (!!c.assetId && next.inPoint!==c.inPoint);
@@ -26,7 +39,7 @@ function scaleKeys(keys: Record<string, { time: number; value: number; easing?: 
   for (const p of Object.keys(keys)) out[p] = keys[p].map((f) => ({ ...f, time: Math.round(f.time * k * 1000) / 1000 }));
   return out;
 }
-export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:(id:string)=>{kind:string;duration:number}|undefined):Timeline {
+export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:(id:string)=>{kind:string;duration:number;width?:number|null;height?:number|null}|undefined):Timeline {
   const timeline=normalizeTimeline(JSON.parse(JSON.stringify(raw)));
   const clips=timeline.clips;
   const find=(id:unknown)=> { const c=clips.find(x=>x.id===id); if(!c) throw new Error(`clip ${id} not found`); return c; };
@@ -196,6 +209,7 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
           if (args.background !== undefined) timeline.background = args.background;
           if (fps) timeline.fps = fps;
           if (resolution) timeline.resolution = resolution;
+          if (args.refit) { const size = normalizeTimeline(timeline).resolution; timeline.resolution = size; clips.forEach((c, i) => { if (c.track === "audio" || (c.assetId && c.track === "video")) return; const asset = c.assetId ? getAsset(c.assetId) : undefined; clips[i] = normalizeClip({ ...c, ...fitClip(c, size, { width: asset?.width, height: asset?.height }, "safe", args.margin ?? .04) }); }); }
           break;
         }
         case "reorder": {
@@ -272,7 +286,7 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
         }
         case "set_transition": return setTransition(timeline,args.clipId,args.type,args.duration,args.join!==false);
         case "remove_clips": { if(!Array.isArray(args.clipIds)) throw new Error("clipIds required"); timeline.clips=clips.filter(c=>!args.clipIds.includes(c.id)); break; }
-        case "apply_motion": { const c=find(args?.clipId); Object.assign(c, motionPreset(c,args.preset,{duration:args.duration,delay:args.delay,strength:args.strength})); break; }
+        case "apply_motion": { const c=find(args?.clipId); usePreset(c,args.preset,{duration:args.duration,delay:args.delay,strength:args.strength}); break; }
         case "apply_motion_sequence": {
           // One preset across several clips, each starting `stagger` seconds after the previous one.
           if (!Array.isArray(args.clipIds) || !args.clipIds.length || new Set(args.clipIds).size !== args.clipIds.length) throw new Error("unique clipIds required");
@@ -280,7 +294,7 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
           if (!Number.isFinite(stagger) || stagger < 0 || stagger > 60) throw new Error("stagger must be 0..60 seconds");
           const start = args.start ?? Math.min(...args.clipIds.map((id: string) => find(id).start));
           if (!Number.isFinite(start) || start < 0) throw new Error("start must be nonnegative");
-          args.clipIds.forEach((id: string, i: number) => { const c = find(id); Object.assign(c, motionPreset(c, args.preset, { duration: args.duration, delay: args.delay, strength: args.strength })); c.start = Math.round((start + i * stagger) * 1000) / 1000; });
+          args.clipIds.forEach((id: string, i: number) => { const c = find(id); usePreset(c, args.preset, { duration: args.duration, delay: args.delay, strength: args.strength }); c.start = Math.round((start + i * stagger) * 1000) / 1000; });
           break;
         }
         case "reverse_animation": { const c=find(args?.clipId); if(!c.keyframes) throw new Error("clip has no animation to reverse"); c.keyframes=reverseAnimation(c); break; }
@@ -298,6 +312,66 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
           if (!Number.isFinite(args.bpm) || args.bpm < 20 || args.bpm > 300) throw new Error("bpm must be 20..300");
           const origin = args.start ?? 0, beat = 60 / args.bpm;
           for (const id of args.clipIds) { const c = find(id); c.start = Math.max(0, Math.round((origin + Math.round((c.start - origin) / beat) * beat) * 1000) / 1000); }
+          break;
+        }
+        case "animate_code": {
+          // Per-property expressions of t, d, p and base; "" or null clears a property. See shared/expr.ts.
+          const c = find(args?.clipId);
+          if (!args?.expressions || typeof args.expressions !== "object" || Array.isArray(args.expressions)) throw new Error("expressions: {property: code} required");
+          const next = { ...(args.replace ? {} : c.expressions) } as Record<string, string>;
+          for (const [property, code] of Object.entries(args.expressions)) { if (code === "" || code === null) delete next[property]; else Object.assign(next, normalizeExpressions({ [property]: code })); }
+          if (Object.keys(next).length > 10) throw new Error("a clip accepts at most 10 expressions");
+          if (!c.assetId && !c.shape && (next as any).reveal) throw new Error("reveal applies to media and shape clips; use opacity or position for text");
+          if (Object.keys(next).length) c.expressions = next; else delete c.expressions;
+          break;
+        }
+        case "apply_code_motion": {
+          // A named looping behaviour (float, orbit, wiggle...). Reads each property's static value as `base`.
+          const ids: string[] = Array.isArray(args?.clipIds) ? args.clipIds : [args?.clipId];
+          if (!ids.length || ids.length > 100 || ids.some(id => typeof id !== "string")) throw new Error("clipId or clipIds required");
+          for (const id of ids) {
+            const c = find(id), made = codeRecipe(args.recipe, args.speed ?? 1, args.strength ?? 1);
+            if (c.track === "audio") throw new Error("audio clips cannot use code motion");
+            c.expressions = { ...c.expressions, ...normalizeExpressions(made) };
+            if (c.keyframes) for (const p of Object.keys(made)) delete (c.keyframes as any)[p];
+            if (c.keyframes && !Object.keys(c.keyframes).length) delete c.keyframes;
+          }
+          break;
+        }
+        case "bake_expression": {
+          // Turns code into ordinary keyframes you can drag, retime and ease by hand.
+          const c = find(args?.clipId), dur = clipDuration(c), samples = args.samples ?? 48;
+          if (!Number.isInteger(samples) || samples < 2 || samples > 64) throw new Error("samples must be an integer 2..64");
+          const props = (args.property ? [args.property] : Object.keys(c.expressions ?? {})) as AnimationProperty[];
+          if (!props.length || props.some(p => !c.expressions?.[p])) throw new Error("no expression to bake");
+          const keyframes: any = { ...c.keyframes };
+          for (const p of props) {
+            const times = Array.from({ length: samples }, (_, i) => Math.round(dur * i / (samples - 1) * 1000) / 1000);
+            keyframes[p] = Array.from(new Set(times)).map(time => ({ time, value: Math.round(valueAt(c, p, time) * 10000) / 10000, easing: "linear" }));
+          }
+          const rest = { ...c.expressions }; for (const p of props) delete rest[p];
+          c.keyframes = normalizeKeyframes(keyframes, dur);
+          if (Object.keys(rest).length) c.expressions = rest; else delete c.expressions;
+          break;
+        }
+        case "fit_clip": {
+          // Scale and nudge one clip until its animated bounds sit inside the frame. mode: safe | contain | cover | fill.
+          const c = find(args?.clipId), asset = c.assetId ? getAsset(c.assetId) : undefined;
+          clips[clips.indexOf(c)] = normalizeClip({ ...c, ...fitClip(c, timeline.resolution, { width: asset?.width, height: asset?.height }, (args.mode ?? "safe") as FitMode, args.margin ?? .04) });
+          break;
+        }
+        case "fit_all": {
+          // Fit every visual clip (or clipIds) inside the frame. media: keep (default) | contain | cover | fill for video-track footage.
+          const media = args?.media ?? "keep", ids: unknown = args?.clipIds;
+          if (![ "keep", "contain", "cover", "fill"].includes(media)) throw new Error("media must be keep, contain, cover or fill");
+          if (ids !== undefined && !Array.isArray(ids)) throw new Error("clipIds must be an array");
+          clips.forEach((c, i) => {
+            if (c.track === "audio" || (Array.isArray(ids) && !ids.includes(c.id))) return;
+            const asset = c.assetId ? getAsset(c.assetId) : undefined, size = { width: asset?.width, height: asset?.height };
+            const mode = c.assetId && c.track === "video" && media !== "keep" ? media : "safe";
+            if (mode === "safe" && c.assetId && c.track === "video" && (c.fit === "cover" || c.fit === "fill")) return;
+            clips[i] = normalizeClip({ ...c, ...fitClip(c, timeline.resolution, size, mode as FitMode, args.margin ?? .04) });
+          });
           break;
         }
         default:

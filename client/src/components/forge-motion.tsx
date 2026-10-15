@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Diamond, Plus, Trash2 } from "lucide-react";
 import { ANIMATABLE, EASINGS, baseValue, clamp, easeAt, easingCurve, valueAt, type AnimationProperty, type Bezier, type Easing, type Keyframe } from "@shared/animation";
 import { clipDuration, type Clip } from "@shared/timeline";
-import { MOTION_PRESETS, motionPreset } from "@shared/presets";
+import { MOTION_PRESETS, motionPreset, presetGroup } from "@shared/presets";
+import { CODE_RECIPES, codeRecipe, validateExpression, EXPRESSION_FUNCTIONS } from "@shared/expr";
 import { reverseAnimation } from "@shared/motion";
 import { round } from "@/lib/editor-model";
 import type { TimelineGesture } from "./forge-timeline";
@@ -59,6 +60,24 @@ function BezierEditor({value,onChange,gesture,disabled}:{value:Easing|undefined;
     <div className="curve-inputs">{["x₁","y₁","x₂","y₂"].map((label,i)=><label key={i}>{label}<input aria-label={`Bezier ${label}`} type="number" step=".01" min={i%2?-2:0} max={i%2?3:1} value={curve[i]} disabled={disabled} onChange={e=>{const next=[...curve] as Bezier;next[i]=clamp(Number(e.target.value),i%2?-2:0,i%2?3:1);onChange(next);}}/></label>)}</div>
     <p className="help-text">Handles control acceleration and braking. Drag above the graph for overshoot.</p></>;
 }
+function CodePanel({clip,property,readOnly,patch}:Props & {property:AnimationProperty}) {
+  const saved=clip.expressions?.[property]??"";
+  const [draft,setDraft]=useState(saved),[recipe,setRecipe]=useState<string>(CODE_RECIPES[0].id),[speed,setSpeed]=useState(1),[strength,setStrength]=useState(1);
+  useEffect(()=>setDraft(saved),[saved,property,clip.id]);
+  let error="";if(draft.trim()){try{validateExpression(draft);}catch(e:any){error=e.message;}}
+  const meta=ANIMATABLE[property],dur=clipDuration(clip),has=Object.keys(clip.expressions??{}).length;
+  const setExpr=(map:Record<string,string>)=>{const next={...clip.expressions,...map} as Record<string,string>;for(const k of Object.keys(next))if(!next[k])delete next[k];patch({expressions:Object.keys(next).length?next as Clip["expressions"]:undefined});};
+  const bake=()=>{const keys:Record<string,Keyframe[]>={},rest={...clip.expressions} as Record<string,string>;for(const p of Object.keys(clip.expressions??{}) as AnimationProperty[]){keys[p]=Array.from({length:48},(_,n)=>{const t=round(dur*n/47);return {time:t,value:round(valueAt(clip,p,t)),easing:"linear" as Easing};});delete rest[p];}patch({keyframes:{...clip.keyframes,...keys},expressions:Object.keys(rest).length?rest as Clip["expressions"]:undefined});};
+  return <details className="motion-presets code-panel" open={has>0} data-testid="code-panel"><summary>Animate with code{has?` · ${has} active`:""}</summary>
+    <p className="help-text">Write a formula for {meta.label.toLowerCase()}. It beats keyframes for that property and renders identically. Variables: t (seconds), d (clip length), p (0 to 1), base (current value).</p>
+    <textarea rows={3} spellCheck={false} className="code-input" aria-label={`${meta.label} expression`} placeholder={`e.g. base + 0.05 * sin(t * 3)`} value={draft} disabled={readOnly} maxLength={300} onChange={e=>setDraft(e.target.value)} data-testid="code-input"/>
+    {error?<p className="code-error" role="alert" data-testid="code-error">{error}</p>:draft.trim()&&draft.trim()!==saved?<p className="help-text">Valid. Press Apply to use it.</p>:null}
+    <div className="toggle-row"><button className="chip" disabled={readOnly||!draft.trim()||!!error||draft.trim()===saved} onClick={()=>setExpr({[property]:draft.trim()})} data-testid="code-apply">Apply</button><button className="chip" disabled={readOnly||!saved} onClick={()=>{setExpr({[property]:""});setDraft("");}} data-testid="code-clear">Clear</button><button className="chip" disabled={readOnly||!has} onClick={bake} title="Convert every expression on this clip to editable keyframes" data-testid="code-bake">Bake to keyframes</button></div>
+    <div className="two-col"><label className="field compact">Looping recipe<select aria-label="Code recipe" value={recipe} disabled={readOnly} onChange={e=>setRecipe(e.target.value)}>{CODE_RECIPES.map(r=><option key={r.id} value={r.id}>{r.label} · {r.description}</option>)}</select></label>
+    <button className="secondary-btn" disabled={readOnly} onClick={()=>setExpr(codeRecipe(recipe,speed,strength))} data-testid="code-recipe">Apply recipe</button></div>
+    <div className="two-col"><label className="field compact">Speed {speed.toFixed(1)}×<input type="range" min={.2} max={3} step={.1} value={speed} aria-label="Recipe speed" onChange={e=>setSpeed(Number(e.target.value))}/></label><label className="field compact">Strength {strength.toFixed(1)}×<input type="range" min={.2} max={3} step={.1} value={strength} aria-label="Recipe strength" onChange={e=>setStrength(Number(e.target.value))}/></label></div>
+    <p className="help-text mono">Functions: {Object.keys(EXPRESSION_FUNCTIONS).concat("wiggle").join(", ")}</p></details>;
+}
 export default function ForgeMotion(props:Props) {
   const {clip,time,readOnly,patch,seek}=props;
   const [timing,setTiming]=useState({duration:.8,delay:0,strength:1});
@@ -88,9 +107,10 @@ export default function ForgeMotion(props:Props) {
     {!props.audioOnly&&<details className="motion-presets"><summary>Motion presets</summary>
       <div className="two-col"><label className="field compact">Duration (s)<input aria-label="Preset duration" type="number" min={.1} max={dur} step={.1} value={timing.duration} onChange={e=>setTiming(t=>({...t,duration:clamp(Number(e.target.value)||.1,.1,dur)}))}/></label><label className="field compact">Delay (s)<input aria-label="Preset delay" type="number" min={0} max={Math.max(0,dur-.1)} step={.1} value={timing.delay} onChange={e=>setTiming(t=>({...t,delay:clamp(Number(e.target.value)||0,0,Math.max(0,dur-.1))}))}/></label></div>
       <label className="field compact">Strength {timing.strength.toFixed(1)}×<input aria-label="Preset strength" type="range" min={.2} max={2} step={.1} value={timing.strength} onChange={e=>setTiming(t=>({...t,strength:Number(e.target.value)}))}/></label>
-      <div className="preset-grid">{MOTION_PRESETS.map(p=><button key={p.id} title={p.id==="reveal"&&!clip.assetId&&!clip.shape?"Wipe reveal applies to media and shapes":p.description} disabled={readOnly||(p.id==="reveal"&&!clip.assetId&&!clip.shape)} onClick={()=>{try{patch(motionPreset(clip,p.id,{duration:Math.min(timing.duration,Math.max(.01,dur-timing.delay)),delay:timing.delay,strength:timing.strength}));setSelected(0);}catch(e){/* e.g. reveal on text */}}} data-testid={`motion-${p.id}`}>{p.label}</button>)}</div>
+      {(["entrance","emphasis","exit"] as const).map(group=><div key={group}><p className="preset-group-title">{group==="entrance"?"Entrances":group==="emphasis"?"Emphasis":"Exits"}</p><div className="preset-grid">{MOTION_PRESETS.filter(p=>presetGroup(p.id)===group).map(p=>{const blocked=(p.id==="reveal"||p.id==="reveal-out")&&!clip.assetId&&!clip.shape;return <button key={p.id} title={blocked?"Wipes apply to media and shapes":p.description} disabled={readOnly||blocked} onClick={()=>{try{const made=motionPreset(clip,p.id,{duration:Math.min(timing.duration,Math.max(.01,dur-timing.delay)),delay:timing.delay,strength:timing.strength}),ex={...clip.expressions} as Record<string,string>;for(const k of Object.keys(made.keyframes??{}))if(made.keyframes![k as AnimationProperty]!==clip.keyframes?.[k as AnimationProperty])delete ex[k];patch({...made,expressions:Object.keys(ex).length?ex as Clip["expressions"]:undefined});setSelected(0);}catch(e){/* e.g. reveal on text */}}} data-testid={`motion-${p.id}`}>{p.label}</button>;})}</div></div>)}
       <div className="preset-grid"><button disabled={readOnly||!Object.keys(clip.keyframes??{}).length} onClick={()=>patch({keyframes:reverseAnimation(clip)})} data-testid="motion-reverse">Reverse animation</button></div>
       <p className="help-text">Presets replace only the properties they animate. Delay and duration place the move inside the clip.</p></details>}
+    {!props.audioOnly&&<CodePanel {...props} property={property}/>}
     {frames.length>0&&<button className="ghost-link muted" disabled={readOnly} onClick={()=>{replace([]);setSelected(0);}}>Clear {meta.label.toLowerCase()} animation</button>}
   </div>;
 }

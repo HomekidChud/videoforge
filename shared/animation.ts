@@ -1,4 +1,5 @@
 import type { Clip } from "./timeline";
+import { evaluateExpression, expressionToFfmpeg, validateExpression } from "./expr";
 
 export const ANIMATABLE = {
   x: { label: "Horizontal", min: 0, max: 1, step: .01, default: .5 },
@@ -14,11 +15,27 @@ export const ANIMATABLE = {
 } as const;
 export type AnimationProperty = keyof typeof ANIMATABLE;
 export type Bezier = [number, number, number, number];
-export const EASINGS = { linear: [0, 0, 1, 1], ease: [.25, .1, .25, 1], "ease-in": [.42, 0, 1, 1], "ease-out": [0, 0, .58, 1], "ease-in-out": [.42, 0, .58, 1], "back-out": [.34, 1.56, .64, 1], "snappy": [.16, 1, .3, 1], "anticipate": [.68, -.6, .32, 1.6] } satisfies Record<string, Bezier>;
+export const EASINGS = { linear: [0, 0, 1, 1], ease: [.25, .1, .25, 1], "ease-in": [.42, 0, 1, 1], "ease-out": [0, 0, .58, 1], "ease-in-out": [.42, 0, .58, 1], "back-out": [.34, 1.56, .64, 1], "snappy": [.16, 1, .3, 1], "anticipate": [.68, -.6, .32, 1.6], "ease-in-cubic": [.32, 0, .67, 0], "ease-out-cubic": [.33, 1, .68, 1], "ease-in-out-cubic": [.65, 0, .35, 1], "ease-in-expo": [.7, 0, .84, 0], "ease-in-back": [.36, 0, .66, -.56] } satisfies Record<string, Bezier>;
 export type Easing = keyof typeof EASINGS | "hold" | "step-start" | Bezier;
 /** Time is relative to the clip's start, in timeline seconds. Easing belongs to the outgoing segment. */
 export type Keyframe = { time: number; value: number; easing?: Easing };
 export type Keyframes = Partial<Record<AnimationProperty, Keyframe[]>>;
+/** Code-driven animation: an expression of time per property (see shared/expr.ts). Wins over keyframes for that property. */
+export type Expressions = Partial<Record<AnimationProperty, string>>;
+export function normalizeExpressions(raw: any): Expressions {
+  if (raw == null) return {};
+  if (typeof raw !== "object" || Array.isArray(raw)) throw new Error("expressions must be a property map");
+  const out: Expressions = {};
+  for (const [property, code] of Object.entries(raw)) {
+    if (!isProperty(property)) throw new Error(`cannot animate ${property}`);
+    if (code === null || code === "") continue;
+    out[property] = validateExpression(code);
+  }
+  return out;
+}
+const localDuration = (c: Clip) => Math.max(.1, c.outPoint - c.inPoint) / (c.assetId && c.speed && c.speed > 0 ? c.speed : 1);
+/** True when the property moves, by keyframes or by code. */
+export const isAnimated = (c: Clip, p: AnimationProperty) => !!c.keyframes?.[p]?.length || !!c.expressions?.[p];
 export const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 export const isProperty = (p: string): p is AnimationProperty => Object.prototype.hasOwnProperty.call(ANIMATABLE, p);
 export function normalizeEasing(e: any): Easing {
@@ -60,6 +77,8 @@ export function easeAt(e: Easing | undefined, progress: number): number {
   return cubic((lo + hi) / 2, y1, y2);
 }
 export function valueAt(c: Clip, p: AnimationProperty, localTime: number): number {
+  const code = c.expressions?.[p];
+  if (code) { const m = ANIMATABLE[p]; return clamp(evaluateExpression(code, { t: localTime, d: localDuration(c), base: baseValue(c, p) }), m.min, m.max); }
   const frames = c.keyframes?.[p]; if (!frames?.length) return baseValue(c, p);
   if (localTime <= frames[0].time) return frames[0].value;
   const last = frames[frames.length - 1]; if (localTime >= last.time) return last.value;
@@ -72,7 +91,7 @@ export function animatedValues(c: Clip, timelineTime: number) {
   return out;
 }
 export function evaluateClip(c: Clip, timelineTime: number): Clip {
-  const evaluated = { ...c }; Object.keys(c.keyframes ?? {}).forEach(p => { if (isProperty(p)) (evaluated as any)[p] = valueAt(c, p, timelineTime - c.start); }); return evaluated;
+  const evaluated = { ...c }; Object.keys({ ...c.keyframes, ...c.expressions }).forEach(p => { if (isProperty(p)) (evaluated as any)[p] = valueAt(c, p, timelineTime - c.start); }); return evaluated;
 }
 /** Clip animation slice. Sampled boundary segments preserve motion to 1/30s; original interior keys remain. */
 export function sliceKeyframes(c: Clip, from: number, to: number): Keyframes | undefined {
@@ -103,6 +122,8 @@ export function sliceKeyframes(c: Clip, from: number, to: number): Keyframes | u
 }
 /** Trusted numeric expression for FFmpeg. Cubic segments are sampled at 24 intervals. */
 export function animationExpression(c: Clip, p: AnimationProperty, clock = "t"): string {
+  const code = c.expressions?.[p];
+  if (code) { const m = ANIMATABLE[p], base = baseValue(c, p), e = expressionToFfmpeg(code, { clock, duration: localDuration(c), base }); return `if(isnan(st(0,${e})),${Number(base.toFixed(6))},clip(ld(0),${m.min},${m.max}))`; }
   const frames = c.keyframes?.[p]; const fmt = (n:number) => String(Number(n.toFixed(6)));
   if (!frames?.length) return fmt(baseValue(c,p));
   let expression = fmt(frames[frames.length-1].value);
