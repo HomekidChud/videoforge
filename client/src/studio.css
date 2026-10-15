@@ -309,6 +309,10 @@
 .bs-code-side .bs-hint { margin: 0 0 12px; }
 
 /* code editor: gutter, inline errors, reference sidebar */
+.bs-notice { display: flex; align-items: center; gap: 10px; background: #1d2430; border-bottom: 1px solid #2e3a4d; color: #bcd3ee; padding: 8px 14px; font-size: 12.5px; flex: none; }
+.bs-notice span { flex: 1; }
+.bs-notice-close { flex: none; background: transparent; border: 1px solid #2e3a4d; color: #bcd3ee; border-radius: 7px; padding: 2px 8px; cursor: pointer; }
+.bs-notice-close:hover { background: #26303f; }
 .bs-editor-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .bs-editor { flex: 1; min-height: 0; display: flex; background: #101215; font-family: ui-monospace, "JetBrains Mono", monospace; font-size: 14px; line-height: 22px; }
 .bs-editor-gutter { padding: 14px 0; text-align: right; color: #565b63; user-select: none; overflow: hidden; min-width: 48px; border-right: 1px solid #26292f; font-variant-numeric: tabular-nums; flex: none; }

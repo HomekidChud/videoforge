@@ -8,7 +8,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import {
   BLOCK_GROUPS, BLOCK_LIBRARY, BLOCK_MAP, OP_IDS, OP_PARAMS, blocksToGraph, connectableParamKeys,
-  codeErrorLine, validateGraph, runTool, TEMPLATE_DOCS, VF_HELPERS,
+  codeErrorLine, compileGraph, graphToCode, validateGraph, runTool, TEMPLATE_DOCS, VF_HELPERS,
   type CustomTool, type ToolContext, type ToolGraph, type ToolGraphNode, type ToolParam,
 } from "@shared/custom-tools";
 import type { TimelineOp } from "@shared/editing";
@@ -284,7 +284,7 @@ const edgeTypes = { snap: SnapEdge };
  * The Code tab's editor: line numbers, tab-key support, inline run errors and a
  * live reference of every vf helper (click an example to insert it at the cursor).
  */
-function CodeTab({ tool, ctx, readOnly, onChange, runError }: { tool: CustomTool; ctx: ToolContext; readOnly: boolean; onChange: (t: CustomTool) => void; runError: string | null }) {
+function CodeTab({ tool, ctx, readOnly, onChange, runError, notice, onDismissNotice }: { tool: CustomTool; ctx: ToolContext; readOnly: boolean; onChange: (t: CustomTool) => void; runError: string | null; notice: boolean; onDismissNotice: () => void }) {
   const ta = useRef<HTMLTextAreaElement>(null);
   const gutter = useRef<HTMLDivElement>(null);
   const value = tool.code ?? "";
@@ -306,6 +306,12 @@ function CodeTab({ tool, ctx, readOnly, onChange, runError }: { tool: CustomTool
 
   return (
     <div className="bs-code-wrap" data-testid="bs-code-panel">
+      {notice && (
+        <div className="bs-notice" data-testid="bs-converted-notice">
+          <span>💡 Blocks were converted to code — this tool now runs the code. Switch back to Blocks any time; your blocks are kept.</span>
+          <button className="bs-notice-close" aria-label="Dismiss" onClick={onDismissNotice} data-testid="bs-notice-close">✕</button>
+        </div>
+      )}
       <div className="bs-code-main-row">
         <div className="bs-editor-col">
           {runError && (
@@ -370,6 +376,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun }: StudioProps) 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showErrors, setShowErrors] = useState(true);
   const [importOpen, setImportOpen] = useState(false);
+  const [converted, setConverted] = useState(false);
 
   const setGraph = useCallback((next: ToolGraph) => onChange({ ...tool, graph: next, mode: tab === "code" ? "code" : "blocks" }), [tool, onChange, tab]);
   const updateNode = useCallback((id: string, patch: Partial<ToolGraphNode>) =>
@@ -521,6 +528,27 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun }: StudioProps) 
     else if (type === "frame") addNode({ ...base, type: "frame", frame: Math.round(ctx.playhead * ctx.fps) });
   }, [addNode, rf, ctx]);
 
+  /** Switching Blocks → Code converts the graph into readable code the tool now runs. */
+  const switchToCode = useCallback(() => {
+    if (tab === "code" || readOnly) return;
+    if (tool.mode === "code") { setTab("code"); return; } // already a code tool — nothing to convert
+    try {
+      compileGraph(graph, ctx); // validates before converting; invalid graphs stay in Blocks
+      setTab("code");
+      setConverted(true);
+      onChange({ ...tool, graph, code: graphToCode(graph), mode: "code" });
+    } catch (e: any) {
+      setRunError(`Could not convert: ${e.message}`);
+      setShowErrors(true);
+    }
+  }, [tab, readOnly, tool, graph, ctx, onChange]);
+
+  const switchToBlocks = useCallback(() => {
+    setTab("blocks");
+    setConverted(false);
+    onChange({ ...tool, mode: "blocks" });
+  }, [tool, onChange]);
+
   const errorCount = issues.filter((i) => i.level === "error").length + (runError ? 1 : 0);
   const warnCount = issues.filter((i) => i.level === "warning").length;
   const errorsBar = (errorCount + warnCount > 0 || runError) && (
@@ -550,8 +578,8 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun }: StudioProps) 
       <header className="bs-header">
         <input className="bs-title" aria-label="Tool name" value={tool.name} onChange={(e) => onChange({ ...tool, name: e.target.value })} disabled={readOnly} data-testid="bs-name" />
         <div className="bs-tabs" role="tablist" aria-label="Tool mode">
-          <button role="tab" aria-selected={tab === "blocks"} className={tab === "blocks" ? "active" : ""} onClick={() => { setTab("blocks"); onChange({ ...tool, mode: "blocks" }); }} data-testid="bs-tab-blocks">🧩 Blocks</button>
-          <button role="tab" aria-selected={tab === "code"} className={tab === "code" ? "active" : ""} onClick={() => { setTab("code"); onChange({ ...tool, mode: "code" }); }} data-testid="bs-tab-code">{"</>"} Code</button>
+          <button role="tab" aria-selected={tab === "blocks"} className={tab === "blocks" ? "active" : ""} onClick={switchToBlocks} data-testid="bs-tab-blocks">🧩 Blocks</button>
+          <button role="tab" aria-selected={tab === "code"} className={tab === "code" ? "active" : ""} onClick={switchToCode} data-testid="bs-tab-code">{"</>"} Code</button>
         </div>
         <span className="bs-spacer" />
         {tab === "blocks" && (
@@ -641,7 +669,8 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun }: StudioProps) 
           </div>
         </div>
       ) : (
-        <CodeTab tool={tool} ctx={ctx} readOnly={readOnly} onChange={onChange} runError={runError} />
+        <CodeTab tool={tool} ctx={ctx} readOnly={readOnly} onChange={onChange} runError={runError}
+          notice={converted} onDismissNotice={() => setConverted(false)} />
       )}
       {tab === "code" && errorsBar}
     </div>

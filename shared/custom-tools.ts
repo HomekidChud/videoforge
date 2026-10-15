@@ -377,6 +377,7 @@ export function makeCodeApi(ctx: ToolContext) {
     selection: [...ctx.selection],
     clips: ctx.clips.map((c) => ({ ...c })),
     resolution: { ...ctx.resolution },
+    fps: ctx.fps,
     addText: (args: Record<string, unknown> = {}) => op({ op: "add_text_clip", args: { start: ctx.playhead, ...args } }),
     addShape: (args: Record<string, unknown> = {}) => op({ op: "add_shape_clip", args }),
     update: (id: string, patch: Record<string, unknown>) => op({ op: "update_clip", args: { clipId: needId(id), ...patch } }),
@@ -404,6 +405,7 @@ export const VF_HELPERS: VfHelperDoc[] = [
   { name: "vf.selection", signature: "vf.selection", description: "The ids of the clips you selected.", example: `const ops = [];\nfor (const id of vf.selection) ops.push(vf.motion(id, "spring"));\nreturn ops;` },
   { name: "vf.clips", signature: "vf.clips", description: "Every visual clip: id, kind, start and duration.", example: `const ops = [];\nfor (const c of vf.clips) if (c.kind === "text") ops.push(vf.update(c.id, { fontWeight: 700 }));\nreturn ops;` },
   { name: "vf.resolution", signature: "vf.resolution", description: "The canvas size: { width, height }.", example: `return [vf.addShape({ shape: { type: "ellipse", width: 0.3, height: 0.3, fill: "#f6a447" } })];` },
+  { name: "vf.fps", signature: "vf.fps", description: "The project's frames per second — handy with frame blocks.", example: `return [vf.addText({ text: "frame 30 = " + 30 / vf.fps + "s" })];` },
   { name: "vf.addText", signature: "vf.addText({ text, start?, duration?, ... })", description: "Adds a text clip. start defaults to the playhead.", example: `return [vf.addText({ text: "Hello", duration: 3 })];` },
   { name: "vf.addShape", signature: "vf.addShape({ shape, duration? })", description: "Adds a rectangle, ellipse or line.", example: `return [vf.addShape({ shape: { type: "rectangle", width: 0.3, height: 0.2, fill: "#4a8fd6" } })];` },
   { name: "vf.update", signature: "vf.update(id, patch)", description: "Changes any clip fields: position, colour, speed and more.", example: `return [vf.update("clip1", { x: 0.5, y: 0.4 })];` },
@@ -726,6 +728,281 @@ export function runTool(tool: CustomTool, ctx: ToolContext): TimelineOp[] {
   if (tool.mode === "code") return runCodeTool(tool.code ?? "", ctx);
   if (tool.graph) return compileGraph(tool.graph, ctx);
   return compileBlocks(tool.blocks ?? [], ctx);
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Blocks → code: turn a studio graph into readable, commented JavaScript that
+ * uses the vf helper and produces the exact same operations as compileGraph.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/** The JS expressions standing in for the $-templates at this point in the code. */
+type CodeVars = { playhead: string; duration: string; index: string; count: string; clipId: string; selection: string };
+
+const TOP_VARS: CodeVars = { playhead: "vf.playhead", duration: "vf.duration", index: "0", count: "1", clipId: '""', selection: 'vf.selection.join(",")' };
+const TEMPLATE_TOKEN = /\$(playhead|duration|index|count|clipId|selection)/;
+
+/** Split a template string into literal chunks and $-template names. */
+function templateChunks(value: string): { lit?: string; name?: string }[] {
+  const out: { lit?: string; name?: string }[] = [];
+  let rest = value;
+  for (;;) {
+    const m = TEMPLATE_TOKEN.exec(rest);
+    if (!m) { if (rest) out.push({ lit: rest }); return out; }
+    if (m.index > 0) out.push({ lit: rest.slice(0, m.index) });
+    out.push({ name: m[1] });
+    rest = rest.slice(m.index + m[0].length);
+  }
+}
+
+function hasTemplate(value: string): boolean { return TEMPLATE_TOKEN.test(value); }
+
+/** Does resolveValue's arithmetic path apply (substituted text is only numbers and operators)? */
+function isArithmeticTemplate(value: string): boolean {
+  if (!hasTemplate(value)) return false;
+  const substituted = value.replace(/\$(playhead|duration|index|count|clipId|selection)/g, "1");
+  return /^[0-9+\-*/().\s]+$/.test(substituted) && /\d/.test(substituted);
+}
+
+/** A $-template as a parenthesised JS expression. */
+function templateExpr(name: string, vars: CodeVars): string {
+  return `(${vars[name as keyof CodeVars]})`;
+}
+
+/** A template string as a JS string-concatenation expression (mirrors resolveValue's substitution). */
+function concatExpr(value: string, vars: CodeVars): string {
+  const parts = templateChunks(value).map((c) => (c.name ? templateExpr(c.name, vars) : JSON.stringify(c.lit)));
+  return parts.length ? parts.join(" + ") : '""';
+}
+
+/** A pure-arithmetic template as a numeric JS expression. */
+function arithmeticExpr(value: string, vars: CodeVars): string {
+  return templateChunks(value).map((c) => (c.name ? templateExpr(c.name, vars) : c.lit ?? "")).join("").replace(/\s+/g, " ");
+}
+
+/** A JSON param's string as code: literal object when static, JSON.parse(concatenation) when templated. */
+function jsonArgExpr(value: string, vars: CodeVars): string {
+  if (!hasTemplate(value)) {
+    try { return JSON.stringify(JSON.parse(value)); } catch { /* fall through to runtime parse */ }
+  }
+  const parts = templateChunks(value).map((c) => (c.name ? templateExpr(c.name, vars) : JSON.stringify(c.lit)));
+  return `JSON.parse(${parts.join(" + ")})`;
+}
+
+/** A clipIds list as code: arrays exactly like convertOpArgs produces. */
+function clipIdsExpr(value: string, vars: CodeVars): string {
+  if (value === "$selection") return "vf.selection.slice()";
+  if (!hasTemplate(value)) {
+    const list = value.split(",").map((x) => x.trim()).filter(Boolean);
+    return JSON.stringify(list);
+  }
+  return `String(${concatExpr(value, vars)}).split(",").map((s) => s.trim()).filter(Boolean)`;
+}
+
+/** Render one argument value as a JS expression, mirroring resolveArgs + convertOpArgs. */
+function argExpr(key: string, value: unknown, op: string, vars: CodeVars): string {
+  const param = (OP_PARAMS[op] ?? []).find((p) => p.key === key);
+  if (value === null || value === undefined) return "undefined";
+  // Frame connections become seconds against the runtime fps, like compileGraph.
+  if (typeof value === "object" && value !== null && "__frame" in (value as Record<string, unknown>)) {
+    return `${(value as { __frame: number }).__frame} / Math.max(1, vf.fps)`;
+  }
+  if (typeof value === "object") return JSON.stringify(value);
+  if (typeof value !== "string") return JSON.stringify(value);
+  if (key === "clipIds") return clipIdsExpr(value, vars);
+  if (param?.type === "json") return jsonArgExpr(value, vars);
+  if (isArithmeticTemplate(value)) return arithmeticExpr(value, vars);
+  if (hasTemplate(value)) return concatExpr(value, vars);
+  if (param?.type === "number" && Number.isFinite(Number(value))) return String(Number(value));
+  return JSON.stringify(value);
+}
+
+/** Render every arg of an action node, applying convertOpArgs's static transforms. */
+function renderArgs(op: string, args: Record<string, unknown>, vars: CodeVars): { exprs: string[]; shape?: string } {
+  const exprs: string[] = [];
+  let shape: string | undefined;
+  for (const key of Object.keys(args)) {
+    if (op === "update_clip" && key === "patch") continue; // merged below
+    if (op === "add_shape_clip" && ["shapeType", "width", "height", "fill"].includes(key)) continue; // nested into shape
+    exprs.push(`${JSON.stringify(key)}: ${argExpr(key, args[key], op, vars)}`);
+  }
+  if (op === "update_clip" && typeof args.patch === "string") exprs.push(`...(${jsonArgExpr(args.patch, vars)})`);
+  if (op === "add_shape_clip" && args.shape === undefined) {
+    shape = `{ type: ${argExpr("shapeType", args.shapeType ?? "rectangle", op, vars)}, width: ${argExpr("width", args.width ?? 0.35, op, vars)}, height: ${argExpr("height", args.height ?? 0.2, op, vars)}, fill: ${argExpr("fill", args.fill ?? "#f6a447", op, vars)} }`;
+  }
+  return { exprs, shape };
+}
+
+const JS_RESERVED = new Set(["await","break","case","catch","class","const","continue","debugger","default","delete","do","else","enum","export","extends","false","finally","for","function","if","import","in","instanceof","new","null","return","super","switch","this","throw","true","try","typeof","var","void","while","with","yield","let","static","async","of"]);
+
+/** A safe JS identifier for a function name from the graph. */
+function safeFnName(name: string, taken: Set<string>): string {
+  const base = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) && !JS_RESERVED.has(name) ? name : "fn";
+  let out = base, n = 2;
+  while (taken.has(out)) out = `${base}${n++}`;
+  taken.add(out);
+  return out;
+}
+
+/**
+ * Convert a studio graph into readable, commented JavaScript that runs through
+ * the vf helper and produces the same operations as compileGraph — so kids can
+ * see how their blocks look as code. Expects a graph that already validates.
+ */
+export function graphToCode(graph: ToolGraph): string {
+  const nodes = new Map(graph.nodes.map((n) => [n.id, n]));
+  const next = new Map<string, string>(), body = new Map<string, string>();
+  const paramIn = new Map<string, ToolGraphEdge>();
+  for (const e of graph.edges) {
+    if (e.sourceHandle === "next") next.set(e.source, e.target);
+    else if (e.sourceHandle === "body") body.set(e.source, e.target);
+    else if (e.targetHandle?.startsWith("param:")) paramIn.set(`${e.target}:${e.targetHandle.slice(6)}`, e);
+  }
+  const fnNodes = graph.nodes.filter((n) => n.type === "function" && n.name);
+  const taken = new Set<string>();
+  const fnNames = new Map<string, string>();
+  for (const f of fnNodes) fnNames.set(f.id, safeFnName(f.name ?? "", taken));
+
+  const lines: string[] = [];
+  const emit = (depth: number, line: string) => lines.push("  ".repeat(depth) + line);
+
+  /** The args of an action node with clip/frame connections applied (as at run time). */
+  const nodeArgs = (node: ToolGraphNode): Record<string, unknown> => {
+    const args: Record<string, unknown> = { ...(node.args ?? {}) };
+    for (const [slot, e] of Array.from(paramIn)) {
+      if (!slot.startsWith(`${node.id}:`)) continue;
+      const key = slot.split(":")[1];
+      const src = nodes.get(e.source);
+      if (!src) continue;
+      if (src.type === "clipRef" && ["clipId", "clipIds"].includes(key)) args[key] = src.clipId ?? "";
+      else if (src.type === "frame" && ["start", "delay"].includes(key)) args[key] = { __frame: src.frame ?? 0 };
+    }
+    return args;
+  };
+
+  /** One action node as a statement. Raw pushes cover ops the helpers can't express losslessly. */
+  const emitAction = (node: ToolGraphNode, vars: CodeVars, depth: number) => {
+    const op = node.op ?? (node.block ? BLOCK_MAP.get(node.block)?.op : undefined) ?? "";
+    const block = node.block ? BLOCK_MAP.get(node.block) : undefined;
+    const label = block?.label ?? op ?? "Advanced op";
+    emit(depth, `// ${label}${block?.description ? " — " + block.description.toLowerCase() : ""}`);
+    const args = nodeArgs(node);
+    const rendered = renderArgs(op, args, vars);
+    const entries = (skip: string[] = []) => rendered.exprs.filter((e) => !skip.some((k) => e.startsWith(JSON.stringify(k) + ":")));
+    const obj = (list: string[]) => `{ ${list.join(", ")} }`;
+    /** vf helpers refuse empty clip ids; raw pushes reproduce compileGraph exactly. */
+    const safeId = (expr: string) => {
+      const inner = expr.startsWith("(") && expr.endsWith(")") ? expr.slice(1, -1) : expr;
+      return /^c\d+\.id$/.test(inner) || /^"[^"]+"$/.test(inner);
+    };
+    const idExpr = argExpr("clipId", args.clipId ?? "$clipId", op, vars);
+    const rawPush = () => `ops.push({ op: ${JSON.stringify(op)}, args: ${obj(rendered.exprs)} });`;
+    let stmt: string;
+    if (op === "update_clip" && safeId(idExpr)) {
+      const patch = obj(entries(["clipId"]));
+      stmt = `ops.push(vf.update(${idExpr}, ${patch}));`;
+    } else if (op === "remove_clip" && safeId(idExpr)) {
+      stmt = `ops.push(vf.remove(${idExpr}));`;
+    } else if (op === "duplicate_clip" && args.newId === undefined && safeId(idExpr)) {
+      stmt = args.start === undefined ? `ops.push(vf.duplicate(${idExpr}));` : `ops.push(vf.duplicate(${idExpr}, ${argExpr("start", args.start, op, vars)}));`;
+    } else if (op === "apply_motion" && Object.keys(args).every((k) => ["clipId", "preset", "duration", "delay", "strength"].includes(k)) && safeId(idExpr)) {
+      const preset = argExpr("preset", args.preset ?? "", op, vars);
+      const opts = obj(entries(["clipId", "preset"]));
+      stmt = `ops.push(vf.motion(${idExpr}, ${preset}, ${opts}));`;
+    } else if (op === "set_keyframes" && ["clipId", "property", "keyframes"].every((k) => k in args) && safeId(idExpr)) {
+      const prop = argExpr("property", args.property, op, vars);
+      const keys = argExpr("keyframes", args.keyframes, op, vars);
+      stmt = `ops.push(vf.keyframes(${idExpr}, ${prop}, ${keys}));`;
+    } else if (op === "animate_code" && ["clipId", "expressions"].every((k) => k in args) && safeId(idExpr)) {
+      const expr = argExpr("expressions", args.expressions, op, vars);
+      stmt = `ops.push(vf.animate(${idExpr}, ${expr}));`;
+    } else if (op === "add_text_clip" && args.start !== undefined) {
+      stmt = `ops.push(vf.addText(${obj(entries())}));`;
+    } else if (op === "add_shape_clip") {
+      stmt = `ops.push(vf.addShape(${obj([...entries(["shapeType", "width", "height", "fill"]), rendered.shape ? `shape: ${rendered.shape}` : ""].filter(Boolean))}));`;
+    } else if (op === "stagger_clips" && args.start !== undefined) {
+      const ids = argExpr("clipIds", args.clipIds ?? "$selection", op, vars);
+      stmt = `ops.push(vf.stagger(${ids}, ${obj(entries(["clipIds"]))}));`;
+    } else if (op === "add_beat_markers" && args.bpm !== undefined) {
+      stmt = `ops.push(vf.markers(${argExpr("bpm", args.bpm, op, vars)}, ${argExpr("count", args.count ?? 8, op, vars)}));`;
+    } else {
+      stmt = rawPush();
+    }
+    emit(depth, stmt);
+  };
+
+  const LOOP_VARS = ["i", "j", "k", "m", "n", "p", "q", "r"];
+  let loopDepth = 0;
+
+  /** Walk a chain of blocks, the way compileGraph does. */
+  const walkChain = (id: string | undefined, vars: CodeVars, depth: number, visited: Set<string>) => {
+    while (id) {
+      const node = nodes.get(id);
+      if (!node || visited.has(id)) break;
+      visited.add(id);
+      if (node.type === "comment") {
+        emit(depth, `// ${node.text ?? ""}`);
+      } else if (node.type === "action") {
+        emitAction(node, vars, depth);
+      } else if (node.type === "repeat") {
+        const count = Math.max(0, Math.min(1000, Math.round(Number(node.count) || 0)));
+        const v = LOOP_VARS[Math.min(loopDepth, LOOP_VARS.length - 1)];
+        loopDepth++;
+        emit(depth, `// Repeat ${count} times`);
+        emit(depth, `for (let ${v} = 0; ${v} < ${count}; ${v}++) {`);
+        walkChain(body.get(id), { ...vars, index: v, count: String(count) }, depth + 1, new Set(visited));
+        emit(depth, "}");
+        loopDepth--;
+      } else if (node.type === "eachClip") {
+        const select = node.select ?? "all";
+        const v = LOOP_VARS[Math.min(loopDepth, LOOP_VARS.length - 1)];
+        loopDepth++;
+        const arr = `clips${loopDepth}`;
+        const iter = `c${loopDepth}`;
+        const filter = select === "all" ? "vf.clips" : select === "selected" ? "vf.clips.filter((c) => vf.selection.includes(c.id))" : `vf.clips.filter((c) => c.kind === ${JSON.stringify(select)})`;
+        emit(depth, `// For every ${select === "all" ? "" : select + " "}clip`);
+        emit(depth, `const ${arr} = ${filter};`);
+        emit(depth, `let ${v} = 0;`);
+        emit(depth, `for (const ${iter} of ${arr}) {`);
+        walkChain(body.get(id), { ...vars, clipId: `${iter}.id`, index: v, count: `${arr}.length` }, depth + 1, new Set(visited));
+        emit(depth, `  ${v}++;`);
+        emit(depth, "}");
+        loopDepth--;
+      } else if (node.type === "call") {
+        const fn = fnNodes.find((f) => f.name === node.name);
+        const target = fn ? fnNames.get(fn.id) : undefined;
+        if (target) {
+          emit(depth, `// Call ${node.name}`);
+          emit(depth, `${target}(${vars.index}, ${vars.count}, ${vars.clipId});`);
+        }
+      }
+      id = next.get(id);
+    }
+  };
+
+  lines.push("// Blocks were converted to code — this tool now runs the code.");
+  lines.push("// vf has the playhead, selection, every clip and the project fps.");
+  lines.push("// Build a list of operations and return it; they run as one undoable step.");
+  lines.push("");
+  lines.push("const ops = [];");
+  lines.push("");
+
+  // Function definitions come first so the chain can call them.
+  for (const f of fnNodes) {
+    const name = fnNames.get(f.id) ?? "fn";
+    lines.push(`// Function "${f.name}" — a named group of blocks.`);
+    lines.push(`const ${name} = (index, count, clipId) => {`);
+    walkChain(body.get(f.id), { ...TOP_VARS, index: "index", count: "count", clipId: "clipId" }, 1, new Set());
+    lines.push("};");
+    lines.push("");
+  }
+
+  lines.push("// When the tool runs:");
+  const start = graph.nodes.find((n) => n.type === "start");
+  walkChain(start ? next.get(start.id) : undefined, TOP_VARS, 0, new Set());
+  if (start && next.get(start.id) === undefined) lines.push("// (nothing is connected to Start yet)");
+  lines.push("");
+  lines.push("return ops;");
+  return lines.join("\n");
 }
 
 /** Persistence (localStorage) for user tools. */

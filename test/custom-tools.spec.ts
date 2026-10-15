@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { compileBlocks, runCodeTool, runTool, normalizeOps, loadUserTools, saveUserTools, toolContext, BUILT_IN_TOOLS, OP_PARAMS, validateGraph, compileGraph, blocksToGraph, codeErrorLine, VF_HELPERS, TEMPLATE_DOCS } from "../shared/custom-tools";
+import { compileBlocks, runCodeTool, runTool, normalizeOps, loadUserTools, saveUserTools, toolContext, BUILT_IN_TOOLS, OP_PARAMS, validateGraph, compileGraph, blocksToGraph, graphToCode, codeErrorLine, VF_HELPERS, TEMPLATE_DOCS } from "../shared/custom-tools";
 import { normalizeTimeline } from "../shared/timeline";
 import { applyTimelineOp } from "../shared/editing";
 
@@ -78,6 +78,59 @@ await check("vf reference catalog", async () => {
   assert.ok(VF_HELPERS.length >= 14, "every vf helper is documented");
   for (const h of VF_HELPERS) assert.ok(h.name.startsWith("vf.") && h.signature && h.description && h.example, `${h.name} malformed`);
   for (const t of TEMPLATE_DOCS) assert.ok(t.template.startsWith("$") && t.becomes && t.code, `${t.template} malformed`);
+});
+
+await check("graph compiles to code", async () => {
+  const ctxA = { ...ctx, playhead: 4, selection: ["b"] };
+  const ctxB = { ...ctx, playhead: 2.25, selection: ["b", "c"] };
+  const graph: ToolGraph = {
+    nodes: [
+      { id: "start", type: "start" },
+      { id: "t1", type: "action", block: "add-title", args: { text: "Your title", duration: 3, start: "$playhead", font: "inter" } },
+      { id: "c1", type: "comment", text: "Now animate it" },
+      { id: "m1", type: "action", block: "fade-in", args: { clipId: "$clipId", preset: "fade", duration: 0.8 } },
+      { id: "r1", type: "repeat", count: 3 },
+      { id: "s1", type: "action", block: "stagger", args: { clipIds: "$selection", start: "$playhead + $index * 0.4", delay: 0.15 } },
+      { id: "f1", type: "frame", frame: 45 },
+      { id: "cr1", type: "clipRef", clipId: "a" },
+      { id: "m2", type: "action", block: "move", args: { clipId: "a", x: 0.3, y: 0.5 } },
+      { id: "m3", type: "action", block: "grow", args: { clipId: "a", property: "scale", keyframes: "[{ \"time\": 0, \"value\": 0.2, \"easing\": \"back-out\" }, { \"time\": 0.8, \"value\": 1 }]" } },
+      { id: "fn1", type: "function", name: "polish" },
+      { id: "u1", type: "action", block: "color-text", args: { clipId: "$clipId", patch: "{ \"textColor\": \"#f6a447\" }" } },
+      { id: "call1", type: "call", name: "polish" },
+      { id: "e1", type: "eachClip", select: "text" },
+      { id: "u2", type: "action", block: "bold-text", args: { clipId: "$clipId", patch: "{ \"font\": \"inter\", \"fontWeight\": 700 }" } },
+      { id: "k1", type: "action", block: "spin", args: { clipId: "$clipId", property: "rotation", keyframes: "[{ \"time\": 0, \"value\": 0 }, { \"time\": 1.2, \"value\": 360 }]" } },
+      { id: "adv", type: "action", op: "trim_clip", args: { clipId: "$clipId", inPoint: 0, outPoint: "$duration / 2" } },
+      { id: "shape", type: "action", block: "add-shape", args: { duration: 3, shapeType: "ellipse", width: 0.3, height: 0.2, fill: "#4a8fd6" } },
+    ],
+    edges: [
+      { id: "e1", source: "start", sourceHandle: "next", target: "t1", targetHandle: "in" },
+      { id: "e2", source: "t1", sourceHandle: "next", target: "m1", targetHandle: "in" },
+      { id: "e3", source: "m1", sourceHandle: "next", target: "r1", targetHandle: "in" },
+      { id: "e4", source: "r1", sourceHandle: "body", target: "s1", targetHandle: "in" },
+      { id: "e5", source: "r1", sourceHandle: "next", target: "m2", targetHandle: "in" },
+      { id: "e6", source: "m2", sourceHandle: "next", target: "m3", targetHandle: "in" },
+      { id: "e7", source: "m3", sourceHandle: "next", target: "call1", targetHandle: "in" },
+      { id: "e8", source: "call1", sourceHandle: "next", target: "e1", targetHandle: "in" },
+      { id: "e9", source: "e1", sourceHandle: "body", target: "u2", targetHandle: "in" },
+      { id: "e10", source: "u2", sourceHandle: "next", target: "adv", targetHandle: "in" },
+      { id: "e11", source: "fn1", sourceHandle: "body", target: "u1", targetHandle: "in" },
+      { id: "e12", source: "f1", sourceHandle: "time", target: "t1", targetHandle: "param:start" },
+      { id: "e13", source: "cr1", sourceHandle: "clip", target: "m1", targetHandle: "param:clipId" },
+      { id: "e14", source: "e1", sourceHandle: "next", target: "shape", targetHandle: "in" },
+      { id: "e15", source: "shape", sourceHandle: "next", target: "k1", targetHandle: "in" },
+    ],
+  };
+  const opsA = compileGraph(graph, ctxA);
+  const code = graphToCode(graph);
+  assert.ok(code.includes("for (let i = 0; i < 3; i++)"), "repeat becomes a for loop");
+  assert.ok(code.includes("const polish = (index, count, clipId) =>"), "function becomes a const arrow");
+  assert.ok(code.includes("vf.clips.filter"), "eachClip filters vf.clips");
+  assert.ok(code.includes("45 / Math.max(1, vf.fps)"), "frame connections convert at runtime");
+  assert.deepEqual(runCodeTool(code, ctxA), opsA, "converted code produces identical ops (ctx A)");
+  assert.deepEqual(runCodeTool(code, ctxB), compileGraph(graph, ctxB), "converted code produces identical ops (ctx B)");
+  assert.deepEqual(runCodeTool(code, { ...ctxB, fps: 60 }), compileGraph(graph, { ...ctxB, fps: 60 }), "fps changes are runtime-faithful");
 });
 
 // Generated ops actually run against the timeline, atomically.
