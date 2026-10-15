@@ -59,9 +59,9 @@ export function templateClips(args: Record<string, any>, id: () => string, aspec
     keyframes: { scale: [{ time: 0, value: .8, easing: "back-out" }, { time: intro, value: 1 }] },
   });
   switch (args.template) {
-    case "lower-third": return [plate(.79, .7, .2), { ...text(title, .76, 6), textColor: "#111112" }, ...(subtitle ? [{ ...text(subtitle, .83, 3), textColor: "#111112" }] : [])];
-    case "title-card": return [plate(.59, .28, .009), text(title, .45, 10), ...(subtitle ? [text(subtitle, .69, 4)] : [])];
-    case "callout": return [plate(.5, .65, .24), { ...text(title, .5, 6), textColor: "#111112" }];
+    case "lower-third": return [plate(.79, .7, .2), { ...text(title, .76, 6), font: "inter", fontWeight: 700, textColor: "#111112" }, ...(subtitle ? [{ ...text(subtitle, .83, 3), font: "inter", textColor: "#111112" }] : [])];
+    case "title-card": return [plate(.59, .28, .009), { ...text(title, .45, 10), font: "playfair-display", fontWeight: 700 }, ...(subtitle ? [{ ...text(subtitle, .69, 4), font: "playfair-display" }] : [])];
+    case "callout": return [plate(.5, .65, .24), { ...text(title, .5, 6), font: "poppins", fontWeight: 700, textColor: "#111112" }];
     case "kinetic-type": {
       const words = title.split(/\s+/), step = duration * .45 / words.length;
       const lengths=words.map(w=>Array.from(w).length),total=lengths.reduce((a,b)=>a+b+1,0);
@@ -70,27 +70,27 @@ export function templateClips(args: Record<string, any>, id: () => string, aspec
         textColor: color, textSize: Math.max(1, Math.min(8, .8*aspect*100/(total*.75))) }));
     }
     case "quote-card": {
-      const mark = { ...text("\u201C", .3, 20), textColor: color, keyframes: { scale: [{ time: 0, value: .4, easing: "back-out" }, { time: intro, value: 1 }], opacity: [{ time: 0, value: 0 }, { time: intro, value: 1 }] }, y: .3 };
-      return [mark, text(title, .5, 6), plate(.6, .12, .006), ...(subtitle ? [{ ...text(subtitle, .68, 3.5), textColor: color }] : [])];
+      const mark = { ...text("\u201C", .3, 20), font: "playfair-display", textColor: color, keyframes: { scale: [{ time: 0, value: .4, easing: "back-out" }, { time: intro, value: 1 }], opacity: [{ time: 0, value: 0 }, { time: intro, value: 1 }] }, y: .3 };
+      return [mark, { ...text(title, .5, 6), font: "lora", lineHeight: 1.5 }, plate(.6, .12, .006), ...(subtitle ? [{ ...text(subtitle, .68, 3.5), font: "lora", textColor: color }] : [])];
     }
     case "split-reveal": {
       const rule = (y: number) => ({ ...base(`split rule ${y}`), x: .5, y, shape: { type: "rectangle", width: .64, height: .008, fill: color },
         keyframes: { reveal: [{ time: 0, value: 0, easing: "snappy" }, { time: Math.min(.7, duration / 2), value: 1 }] } });
-      return [rule(.36), rule(.64), text(title, .5, 9, start + Math.min(.25, duration / 8), duration - Math.min(.25, duration / 8)), ...(subtitle ? [text(subtitle, .72, 3.5, start + Math.min(.45, duration / 5), duration - Math.min(.45, duration / 5))] : [])];
+      return [rule(.36), rule(.64), { ...text(title, .5, 9, start + Math.min(.25, duration / 8), duration - Math.min(.25, duration / 8)), font: "fjalla-one" }, ...(subtitle ? [{ ...text(subtitle, .72, 3.5, start + Math.min(.45, duration / 5), duration - Math.min(.45, duration / 5)), font: "fjalla-one" }] : [])];
     }
     case "progress-bar": {
       const fill = Math.min(duration * .8, duration - .1);
       const track = { ...base("progress track"), x: .5, y: .5, shape: { type: "rectangle", width: .6, height: .035, fill: "#2a2a2e", radius: 100 } };
       const bar = { ...base("progress fill"), x: .5, y: .5, shape: { type: "rectangle", width: .6, height: .035, fill: color, radius: 100 },
         keyframes: { reveal: [{ time: 0, value: 0, easing: "ease-in-out" }, { time: fill, value: 1 }] } };
-      return [track, bar, text(title, .4, 7), ...(subtitle ? [text(subtitle, .6, 3.5)] : [])];
+      return [track, bar, { ...text(title, .4, 7), font: "montserrat", fontWeight: 700 }, ...(subtitle ? [{ ...text(subtitle, .6, 3.5), font: "montserrat" }] : [])];
     }
     case "stat-highlight": {
       let width = .56 / aspect, tall = .56;
       if (width > .8) { width = .8; tall = .8 * aspect; }
       const ring = { ...base("stat ring"), x: .5, y: .46, shape: { type: "ellipse", width, height: tall, fill: "transparent", stroke: color, strokeWidth: 10 },
         keyframes: { scale: [{ time: 0, value: .5, easing: "back-out" }, { time: Math.min(.7, duration / 2), value: 1 }] } };
-      return [ring, { ...text(title, .46, 12), textColor: color, keyframes: { scale: [{ time: 0, value: .6, easing: "back-out" }, { time: intro, value: 1 }], opacity: [{ time: 0, value: 0 }, { time: intro, value: 1 }] }, y: .46 }, ...(subtitle ? [text(subtitle, .86, 4)] : [])];
+      return [ring, { ...text(title, .46, 12), textColor: color, keyframes: { scale: [{ time: 0, value: .6, easing: "back-out" }, { time: intro, value: 1 }], opacity: [{ time: 0, value: 0 }, { time: intro, value: 1 }] }, y: .46 }, ...(subtitle ? [{ ...text(subtitle, .86, 4), font: "oswald" }] : [])];
     }
     case "bullet-list": {
       const items: string[] = Array.isArray(args.items) ? args.items.map((x: unknown) => String(x).trim().slice(0, 80)).filter(Boolean) : ["Fast", "Flexible", "Free"];
@@ -105,33 +105,33 @@ export function templateClips(args: Record<string, any>, id: () => string, aspec
           { ...text(item, y, size, at, length), x: .34 + widthFraction / 2, keyframes: { x: [{ time: 0, value: .31, easing: "ease-out" }, { time: Math.min(.4, length), value: .34 + widthFraction / 2 }], opacity: [{ time: 0, value: 0 }, { time: Math.min(.3, length), value: 1 }] } },
         ];
       });
-      return [{ ...text(title, top - .2, 7), textColor: color }, plate(top - .13, .22, .007), ...rows];
+      return [{ ...text(title, top - .2, 7), font: "work-sans", fontWeight: 700, textColor: color }, plate(top - .13, .22, .007), ...rows];
     }
     case "social-handle": {
       const widthFraction = Math.min(.8, Math.max(.2, textAdvance(title) * 5 / 100 / aspect + .1));
       return [
         { ...base("handle pill"), x: .5, y: .5, shape: { type: "rectangle", width: widthFraction, height: .13, fill: color, radius: 80 }, keyframes: { reveal: [{ time: 0, value: 0, easing: "snappy" }, { time: Math.min(.6, duration / 3), value: 1 }] } },
-        { ...text(title, .5, 5), textColor: "#111112", keyframes: { opacity: [{ time: 0, value: 0 }, { time: Math.min(.5, duration / 3), value: 0 }, { time: Math.min(.8, duration / 2), value: 1 }] } },
-        ...(subtitle ? [text(subtitle, .66, 3.5, start + Math.min(.5, duration / 4), duration - Math.min(.5, duration / 4))] : []),
+        { ...text(title, .5, 5), font: "poppins", fontWeight: 700, textColor: "#111112", keyframes: { opacity: [{ time: 0, value: 0 }, { time: Math.min(.5, duration / 3), value: 0 }, { time: Math.min(.8, duration / 2), value: 1 }] } },
+        ...(subtitle ? [{ ...text(subtitle, .66, 3.5, start + Math.min(.5, duration / 4), duration - Math.min(.5, duration / 4)), font: "poppins" }] : []),
       ];
     }
     case "chapter-number": {
       const number = String(args.number ?? "01").trim().slice(0, 4) || "01";
       return [
-        { ...text(number, .38, 24), textColor: color, keyframes: { scale: [{ time: 0, value: .7, easing: "snappy" }, { time: Math.min(.7, duration / 2), value: 1 }], opacity: [{ time: 0, value: 0 }, { time: intro, value: 1 }] }, y: .38 },
+        { ...text(number, .38, 24), font: "anton", textColor: color, keyframes: { scale: [{ time: 0, value: .7, easing: "snappy" }, { time: Math.min(.7, duration / 2), value: 1 }], opacity: [{ time: 0, value: 0 }, { time: intro, value: 1 }] }, y: .38 },
         plate(.56, .1, .006),
-        text(title, .66, 7, start + Math.min(.3, duration / 6), duration - Math.min(.3, duration / 6)),
-        ...(subtitle ? [text(subtitle, .76, 3.5, start + Math.min(.5, duration / 4), duration - Math.min(.5, duration / 4))] : []),
+        { ...text(title, .66, 7, start + Math.min(.3, duration / 6), duration - Math.min(.3, duration / 6)), font: "cinzel" },
+        ...(subtitle ? [{ ...text(subtitle, .76, 3.5, start + Math.min(.5, duration / 4), duration - Math.min(.5, duration / 4)), font: "cinzel" }] : []),
       ];
     }
     case "starburst": {
       const sq = (rot: number, fill: string, id: string) => ({ ...base(id), x: .5, y: .5, rotation: rot, shape: { type: "rectangle", width: Math.min(.3, .3 / aspect), height: .3, fill, radius: 6 },
         keyframes: { scale: [{ time: 0, value: .2, easing: "back-out" }, { time: Math.min(.6, duration / 3), value: 1 }] }, expressions: { rotation: `clamp(base + 10 * sin(t * 1.8), -360, 360)` } });
-      return [sq(0, color, "burst back"), sq(45, "#ffffff", "burst front"), { ...text(title, .5, 7), textColor: "#111112", keyframes: { scale: [{ time: 0, value: .3, easing: "back-out" }, { time: Math.min(.6, duration / 3), value: 1 }] } }];
+      return [sq(0, color, "burst back"), sq(45, "#ffffff", "burst front"), { ...text(title, .5, 7), font: "bungee", textColor: "#111112", keyframes: { scale: [{ time: 0, value: .3, easing: "back-out" }, { time: Math.min(.6, duration / 3), value: 1 }] } }];
     }
     case "countdown": {
       const step = duration / 4;
-      return ["3", "2", "1", title].map((word, i) => ({ ...text(word, .5, i === 3 ? 7 : 18, start + i * step, step), textColor: color }));
+      return ["3", "2", "1", title].map((word, i) => ({ ...text(word, .5, i === 3 ? 7 : 18, start + i * step, step), font: "bebas-neue", textColor: color }));
     }
   }
   return [];

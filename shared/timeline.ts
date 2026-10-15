@@ -1,4 +1,5 @@
 import { normalizeExpressions, normalizeKeyframes, type Expressions, type Keyframes } from "./animation";
+import { DEFAULT_FONT, FONT_IDS, FONT_MAP, getFont } from "./fonts";
 import { normalizeShape, type Shape } from "./graphics";
 // Timeline model shared by the editor, the HTTP API and the FFmpeg renderer.
 // Everything coming from a client is passed through normalizeTimeline() so the
@@ -46,6 +47,12 @@ export type Clip = {
   textFit?: "none"; // text auto-wraps and shrinks to fit the frame unless this is "none"
   textMaxWidth?: number; // fraction of the frame width text may use (0.1..1, default 0.9)
   textMaxHeight?: number; // fraction of the frame height text may use (0.05..1, default 0.5)
+  font?: string; // catalog id from shared/fonts (default noto-sans)
+  fontWeight?: 400 | 700; // 700 only when the family has a bold cut
+  textAlign?: "left" | "center" | "right"; // alignment inside the text box (default center)
+  lineHeight?: number; // 1..2, default 1.4
+  letterSpacing?: number; // -0.05..0.25 em
+  textTransform?: "none" | "uppercase";
 };
 
 export type Timeline = {
@@ -143,6 +150,31 @@ export function normalizeClip(raw: any): Clip {
   if (raw.textFit === "none") clip.textFit = "none";
   opt("textMaxWidth", raw.textMaxWidth, .1, 1, .9);
   opt("textMaxHeight", raw.textMaxHeight, .05, 1, .5);
+  // Text style: font family, weight, alignment, line height, letter spacing and case.
+  if (raw.font !== undefined) {
+    if (typeof raw.font !== "string" || !FONT_MAP.has(raw.font)) throw new Error(`font must be a catalog id such as ${FONT_IDS.slice(0, 4).join(", ")}`);
+    if (raw.font !== DEFAULT_FONT) clip.font = raw.font;
+  }
+  if (raw.fontWeight !== undefined) {
+    if (raw.fontWeight !== 400 && raw.fontWeight !== 700) throw new Error("fontWeight must be 400 or 700");
+    if (raw.fontWeight === 700) {
+      if (!getFont(clip.font).weights.includes(700)) throw new Error(`fontWeight 700 is not available for ${getFont(clip.font).id}`);
+      clip.fontWeight = 700;
+    }
+  }
+  if (raw.textAlign !== undefined) {
+    if (raw.textAlign !== "left" && raw.textAlign !== "center" && raw.textAlign !== "right") throw new Error("textAlign must be left, center or right");
+    if (raw.textAlign !== "center") clip.textAlign = raw.textAlign;
+  }
+  opt("lineHeight", raw.lineHeight, 1, 2, 1.4);
+  if (raw.letterSpacing !== undefined) {
+    const ls = round(num(raw.letterSpacing, -0.05, 0.25, 0));
+    if (ls !== 0) clip.letterSpacing = ls;
+  }
+  if (raw.textTransform !== undefined) {
+    if (raw.textTransform !== "none" && raw.textTransform !== "uppercase") throw new Error("textTransform must be none or uppercase");
+    if (raw.textTransform === "uppercase") clip.textTransform = "uppercase";
+  }
   return clip;
 }
 

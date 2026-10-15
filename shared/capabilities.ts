@@ -4,11 +4,13 @@ import { MOTION_PRESETS, TITLE_PRESETS, presetGroup } from "./presets";
 import { CODE_RECIPES, EXPRESSION_FUNCTIONS, EXPRESSION_LIMITS, EXPRESSION_VARIABLES } from "./expr";
 import { TRANSITION_TYPES } from "./timeline";
 import { MOTION_TEMPLATES, SHAPE_TYPES, GRAPHICS_SCHEMA } from "./graphics";
+import { FONT_CATALOG, FONT_CATEGORIES, FONT_IDS } from "./fonts";
 
 /** Machine-readable description of what the editor and API can do. Served at GET /api/capabilities. */
 export function capabilities() {
   return {
     version: 6,
+    fonts: { families: FONT_CATALOG.map(f => ({ id: f.id, label: f.label, category: f.category, weights: f.weights, google: f.google })), categories: FONT_CATEGORIES, default: "noto-sans", notes: "Preview loads them from Google Fonts; the renderer downloads each family on first use and caches it. Widths use per-family estimates." },
     graphics: { shapeTypes: SHAPE_TYPES, templates: MOTION_TEMPLATES, shapeSchema: GRAPHICS_SCHEMA, units: "shape width/height are canvas fractions; strokeWidth/radius are output pixels. All primitives use existing transform keyframes." },
     batch: { dryRun: "true validates and returns the proposed timeline without saving", expectedUpdatedAt: "optional timestamp from GET project; stale writes return 409", createdClipIds: "IDs of clips added by this batch, in creation order" },
     overview: "Timeline coordinates are seconds. Keyframe time is relative to the clip start. Layer order: video track, overlay track, then text. Use ops with ops[] for atomic batches, GET /frame to look at the result, and GET /state to read animated values.",
@@ -23,7 +25,7 @@ export function capabilities() {
       transform: ["x", "y", "scale", "rotation", "fit (contain|cover|fill)", "flipX", "flipY", "opacity", "blur", "reveal"],
       color: ["filter", "brightness", "contrast", "saturation"],
       audio: ["volume", "muted"],
-      text: ["text", "textSize", "textColor", "textBg", "textFit", "textMaxWidth", "textMaxHeight"],
+      text: ["text", "textSize", "textColor", "textBg", "textFit", "textMaxWidth", "textMaxHeight", "font (catalog id)", "fontWeight (400|700)", "textAlign (left|center|right)", "lineHeight (1..2)", "letterSpacing (-0.05..0.25 em)", "textTransform (none|uppercase)"],
       meta: ["label", "keyframes", "expressions"],
     },
     motionPresets: MOTION_PRESETS.map(p => ({ ...p, group: presetGroup(p.id) })),
@@ -43,7 +45,7 @@ export function capabilities() {
       summary: "Everything can be made to fit. Text wraps and shrinks automatically (textFit \"none\" opts out) within textMaxWidth/textMaxHeight; media uses fit contain|cover|fill; shapes and overlays are scaled and nudged into the frame by fit_clip / fit_all.",
       ops: "fit_clip {clipId, mode?: safe|contain|cover|fill, margin?}, fit_all {media?: keep|contain|cover|fill, clipIds?, margin?}, set_project {resolution, refit: true} refits after changing canvas",
       endpoint: "GET /api/projects/:id/fit-report?margin= lists clips that cross the frame with a fix for each",
-      notes: "Text width uses a Noto Sans based estimate with about 12% spare room. Fit checks static position and animated scale and rotation, not x/y travel of entrance animations.",
+      notes: "Text width uses per-family estimates (Noto Sans based tables scaled for each catalog font, about 12% spare room). Fit checks static position and animated scale and rotation, not x/y travel of entrance animations.",
     },
     titlePresets: TITLE_PRESETS,
     ops: {

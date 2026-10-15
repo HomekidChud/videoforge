@@ -16,6 +16,7 @@ import { capabilities } from "@shared/capabilities";
 import { fitSummary } from "@shared/layout";
 import { GRAPHICS_SCHEMA, MOTION_TEMPLATES } from "@shared/graphics";
 import { buildRenderPlan, runFfmpeg } from "./render";
+import { ensureTimelineFonts } from "./fonts";
 import { requireScope, requireMediaAccess, projectAllowed, assetAllowed, keyRestrictions } from "./auth";
 import { actorOf, syncTimeline, logEvent, renameLive, dropLive, registerLiveRoutes } from "./live";
 import { mongoConfigured } from "./mongo";
@@ -136,7 +137,9 @@ async function runRender(jobId: string, projectId: string) {
     storage.updateRenderJob(jobId, { status: "rendering", updatedAt: now() });
     const assets = new Map(storage.listAssets().map((a) => [a.id, a]));
     const outPath = path.join(OUTPUT_DIR, `${jobId}.mp4`);
-    const plan = buildRenderPlan(parseTimeline(project.timelineJson), assets, MEDIA_DIR, TMP_DIR, jobId, outPath);
+    const jobTimeline = parseTimeline(project.timelineJson);
+    await ensureTimelineFonts(jobTimeline); // catalog fonts are fetched once and cached for the renderer
+    const plan = buildRenderPlan(jobTimeline, assets, MEDIA_DIR, TMP_DIR, jobId, outPath);
     tempFiles = plan.tempFiles;
     console.log(`[render ${jobId}] filter graph:\n${plan.filter.slice(0, 4000)}`);
     let lastWrite = 0;
@@ -530,6 +533,7 @@ export async function registerRoutes(
       const timeline = parseTimeline(p.timelineJson), at = Math.min(Math.max(0, Number(req.query.t ?? 0) || 0), Math.max(0, timelineDuration(timeline) - 0.04));
       const width = Math.min(1920, Math.max(160, Math.round(Number(req.query.width ?? 960) || 960)));
       const assets = new Map(storage.listAssets().map((a) => [a.id, a]));
+      await ensureTimelineFonts(timeline);
       const plan = buildRenderPlan(timeline, assets, MEDIA_DIR, TMP_DIR, `frame${uid()}`, out, { frameAt: at, width });
       temp = plan.tempFiles;
       const { code, stderrTail } = await runFfmpeg(plan.args, 1, () => {});
@@ -559,6 +563,7 @@ export async function registerRoutes(
     const count = Math.min(12, Math.max(2, Math.round(Number(req.query.count ?? 6) || 6))), width = Math.min(640, Math.max(160, Math.round(Number(req.query.width ?? 320) || 320)));
     const files: string[] = [], temp: string[] = [], assets = new Map(storage.listAssets().map((a) => [a.id, a]));
     try {
+      await ensureTimelineFonts(timeline);
       const times = Array.from({ length: count }, (_, i) => Math.min(Math.max(0, total - 0.04), (total * (i + 0.5)) / count));
       for (let i = 0; i < times.length; i += 3) await Promise.all(times.slice(i, i + 3).map(async (at, j) => {
         const out = path.join(TMP_DIR, `board_${uid()}_${i + j}.png`); files[i + j] = out;

@@ -218,7 +218,7 @@ export default function EditorPage() {
   const [titleMenu, setTitleMenu] = useState(false);
   const addTitle = (preset: (typeof TITLE_PRESETS)[number] | null = null) => {
     if (readOnly) return; setTitleMenu(false);
-    const clip: Clip = { id: uid(), assetId: "", track: "overlay", start: round(time), inPoint: 0, outPoint: 3, volume: 1, muted: false, text: preset?.text ?? "Your title", textSize: preset?.textSize ?? 8, ...(preset ? { y: preset.y, textBg: preset.textBg } : {}) };
+    const clip: Clip = { id: uid(), assetId: "", track: "overlay", start: round(time), inPoint: 0, outPoint: 3, volume: 1, muted: false, text: preset?.text ?? "Your title", textSize: preset?.textSize ?? 8, ...(preset ? { y: preset.y, textBg: preset.textBg, font: preset.font, fontWeight: preset.fontWeight, lineHeight: preset.lineHeight, textTransform: preset.textTransform } : {}) };
     mutate((t) => ({ ...t, clips: [...t.clips, normalizeClip(clip)] })); setSelectedId(clip.id);
   };
   const selectedIds = useMemo(() => sel.filter((id) => timeline.clips.some((c) => c.id === id)), [sel, timeline.clips]);

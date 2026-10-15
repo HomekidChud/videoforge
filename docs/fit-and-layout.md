@@ -84,7 +84,7 @@ curl "$BASE/api/projects/$PROJECT/fit-report?margin=0.04" -H "Authorization: Bea
 
 ## Known limits
 
-Text width uses a Noto Sans based estimate with about 12% spare room, so an unusual font may fit more loosely or more tightly. Fit checks the static position and the peak animated scale and rotation. It does not account for x and y travel of entrance animations, which are meant to start off position.
+Text width uses per-family estimates — the base Noto Sans table scaled for each catalog font — with about 12% spare room, so an unusual font may fit more loosely or more tightly. Fit checks the static position and the peak animated scale and rotation. It does not account for x and y travel of entrance animations, which are meant to start off position.
 
 - [Keyframes & easing](keyframes)
 - [Animate with code](animate-with-code)

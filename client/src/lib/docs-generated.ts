@@ -653,7 +653,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Known limits",
-        "text": "Text width uses a Noto Sans based estimate with about 12% spare room, so an unusual font may fit more loosely or more tightly. Fit checks the static position and the peak animated scale and rotation. It does not account for x and y travel of entrance animations, which are meant to start off position.",
+        "text": "Text width uses per-family estimates — the base Noto Sans table scaled for each catalog font — with about 12% spare room, so an unusual font may fit more loosely or more tightly. Fit checks the static position and the peak animated scale and rotation. It does not account for x and y travel of entrance animations, which are meant to start off position.",
         "links": [
           {
             "label": "Keyframes & easing",
@@ -662,6 +662,110 @@ export const DOC_PAGES: DocPage[] = [
           {
             "label": "Animate with code",
             "slug": "animate-with-code"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "fonts-and-text",
+    "group": "Motion graphics",
+    "title": "Fonts & text",
+    "description": "A large font catalog, bold, alignment, line height, letter spacing and uppercase — with a fit engine that knows every family.",
+    "sections": [
+      {
+        "title": "A catalog of families",
+        "text": "Every text clip can pick a font from a catalog of over 40 families: sans, serif, display, handwriting and mono faces from Anton to Space Grotesk. The same catalog drives the Studio preview, the fit engine and the FFmpeg renderer, so the font you pick is the font that exports. Set `font` on a text clip with a catalog id.",
+        "code": "{\n  \"op\": \"add_text_clip\",\n  \"args\": {\n    \"id\": \"headline\",\n    \"text\": \"The night the studio burned down\",\n    \"font\": \"playfair-display\",\n    \"fontWeight\": 700,\n    \"textSize\": 8\n  }\n}"
+      },
+      {
+        "title": "Choose a family",
+        "text": "The Studio Typography section groups the catalog by category and previews each family with live text. Fonts with two weights offer Regular and Bold. The renderer downloads each family on first use and caches it on the server, so the first render with a new font may take a moment longer.",
+        "rows": [
+          [
+            "Category",
+            "Examples"
+          ],
+          [
+            "Sans",
+            "Inter, Poppins, Montserrat, Oswald, DM Sans, Space Grotesk"
+          ],
+          [
+            "Serif",
+            "Playfair Display, Merriweather, Lora, Source Serif 4, Cinzel"
+          ],
+          [
+            "Display",
+            "Bebas Neue, Anton, Archivo Black, Bungee, Press Start 2P, Lobster"
+          ],
+          [
+            "Handwriting",
+            "Pacifico, Caveat, Dancing Script, Permanent Marker"
+          ],
+          [
+            "Mono",
+            "Space Mono, JetBrains Mono, IBM Plex Mono"
+          ]
+        ]
+      },
+      {
+        "title": "Style a text clip",
+        "text": "Beyond the family, text clips take a weight, an alignment, a line height, letter spacing and a case transform. Alignment positions each line inside the text box: left and right edges are anchored to the widest line. Letter spacing is measured in em, from tight (-0.05) to airy (0.25), and the fit engine counts it in the width budget.",
+        "code": "{\n  \"op\": \"update_clip\",\n  \"args\": {\n    \"clipId\": \"headline\",\n    \"font\": \"anton\",\n    \"textAlign\": \"left\",\n    \"lineHeight\": 1.5,\n    \"letterSpacing\": 0.04,\n    \"textTransform\": \"uppercase\"\n  }\n}"
+      },
+      {
+        "title": "Fields",
+        "text": "All style fields are optional; unset fields keep their defaults and are omitted from the stored timeline.",
+        "rows": [
+          [
+            "Field",
+            "Accepted values"
+          ],
+          [
+            "font",
+            "catalog id, for example inter or playfair-display"
+          ],
+          [
+            "fontWeight",
+            "400 (default) or 700, when the family has a bold cut"
+          ],
+          [
+            "textAlign",
+            "left, center (default) or right"
+          ],
+          [
+            "lineHeight",
+            "1..2, default 1.4"
+          ],
+          [
+            "letterSpacing",
+            "-0.05..0.25 em"
+          ],
+          [
+            "textTransform",
+            "none (default) or uppercase"
+          ]
+        ]
+      },
+      {
+        "title": "Fit knows the font",
+        "text": "The shrink-to-fit engine measures every family with its own width table, scaled from the base Noto Sans estimates: a condensed face like Bebas Neue fits noticeably more text in the same box than a wide face like Press Start 2P. Bold runs a little wider, letter spacing adds one gap per character pair, and upper-case text is measured in its rendered form. Line height counts toward the height budget."
+      },
+      {
+        "title": "Rendering notes",
+        "text": "Preview and export agree because both use the same metrics and the same font files. Two approximations remain: character positions for letter spacing and left/right alignment use the estimated advances, so long lines can drift a few pixels, and letter spacing on a text clip with a background box is exported without the spacing (keep the box or the spacing, not both). Set `VIDEOFORGE_FONT` to render every clip with one server font file instead of the catalog.",
+        "links": [
+          {
+            "label": "Fit & layout",
+            "slug": "fit-and-layout"
+          },
+          {
+            "label": "Using the editor",
+            "slug": "editor"
+          },
+          {
+            "label": "Examples gallery",
+            "slug": "examples"
           }
         ]
       }
@@ -1136,6 +1240,10 @@ export const DOC_PAGES: DocPage[] = [
       {
         "title": "Work on a smaller screen",
         "text": "On mobile, the preview stays above the active Timeline, Library or Inspector panel. Switch panels with the panel buttons rather than scrolling away from the preview. Tools contains composition JSON, add title, redo, snapping and documentation links."
+      },
+      {
+        "title": "Typography for text clips",
+        "text": "Select a text clip and open the Typography section of the inspector to choose a family from the catalog, a weight, an alignment, line height, letter spacing and uppercase. The preview loads every catalog font, so what you pick is what renders. The font catalog is documented in Fonts & text."
       },
       {
         "title": "Create graphics",
