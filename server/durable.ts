@@ -26,7 +26,24 @@ import crypto from "node:crypto";
 
 const SYNC_DIR = path.resolve(process.env.VIDEOFORGE_SYNC_DIR ?? "data/restore");
 const MANIFEST = path.join(SYNC_DIR, "save_manifest.json");
-fs.mkdirSync(SYNC_DIR, { recursive: true });
+
+// The manifest is an optional backup — it must never be able to stop the
+// server from booting. If the sync directory cannot be created (e.g. the
+// path is outside a mounted persistent disk and the sandbox user cannot
+// write there, as happens on Render when the disk is missing or mounted
+// elsewhere), log a clear warning and disable the backup instead of
+// throwing at import time.
+let syncDirOk = true;
+try {
+  fs.mkdirSync(SYNC_DIR, { recursive: true });
+} catch (e: any) {
+  syncDirOk = false;
+  console.warn(
+    `[durable] WARNING: cannot create the sync directory ${SYNC_DIR} (${e.code ?? e.message}). ` +
+    "The save-manifest backup is disabled; the app will continue without it. " +
+    "Check that VIDEOFORGE_SYNC_DIR points inside a mounted, writable persistent disk."
+  );
+}
 
 const sha256 = (s: string) => crypto.createHash("sha256").update(s).digest("hex");
 const now = () => Date.now();
@@ -48,6 +65,7 @@ function loadManifest(): SaveManifest {
 
 /** Write the manifest to disk. Never writes a value that includes a plaintext key. */
 export function saveManifest(manifest: Omit<SaveManifest, "updatedAt" | "version">): void {
+  if (!syncDirOk) return; // no writable sync directory — backup disabled, not fatal
   const full: SaveManifest = { ...manifest, version: 1, updatedAt: now() };
   const tmp = `${MANIFEST}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(full, null, 2), { mode: 0o600 });

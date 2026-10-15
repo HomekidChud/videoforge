@@ -20,9 +20,54 @@ const DATA_ROOT = path.dirname(path.resolve(process.env.VIDEOFORGE_DB || "data.d
 // Preserve the original default media dir (data/media) so existing asset paths
 // keep working; VIDEOFORGE_MEDIA_DIR / VIDEOFORGE_RENDER_DIR are only opt-in.
 const DEFAULT_MEDIA_DIR = path.resolve("data/media");
-mkdirSync(DEFAULT_MEDIA_DIR, { recursive: true });
 
-const sqlite = new Database(process.env.VIDEOFORGE_DB || "data.db");
+// Non-fatal best-effort helper: a missing directory should produce clear
+// per-request errors, never an import-time crash of the whole server.
+function ensureDir(dir: string, label: string): void {
+  try {
+    mkdirSync(dir, { recursive: true });
+  } catch (e: any) {
+    console.warn(
+      `[storage] WARNING: cannot create the ${label} directory ${dir} (${e.code ?? e.message}). ` +
+      `Operations that write there will fail until this is fixed — check that the path ` +
+      `points inside a mounted, writable persistent disk.`
+    );
+  }
+}
+ensureDir(DEFAULT_MEDIA_DIR, "media");
+ensureDir(DATA_ROOT, "database");
+
+let sqlite: ReturnType<typeof Database>;
+const dbPath = process.env.VIDEOFORGE_DB || "data.db";
+/** True when the configured DB path failed and a fallback is in use. */
+export let storageDegraded = false;
+try {
+  sqlite = new Database(dbPath);
+} catch (e: any) {
+  // A configured-but-unopenable DB (e.g. the env points outside the mounted
+  // Render disk) must not stop the server from booting. Fall back to a local
+  // file with an unmissable warning: the service runs, but data is EPHEMERAL
+  // until the path is fixed. Health reports the degraded state.
+  const fallback = "data.db";
+  console.warn(
+    `[storage] WARNING: cannot open the configured database at ${dbPath} (${e.code ?? e.message}). ` +
+    `FALLING BACK to ${path.resolve(fallback)} — DATA IS EPHEMERAL and will reset on redeploy. ` +
+    `Point VIDEOFORGE_DB at a file inside a mounted, writable persistent disk ` +
+    `(e.g. /var/lib/<disk>/data.db).`
+  );
+  try {
+    sqlite = new Database(fallback);
+  } catch {
+    // Even the fallback is unwritable (read-only filesystem): run in memory
+    // rather than crash. Data does not survive the process — same warning.
+    console.warn(
+      `[storage] WARNING: cannot open ${path.resolve(fallback)} either; running on an IN-MEMORY database. ` +
+      `Nothing persists — fix VIDEOFORGE_DB before relying on this deployment.`
+    );
+    sqlite = new Database(":memory:");
+  }
+  storageDegraded = true;
+}
 sqlite.pragma("journal_mode = WAL");
 
 export const db = drizzle(sqlite);

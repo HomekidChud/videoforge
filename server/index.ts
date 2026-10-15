@@ -137,4 +137,16 @@ app.use((req, res, next) => {
       log(`serving on port ${port}`);
     },
   );
+
+  // Graceful shutdown: close the optional MongoDB pool (no-op when not
+  // configured) and stop accepting connections.
+  const shutdown = async (signal: string) => {
+    log(`received ${signal}, shutting down`);
+    const { closeMongo } = await import("./mongo");
+    await closeMongo().catch(() => undefined);
+    httpServer.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 5_000).unref?.();
+  };
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
 })();

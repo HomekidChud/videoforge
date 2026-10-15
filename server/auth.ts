@@ -81,14 +81,27 @@ export async function ensureOwnerKeyExists(): Promise<string> {
     })
     .returning().get() as ApiKey;
   ownerKeyPlaintext = key;
-  fs.mkdirSync(path.dirname(ADMIN_KEY_FILE), { recursive: true });
-  await fsp.writeFile(ADMIN_KEY_FILE, `# VideoForge owner key (keep this secret; delete this file after saving it elsewhere)\n${key}\n`, { mode: 0o600 });
-  console.log("=".repeat(64));
-  console.log("Created your first admin (owner) API key. It is stored at:");
-  console.log("  " + ADMIN_KEY_FILE);
-  console.log("Copy it somewhere safe (password manager / env var), then delete that file.");
-  console.log("You can also create more keys later with POST /api/keys.");
-  console.log("=".repeat(64));
+  try {
+    fs.mkdirSync(path.dirname(ADMIN_KEY_FILE), { recursive: true });
+    await fsp.writeFile(ADMIN_KEY_FILE, `# VideoForge owner key (keep this secret; delete this file after saving it elsewhere)\n${key}\n`, { mode: 0o600 });
+    console.log("=".repeat(64));
+    console.log("Created your first admin (owner) API key. It is stored at:");
+    console.log("  " + ADMIN_KEY_FILE);
+    console.log("Copy it somewhere safe (password manager / env var), then delete that file.");
+    console.log("You can also create more keys later with POST /api/keys.");
+    console.log("=".repeat(64));
+  } catch (e: any) {
+    // The key row is already in the database; only the local file failed.
+    // Print it once so it is not lost, and point at the env-var bootstrap
+    // which is the reliable path on read-only filesystems.
+    console.log("=".repeat(64));
+    console.log("Created your first admin (owner) API key, but could NOT write it to disk:");
+    console.log("  " + ADMIN_KEY_FILE + ` (${e.code ?? e.message})`);
+    console.log("SAVE THIS KEY NOW — it is shown once:");
+    console.log("  " + key);
+    console.log("On read-only deployments, set VIDEOFORGE_BOOTSTRAP_KEY in the environment instead.");
+    console.log("=".repeat(64));
+  }
   return row.id;
 }
 

@@ -1,10 +1,10 @@
 {
-  "name": "rest-express",
+  "name": "videoforge",
   "version": "1.0.0",
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "test": "tsx test/graphics.spec.ts && tsx test/api.spec.ts && tsx test/durable.spec.ts && tsx test/media-lifecycle.ts",
+    "test": "tsx test/graphics.spec.ts && tsx test/api.spec.ts && tsx test/durable.spec.ts && tsx test/mongo.spec.ts && tsx test/media-lifecycle.ts",
     "dev": "NODE_ENV=development tsx server/index.ts",
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
@@ -61,6 +61,7 @@
     "input-otp": "^1.4.2",
     "lucide-react": "^0.453.0",
     "memorystore": "^1.6.7",
+    "mongodb": "^7.7.0",
     "next-themes": "^0.4.6",
     "passport": "^0.7.0",
     "passport-local": "^1.0.0",

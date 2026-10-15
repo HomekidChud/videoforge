@@ -191,3 +191,40 @@ VIDEOFORGE_RENDER_DIR=/var/lib/videoforge/data/renders
 
 Nothing here ever stores a plaintext API key — only the SHA-256 hash, same as
 the DB.
+
+### Crash-safe durable paths
+
+The durable directories are created on boot with graceful degradation: if a
+configured path cannot be created or written (e.g. on Render, when the
+persistent disk is missing or mounted elsewhere than the env vars expect), the
+server logs a clear warning and keeps running instead of crashing with
+`EACCES` at startup. Uploads, renders and the manifest backup report a clear
+per-operation error until the path is fixed. Point every `VIDEOFORGE_*` path
+inside the actual disk mount and the warnings disappear.
+
+## MongoDB (optional)
+
+VideoForge's datastore is SQLite. MongoDB is available as an **optional,
+configuration-driven integration store** — it is not a replacement for the DB,
+and enabling it does not move projects, media or API keys out of SQLite.
+
+```bash
+# .env
+MONGODB_URI=mongodb+srv://user:password@cluster.example.mongodb.net/?retryWrites=true
+MONGODB_DB=videoforge   # optional, default "videoforge"
+```
+
+Behaviour:
+
+- **No `MONGODB_URI`** — nothing connects, no network access, app unchanged.
+- **`MONGODB_URI` set** — the connection is created lazily on first use with
+  bounded timeouts (5s server selection, 10s socket), so a dead cluster never
+  hangs the server. `GET /api/health` gains a `mongo` object:
+  `{ status: "ok", database: "videoforge" }` or
+  `{ status: "error", message: "..." }` (credentials redacted).
+- Server code can `import { getMongoDb } from "./mongo"` and use the handle;
+  the pool is closed on SIGTERM/SIGINT.
+- A failed connection never falls back to another store and never crashes the
+  process — callers get an error, `/api/health` reports it.
+
+All env vars are documented in [`.env.example`](.env.example).
