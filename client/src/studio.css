@@ -188,3 +188,23 @@
 .studio .studio-tools-menu button[data-testid="drafts-toggle"] {
   color: var(--forge-accent);
 }
+
+/* Custom tools library */
+.tool-card { border:1px solid var(--border,#2a2d33); border-radius:10px; padding:10px; margin-bottom:8px; }
+.tool-card-head { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+.tool-card-head b { font-size:13px; }
+.tool-card-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.tool-card-actions .primary-btn { padding:4px 10px; font-size:12px; }
+.tool-add-row { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; }
+.tool-add-row .primary-btn { flex:1; min-width:150px; }
+.tool-block { border:1px solid var(--border,#2a2d33); border-radius:8px; padding:8px; margin:6px 0; }
+.tool-block-head { display:flex; align-items:center; gap:6px; justify-content:space-between; }
+.tool-block-head select { flex:1; min-width:0; }
+.tool-block-controls { display:flex; gap:2px; }
+.tool-block-controls .icon-btn { padding:2px 5px; font-size:12px; }
+.tool-block-group { border-style:dashed; }
+.tool-block-children { margin:6px 0 0 10px; padding-left:8px; border-left:2px solid var(--border,#2a2d33); }
+.tool-comment { background:transparent; border:none; color:var(--muted,#9aa0a8); font-style:italic; flex:1; }
+.tool-code { width:100%; font-family:ui-monospace,monospace; font-size:12px; }
+.tool-block .field { display:block; margin:4px 0; }
+.tool-block .field input, .tool-block .field select, .tool-block .field textarea { width:100%; margin-top:2px; }
