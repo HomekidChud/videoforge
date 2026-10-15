@@ -1,0 +1,1680 @@
+// AUTO-GENERATED from docs/*.md — edit the markdown, not this file.
+// Regenerate with: npm run docs
+import type { DocPage } from "./docs-content";
+
+export const DOC_PAGES: DocPage[] = [
+  {
+    "slug": "introduction",
+    "group": "Get started",
+    "title": "Introduction",
+    "description": "One timeline. A browser studio. An API your agents can actually use.",
+    "sections": [
+      {
+        "title": "Welcome to VideoForge",
+        "text": "VideoForge is a self-hosted video editor and programmable composition engine. Use the Studio to cut footage and animate graphics, or use the same HTTP API to let scripts and AI agents build the edit. Your media stays on your server."
+      },
+      {
+        "title": "Choose your starting point",
+        "text": "New to the API? Create a composition in the quickstart. Prefer working visually? Open Studio with a scoped API key. No footage required: the motion toolkit creates shapes, titles and reusable animated layouts.",
+        "links": [
+          {
+            "label": "Your first composition",
+            "slug": "quickstart"
+          },
+          {
+            "label": "Motion graphics",
+            "slug": "motion-graphics"
+          },
+          {
+            "label": "Using the editor",
+            "slug": "editor"
+          }
+        ]
+      },
+      {
+        "title": "The creative loop",
+        "text": "Discover capabilities, compose with JSON, inspect the evaluated state or a rendered frame, then export an MP4. Timeline edits are atomic. Preview changes with dryRun before committing them.",
+        "language": "WORKFLOW",
+        "code": "Discover → Compose → Validate → Inspect → Render"
+      }
+    ]
+  },
+  {
+    "slug": "quickstart",
+    "group": "Get started",
+    "title": "Your first composition",
+    "description": "Create an animated lower third and export it without uploading a single asset.",
+    "sections": [
+      {
+        "title": "Connect to your server",
+        "text": "Run npm ci and npm run dev in the repository. The default server is http://localhost:5000. On first boot, the server creates an owner key; use it to generate a restricted write key for your agent. Set BASE to your server URL and KEY to that scoped key. Never put the owner key in client code.",
+        "language": "SHELL",
+        "code": "export BASE=\"http://localhost:5000\"\nexport KEY=\"<your-scoped-write-key>\"\ncurl \"$BASE/api/capabilities\" \\\n  -H \"Authorization: Bearer $KEY\""
+      },
+      {
+        "title": "Create a project",
+        "text": "Copy the id from the response into PROJECT. Even when there is no media, the project needs an initial clips array.",
+        "language": "SHELL",
+        "code": "curl -X POST \"$BASE/api/projects\" \\\n  -H \"Authorization: Bearer $KEY\" -H \"Content-Type: application/json\" \\\n  -d '{\"name\":\"First motion\",\"timeline\":{\"fps\":30,\"resolution\":{\"width\":1280,\"height\":720},\"background\":\"#17191b\",\"clips\":[]}}'\nexport PROJECT=\"<id-from-response>\""
+      },
+      {
+        "title": "Add motion graphics",
+        "text": "This template expands into a plate, headline and subtitle. The response includes createdClipIds, which you can use to adjust each clip with update_clip or set_keyframes.",
+        "language": "SHELL",
+        "code": "curl -X POST \"$BASE/api/projects/$PROJECT/timeline/ops\" \\\n  -H \"Authorization: Bearer $KEY\" -H \"Content-Type: application/json\" \\\n  -d '{\"op\":\"add_motion_template\",\"args\":{\"template\":\"lower-third\",\"title\":\"Ada Lovelace\",\"subtitle\":\"Pioneer of computing\",\"color\":\"#f6a447\",\"start\":0,\"duration\":4}}'"
+      },
+      {
+        "title": "Inspect and export",
+        "text": "Render a PNG at one second to check the result. Queue the final export, copy jobId into JOB, and poll until status is done before downloading. A render with status error includes a message; fix the composition before retrying.",
+        "language": "SHELL",
+        "code": "curl \"$BASE/api/projects/$PROJECT/frame?t=1&width=640\" \\\n  -H \"Authorization: Bearer $KEY\" -o frame.png\ncurl -X POST \"$BASE/api/renders\" \\\n  -H \"Authorization: Bearer $KEY\" -H \"Content-Type: application/json\" \\\n  -d \"{\\\"projectId\\\":\\\"$PROJECT\\\"}\"\nexport JOB=\"<jobId-from-response>\"\ncurl \"$BASE/api/renders/$JOB\" -H \"Authorization: Bearer $KEY\"\n# Once status is done:\ncurl \"$BASE/api/renders/$JOB/download\" \\\n  -H \"Authorization: Bearer $KEY\" -o motion.mp4"
+      }
+    ]
+  },
+  {
+    "slug": "authentication",
+    "group": "Get started",
+    "title": "Authentication & scopes",
+    "description": "Give agents only the access they need.",
+    "sections": [
+      {
+        "title": "Bearer authentication",
+        "text": "Send Authorization: Bearer <key> on every private API request. The health endpoint is public. Documentation and the homepage never require a key. Browser sign-in holds your key only in memory for the current page session.",
+        "language": "SHELL",
+        "code": "curl \"$BASE/api/auth/me\" -H \"Authorization: Bearer $KEY\""
+      },
+      {
+        "title": "Permission scopes",
+        "text": "Scopes are cumulative. Additional key restrictions can constrain expiry, project access, allowed origins, request rate, uploads, rendering and deletion.",
+        "rows": [
+          [
+            "Scope",
+            "Permission"
+          ],
+          [
+            "read",
+            "Read projects/media, inspect state and frames."
+          ],
+          [
+            "write",
+            "Read plus upload, edit projects and render."
+          ],
+          [
+            "admin",
+            "Write plus key management, visibility and live watching."
+          ]
+        ]
+      },
+      {
+        "title": "Create an agent key",
+        "text": "POST this JSON to /api/keys with an admin Bearer key. Newly created keys are returned once; the server stores their hashes. Keep credentials in environment variables or a secret manager.",
+        "code": "{\n  \"label\": \"Motion graphics agent\",\n  \"scope\": \"write\",\n  \"restrictions\": {\n    \"allowDelete\": false\n  }\n}"
+      },
+      {
+        "title": "Handle denied requests",
+        "text": "401 means the key is missing or invalid. 403 means its scope or restrictions disallow the request. A revoked or expired key cannot be recovered by retrying. Ask the workspace administrator for an appropriate replacement.",
+        "links": [
+          {
+            "label": "API reference",
+            "slug": "api-reference"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "timeline",
+    "group": "Core concepts",
+    "title": "Timeline & layers",
+    "description": "Understand seconds, normalized coordinates and composition order.",
+    "sections": [
+      {
+        "title": "The timeline model",
+        "text": "A project has fps, resolution, background, tracks, markers and clips. All timeline coordinates are seconds. Media clips reference an assetId; text and shape clips have an empty assetId. Shapes and text are separate clips.",
+        "code": "{\n  \"version\": 4,\n  \"fps\": 30,\n  \"resolution\": {\n    \"width\": 1280,\n    \"height\": 720\n  },\n  \"background\": \"#17191b\",\n  \"clips\": []\n}"
+      },
+      {
+        "title": "Timing and coordinates",
+        "text": "start is a timeline offset. inPoint and outPoint define the source window. Media duration is (outPoint - inPoint) / speed; asset-free clip duration is outPoint - inPoint. x and y are normalized center coordinates from 0 to 1. Keyframe times are relative to the clip start."
+      },
+      {
+        "title": "Layer order",
+        "text": "Footage on video is below media on overlay. Shapes are composited next; text and captions are composited last. Within each family, later entries draw over earlier entries in the renderer. There is no general z-index or nested scene graph in this version. Track hidden and muted settings affect preview and rendering."
+      },
+      {
+        "title": "Limits",
+        "text": "A timeline accepts up to 200 clips. Each animated property supports up to 64 keyframes. A batch accepts at most 100 operations. Canvas dimensions normalize to even values between 160 and 3840; fps is 1 to 60. Validate before rendering if your agent is generating complex JSON.",
+        "links": [
+          {
+            "label": "Batch operations",
+            "slug": "batch-operations"
+          },
+          {
+            "label": "Animation keyframes",
+            "slug": "keyframes"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "motion-graphics",
+    "group": "Motion graphics",
+    "title": "Motion graphics",
+    "description": "Build asset-free animation with primitives and editable templates.",
+    "sections": [
+      {
+        "title": "A toolkit, not a black box",
+        "text": "Motion graphics are ordinary timeline clips. Create a shape, add text, and animate position, scale, rotation or opacity with keyframes. Templates are convenience operations that expand into these primitives, so the API and the editor can refine the same result."
+      },
+      {
+        "title": "Add a motion template",
+        "text": "Send add_motion_template to the timeline operations endpoint. Options are template, title, subtitle, color, start, duration and an optional idPrefix. Duration must be 0.5 to 60 seconds. The returned createdClipIds identify every generated layer. With the prefix lt the layers are lt-0, lt-1 and so on, so later ops in the same batch can target them without waiting for a response.",
+        "code": "{\n  \"op\": \"add_motion_template\",\n  \"args\": {\n    \"template\": \"lower-third\",\n    \"title\": \"Ada Lovelace\",\n    \"subtitle\": \"Pioneer of computing\",\n    \"color\": \"#f6a447\",\n    \"start\": 0,\n    \"duration\": 4\n  }\n}"
+      },
+      {
+        "title": "Template catalog",
+        "text": "All templates support the same composition workflow. Kinetic type accepts up to eight words. Text size is estimated to fit the composition's aspect ratio; inspect long text before final export. The playground uses the same template compiler and keyframe evaluator as Studio.",
+        "rows": [
+          [
+            "Template",
+            "What it makes"
+          ],
+          [
+            "lower-third",
+            "Animated nameplate with a supporting subtitle."
+          ],
+          [
+            "title-card",
+            "A centered headline, accent rule and supporting copy."
+          ],
+          [
+            "callout",
+            "An animated badge with a short message."
+          ],
+          [
+            "kinetic-type",
+            "Words arrive in sequence with staggered motion."
+          ],
+          [
+            "countdown",
+            "A sequence of numbered beats with a final message."
+          ],
+          [
+            "quote-card",
+            "A large quotation mark, the quote and an attribution rule."
+          ],
+          [
+            "split-reveal",
+            "Two accent rules wipe open around a rising headline."
+          ],
+          [
+            "progress-bar",
+            "A rounded track fills with a headline above and caption below."
+          ],
+          [
+            "stat-highlight",
+            "A big number inside a springing accent ring with a caption."
+          ],
+          [
+            "bullet-list",
+            "A headline with up to six points that slide in one by one."
+          ],
+          [
+            "social-handle",
+            "A rounded pill with a handle and a short call to action."
+          ],
+          [
+            "chapter-number",
+            "A huge chapter number, a rule and the chapter title."
+          ],
+          [
+            "starburst",
+            "A rocking two-square burst with a short label, driven by code."
+          ]
+        ]
+      },
+      {
+        "title": "Refine the composition",
+        "text": "Adjust generated clips with update_clip. Replace curves with set_keyframes or add an existing motion preset with apply_motion. Use stagger_clips to offset several clips in a deliberate order, or apply_motion_sequence to apply one preset across several clips with a stagger. Templates do not add an AI model or invoke arbitrary code.",
+        "links": [
+          {
+            "label": "Motion presets",
+            "slug": "motion-presets"
+          },
+          {
+            "label": "Examples gallery",
+            "slug": "examples"
+          },
+          {
+            "label": "Shape primitives",
+            "slug": "shapes"
+          },
+          {
+            "label": "Keyframes & easing",
+            "slug": "keyframes"
+          },
+          {
+            "label": "Agent workflow",
+            "slug": "agent-workflow"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "shapes",
+    "group": "Motion graphics",
+    "title": "Shape primitives",
+    "description": "Rectangles, ellipses and lines with fill, stroke and transform animation.",
+    "sections": [
+      {
+        "title": "Create a shape clip",
+        "text": "Shape clips require no media upload. They live on overlay and use an empty assetId. width and height are fractions of the canvas. radius and strokeWidth are pixels at the project's output resolution, scaled for smaller frame previews. A line is a thin rectangle; rotate it for other orientations.",
+        "code": "{\n  \"op\": \"add_shape_clip\",\n  \"args\": {\n    \"id\": \"badge\",\n    \"start\": 0,\n    \"duration\": 4,\n    \"x\": 0.5,\n    \"y\": 0.5,\n    \"shape\": {\n      \"type\": \"rectangle\",\n      \"width\": 0.35,\n      \"height\": 0.2,\n      \"fill\": \"#f6a447\",\n      \"stroke\": \"#ffffff\",\n      \"strokeWidth\": 2,\n      \"radius\": 24\n    },\n    \"keyframes\": {\n      \"rotation\": [\n        {\n          \"time\": 0,\n          \"value\": -12,\n          \"easing\": \"ease-out\"\n        },\n        {\n          \"time\": 1,\n          \"value\": 0\n        }\n      ]\n    }\n  }\n}"
+      },
+      {
+        "title": "Shape fields",
+        "text": "Colors accept six-digit hex or transparent. Transparent fill makes outlined shapes possible. Invalid primitives, numeric bounds and colors return validation errors.",
+        "rows": [
+          [
+            "Field",
+            "Accepted values"
+          ],
+          [
+            "type",
+            "rectangle | ellipse | line"
+          ],
+          [
+            "width",
+            "0.01..1 (default 0.35)"
+          ],
+          [
+            "height",
+            "0.002..1 (default 0.2; line 0.01)"
+          ],
+          [
+            "fill / stroke",
+            "#rrggbb | transparent"
+          ],
+          [
+            "strokeWidth",
+            "0..40 pixels"
+          ],
+          [
+            "radius",
+            "0..200 pixels; rectangle corners"
+          ]
+        ]
+      },
+      {
+        "title": "Update and animate",
+        "text": "update_clip replaces the shape object, so supply all shape fields you want to preserve. Transform keyframes work as they do for text: x, y, scale, rotation and opacity. Shape dimensions and colors are static in this version. No SVG, expressions, custom shaders or arbitrary JavaScript are executed.",
+        "code": "{\n  \"op\": \"update_clip\",\n  \"args\": {\n    \"clipId\": \"badge\",\n    \"shape\": {\n      \"type\": \"ellipse\",\n      \"width\": 0.2,\n      \"height\": 0.35,\n      \"fill\": \"transparent\",\n      \"stroke\": \"#f6a447\",\n      \"strokeWidth\": 8\n    }\n  }\n}"
+      },
+      {
+        "title": "Machine-readable schema",
+        "text": "GET /api/graphics/schema returns the JSON Schema for the shape object. GET /api/capabilities includes this schema alongside every operation and template. Both require a read-capable key.",
+        "links": [
+          {
+            "label": "API reference",
+            "slug": "api-reference"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "keyframes",
+    "group": "Motion graphics",
+    "title": "Keyframes & easing",
+    "description": "Precise animation that previews in the browser and renders through FFmpeg.",
+    "sections": [
+      {
+        "title": "Clip-local keyframes",
+        "text": "Each property has an array of {time,value,easing}. Time is measured from the clip start, not from zero on the timeline. Easing belongs to the outgoing segment. Before the first and after the last keyframe, the endpoint value holds.",
+        "code": "{\n  \"op\": \"set_keyframes\",\n  \"args\": {\n    \"clipId\": \"badge\",\n    \"property\": \"scale\",\n    \"keyframes\": [\n      {\n        \"time\": 0,\n        \"value\": 0.5,\n        \"easing\": \"back-out\"\n      },\n      {\n        \"time\": 0.7,\n        \"value\": 1\n      },\n      {\n        \"time\": 4,\n        \"value\": 1\n      }\n    ]\n  }\n}"
+      },
+      {
+        "title": "Animatable properties",
+        "text": "The following bounds apply to both Studio and the agent API. Browser curves are evaluated directly; the FFmpeg renderer approximates cubic-bezier segments with 24 samples.",
+        "rows": [
+          [
+            "Property",
+            "Range"
+          ],
+          [
+            "x",
+            "0..1"
+          ],
+          [
+            "y",
+            "0..1"
+          ],
+          [
+            "scale",
+            "0.1..2"
+          ],
+          [
+            "rotation",
+            "-360..360"
+          ],
+          [
+            "opacity",
+            "0..1"
+          ],
+          [
+            "reveal",
+            "0..1"
+          ],
+          [
+            "volume",
+            "0..1"
+          ],
+          [
+            "brightness",
+            "-0.5..0.5"
+          ],
+          [
+            "contrast",
+            "0.5..2"
+          ],
+          [
+            "saturation",
+            "0..2"
+          ]
+        ]
+      },
+      {
+        "title": "Easing options",
+        "text": "Use linear, ease, ease-in, ease-out, ease-in-out, back-out, snappy (fast start, long settle), anticipate (dips backwards before launching), hold or step-start. A custom cubic bezier is [x1,y1,x2,y2], with x in 0..1 and y in -2..3. hold keeps the start value until the next keyframe; step-start jumps to the next value the moment the segment begins. Output values remain clamped to each property's bounds."
+      },
+      {
+        "title": "Reveal: a wipe mask",
+        "text": "reveal (0..1) is a left-to-right alpha mask on media and shape clips. At 0 nothing is drawn, at 1 the whole layer is. It is applied before scale and rotation, so it follows the layer. Text clips reject it; use opacity or position there. Combine it with the snappy easing for a crisp wipe, or animate it on a thin shape for progress bars.",
+        "code": "{\n  \"op\": \"set_keyframes\",\n  \"args\": {\n    \"clipId\": \"bar\",\n    \"property\": \"reveal\",\n    \"keyframes\": [\n      {\n        \"time\": 0,\n        \"value\": 0,\n        \"easing\": \"snappy\"\n      },\n      {\n        \"time\": 1.2,\n        \"value\": 1\n      }\n    ]\n  }\n}"
+      },
+      {
+        "title": "Stagger several layers",
+        "text": "Pass unique clipIds in your desired order. stagger_clips sets the first start, then offsets every following clip by delay seconds. This operation retimes clips without changing their clip-local animation curves.",
+        "code": "{\n  \"op\": \"stagger_clips\",\n  \"args\": {\n    \"clipIds\": [\n      \"word-a\",\n      \"word-b\",\n      \"word-c\"\n    ],\n    \"start\": 0,\n    \"delay\": 0.15\n  }\n}"
+      }
+    ]
+  },
+  {
+    "slug": "motion-presets",
+    "group": "Motion graphics",
+    "title": "Motion presets & sequencing",
+    "description": "One-line entrances, emphasis beats and exits, with timing you control.",
+    "sections": [
+      {
+        "title": "Presets are keyframes, not magic",
+        "text": "Every preset compiles to ordinary keyframes on the clip, so you can open the Motion tab afterwards and edit each one. Presets replace only the properties they animate. Use them from Studio (Effects tab or the Motion inspector) or from the API with apply_motion.",
+        "rows": [
+          [
+            "Preset",
+            "Group",
+            "What it does"
+          ],
+          [
+            "fade",
+            "entrance",
+            "Soft opacity entrance"
+          ],
+          [
+            "slide-left",
+            "entrance",
+            "Arrive from the left"
+          ],
+          [
+            "rise",
+            "entrance",
+            "Lift into position"
+          ],
+          [
+            "zoom",
+            "emphasis",
+            "Gentle push-in across the clip"
+          ],
+          [
+            "pop",
+            "entrance",
+            "Scale with an overshoot"
+          ],
+          [
+            "drift",
+            "emphasis",
+            "Slow pan across the clip"
+          ],
+          [
+            "spring",
+            "entrance",
+            "Damped, bouncing scale entrance"
+          ],
+          [
+            "whip",
+            "entrance",
+            "Fast right-to-left arrival with anticipation"
+          ],
+          [
+            "spin",
+            "entrance",
+            "Rotation and scale settle together"
+          ],
+          [
+            "pulse",
+            "emphasis",
+            "One smooth emphasis beat"
+          ],
+          [
+            "shake",
+            "emphasis",
+            "Damped horizontal impact"
+          ],
+          [
+            "reveal",
+            "entrance",
+            "Uncover the layer from left to right"
+          ],
+          [
+            "exit-left",
+            "exit",
+            "Slide away and fade at the clip end"
+          ],
+          [
+            "fade-out",
+            "exit",
+            "Fade at the clip end"
+          ],
+          [
+            "slide-right",
+            "entrance",
+            "Arrive from the right"
+          ],
+          [
+            "drop",
+            "entrance",
+            "Fall into place with a small overshoot"
+          ],
+          [
+            "bounce-in",
+            "entrance",
+            "Fall from above and bounce to rest"
+          ],
+          [
+            "zoom-out",
+            "entrance",
+            "Start oversized and settle into place"
+          ],
+          [
+            "swing",
+            "entrance",
+            "Tilted arrival that swings to rest"
+          ],
+          [
+            "wobble",
+            "emphasis",
+            "Damped side-to-side rocking"
+          ],
+          [
+            "rubber",
+            "emphasis",
+            "Elastic squash-and-stretch pulse"
+          ],
+          [
+            "tada",
+            "emphasis",
+            "Pop with a celebratory shake"
+          ],
+          [
+            "heartbeat",
+            "emphasis",
+            "Two quick thumps"
+          ],
+          [
+            "blink",
+            "emphasis",
+            "Hard on/off flashes"
+          ],
+          [
+            "flash",
+            "emphasis",
+            "Fast opacity flicker"
+          ],
+          [
+            "glitch",
+            "emphasis",
+            "Hard horizontal jumps"
+          ],
+          [
+            "exit-right",
+            "exit",
+            "Slide away to the right and fade"
+          ],
+          [
+            "exit-up",
+            "exit",
+            "Float up and fade"
+          ],
+          [
+            "exit-down",
+            "exit",
+            "Sink down and fade"
+          ],
+          [
+            "shrink-out",
+            "exit",
+            "Scale down and fade at the clip end"
+          ],
+          [
+            "spin-out",
+            "exit",
+            "Rotate, shrink and fade at the clip end"
+          ],
+          [
+            "pop-out",
+            "exit",
+            "Wind up, then collapse and fade"
+          ],
+          [
+            "reveal-out",
+            "exit",
+            "Cover the layer from right to left"
+          ]
+        ]
+      },
+      {
+        "title": "Timing and strength",
+        "text": "apply_motion accepts three optional controls. duration is how long the move takes, delay is how far into the clip it starts, and strength (0.1 to 2) scales distance and overshoot. Entrances play from the delay; every exit preset finishes exactly at the end of the clip. Studio exposes the same three controls in the Motion presets panel.",
+        "code": "{\n  \"op\": \"apply_motion\",\n  \"args\": {\n    \"clipId\": \"badge\",\n    \"preset\": \"spring\",\n    \"delay\": 0.4,\n    \"duration\": 1.2,\n    \"strength\": 1.5\n  }\n}"
+      },
+      {
+        "title": "Sequence many layers",
+        "text": "apply_motion_sequence applies one preset to several clips and offsets each start by stagger seconds (default 0.12). Pass the clips in reading order. It is one atomic step, so a failure leaves the timeline unchanged.",
+        "code": "{\n  \"op\": \"apply_motion_sequence\",\n  \"args\": {\n    \"clipIds\": [\n      \"k-0\",\n      \"k-1\",\n      \"k-2\"\n    ],\n    \"preset\": \"whip\",\n    \"stagger\": 0.2,\n    \"start\": 0.2,\n    \"duration\": 0.6\n  }\n}"
+      },
+      {
+        "title": "Reverse and retime",
+        "text": "reverse_animation plays every curve of a clip backwards and mirrors each easing, which turns an entrance into a matching exit. retime_animation squeezes or stretches all of a clip's keyframes into a window you give it, keeping relative timing between properties.",
+        "code": "[\n  {\n    \"op\": \"reverse_animation\",\n    \"args\": {\n      \"clipId\": \"badge\"\n    }\n  },\n  {\n    \"op\": \"retime_animation\",\n    \"args\": {\n      \"clipId\": \"badge\",\n      \"duration\": 0.8,\n      \"delay\": 3\n    }\n  }\n]"
+      },
+      {
+        "title": "Sync to a beat",
+        "text": "add_beat_markers drops markers on every beat of a tempo (20 to 300 BPM) so they show on the Studio timeline. snap_to_beats moves clips onto the nearest beat. Combine them with apply_motion_sequence and a stagger of 60 / BPM seconds to land motion on the beat.",
+        "code": "[\n  {\n    \"op\": \"add_beat_markers\",\n    \"args\": {\n      \"bpm\": 120,\n      \"count\": 8\n    }\n  },\n  {\n    \"op\": \"snap_to_beats\",\n    \"args\": {\n      \"clipIds\": [\n        \"b0\",\n        \"b1\"\n      ],\n      \"bpm\": 120\n    }\n  }\n]"
+      },
+      {
+        "title": "Rendering notes",
+        "text": "Spring, shake, bounce-in, rubber, tada, wobble, swing and heartbeat are sampled into 25 linear keyframes so the browser and FFmpeg draw the same curve. These presets therefore use more of the 64 keyframes a property allows, and preset window times round to milliseconds.",
+        "links": [
+          {
+            "label": "Keyframes & easing",
+            "slug": "keyframes"
+          },
+          {
+            "label": "Examples gallery",
+            "slug": "examples"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "fit-and-layout",
+    "group": "Motion graphics",
+    "title": "Fit & layout",
+    "description": "Text that wraps, media that fits and a report for everything that does not.",
+    "sections": [
+      {
+        "title": "Text fits by default",
+        "text": "Text clips wrap onto new lines and shrink until the whole block sits inside its box. The box is 90% of the frame width and 50% of its height unless you change textMaxWidth or textMaxHeight, and it never extends past the nearer frame edge. The same layout code runs in the Studio preview and the renderer, so what you see is what exports. Set textFit to none to opt out.",
+        "code": "{\n  \"op\": \"add_text_clip\",\n  \"args\": {\n    \"id\": \"headline\",\n    \"text\": \"A very long headline that now wraps and fits instead of running off both sides\",\n    \"textSize\": 10,\n    \"textMaxWidth\": 0.8\n  }\n}"
+      },
+      {
+        "title": "Fit media to the frame",
+        "text": "Footage on the video track has three fit modes: contain (everything visible, letterboxed), cover (fills the frame and crops) and fill (stretches to the frame and ignores the aspect ratio). In Studio, use the Fit to frame section of the inspector.",
+        "code": "{\n  \"op\": \"update_clip\",\n  \"args\": {\n    \"clipId\": \"clip-a\",\n    \"fit\": \"cover\"\n  }\n}"
+      },
+      {
+        "title": "Fit a layer inside the frame",
+        "text": "fit_clip scales and nudges one text, shape or overlay clip until its animated bounds sit inside the frame minus a margin (default 4%). Keyframed and code-driven scale and rotation are checked at their peak. fit_all does the same for every visual clip, optionally forcing footage to contain, cover or fill.",
+        "code": "[\n  {\n    \"op\": \"fit_clip\",\n    \"args\": {\n      \"clipId\": \"badge\",\n      \"margin\": 0.05\n    }\n  },\n  {\n    \"op\": \"fit_all\",\n    \"args\": {\n      \"media\": \"contain\"\n    }\n  }\n]"
+      },
+      {
+        "title": "Change the canvas safely",
+        "text": "set_project with refit true re-fits text, shapes and overlays after you change the resolution, for example from 16:9 to 9:16. Studio does this automatically when you pick a new canvas.",
+        "code": "{\n  \"op\": \"set_project\",\n  \"args\": {\n    \"resolution\": {\n      \"width\": 1080,\n      \"height\": 1920\n    },\n    \"refit\": true\n  }\n}"
+      },
+      {
+        "title": "Find what does not fit",
+        "text": "GET /api/projects/:id/fit-report?margin=0.04 lists every clip whose bounds leave the frame, how far, and the op that fixes it. In Studio, the Fit everything section of the project inspector shows the count and a Fit all layers button.",
+        "language": "SHELL",
+        "code": "curl \"$BASE/api/projects/$PROJECT/fit-report?margin=0.04\" -H \"Authorization: Bearer $KEY\""
+      },
+      {
+        "title": "Known limits",
+        "text": "Text width uses a Noto Sans based estimate with about 12% spare room, so an unusual font may fit more loosely or more tightly. Fit checks the static position and the peak animated scale and rotation. It does not account for x and y travel of entrance animations, which are meant to start off position.",
+        "links": [
+          {
+            "label": "Keyframes & easing",
+            "slug": "keyframes"
+          },
+          {
+            "label": "Animate with code",
+            "slug": "animate-with-code"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "animate-with-code",
+    "group": "Motion graphics",
+    "title": "Animate with code",
+    "description": "Drive any property with a formula of time that previews live and renders exactly.",
+    "sections": [
+      {
+        "title": "Expressions",
+        "text": "Give a property an expression instead of keyframes. The formula is a function of time, so a few characters make an orbit, a wiggle or a heartbeat that never runs out of keyframes. The browser preview and the FFmpeg renderer compile the same parsed expression, so they agree. An expression wins over keyframes on that property.",
+        "code": "{\n  \"op\": \"animate_code\",\n  \"args\": {\n    \"clipId\": \"badge\",\n    \"expressions\": {\n      \"x\": \"0.5 + 0.2 * cos(t * 2)\",\n      \"y\": \"0.5 + 0.2 * sin(t * 2)\",\n      \"rotation\": \"wiggle(2, 4)\"\n    }\n  }\n}"
+      },
+      {
+        "title": "Variables and operators",
+        "text": "Use + - * / % ^ and parentheses. Results are clamped to the property's range. Division by zero or invalid maths falls back to base for that frame.",
+        "rows": [
+          [
+            "Name",
+            "Meaning"
+          ],
+          [
+            "t",
+            "seconds since the clip started"
+          ],
+          [
+            "d",
+            "clip duration in seconds"
+          ],
+          [
+            "p",
+            "progress through the clip, 0 to 1"
+          ],
+          [
+            "base",
+            "the property's static value"
+          ],
+          [
+            "pi",
+            "3.14159"
+          ]
+        ]
+      },
+      {
+        "title": "Functions",
+        "text": "Everything maps to plain FFmpeg expression functions. Expressions are limited to 300 characters. There are no loops, strings, variables or property access, so an expression cannot do anything except calculate a number.",
+        "rows": [
+          [
+            "Function",
+            "What it does"
+          ],
+          [
+            "sin",
+            "sine, radians"
+          ],
+          [
+            "cos",
+            "cosine, radians"
+          ],
+          [
+            "tan",
+            "tangent"
+          ],
+          [
+            "atan",
+            "arctangent"
+          ],
+          [
+            "atan2",
+            "two-argument arctangent"
+          ],
+          [
+            "abs",
+            "absolute value"
+          ],
+          [
+            "sqrt",
+            "square root"
+          ],
+          [
+            "pow",
+            "a to the power b"
+          ],
+          [
+            "exp",
+            "e to the power a"
+          ],
+          [
+            "log",
+            "natural logarithm"
+          ],
+          [
+            "min",
+            "smaller of two"
+          ],
+          [
+            "max",
+            "larger of two"
+          ],
+          [
+            "clamp",
+            "clamp(value, low, high)"
+          ],
+          [
+            "floor",
+            "round down"
+          ],
+          [
+            "ceil",
+            "round up"
+          ],
+          [
+            "round",
+            "round to nearest"
+          ],
+          [
+            "fract",
+            "fractional part, a sawtooth when fed time"
+          ],
+          [
+            "mod",
+            "positive modulo, a sawtooth when fed time"
+          ],
+          [
+            "sign",
+            "-1, 0 or 1"
+          ],
+          [
+            "mix",
+            "mix(a, b, k) blends from a to b"
+          ],
+          [
+            "step",
+            "step(edge, x) is 0 before the edge and 1 after"
+          ],
+          [
+            "smoothstep",
+            "smoothstep(a, b, x) eases 0..1 between a and b"
+          ],
+          [
+            "easeIn",
+            "cubic ease-in of a 0..1 value"
+          ],
+          [
+            "easeOut",
+            "cubic ease-out of a 0..1 value"
+          ],
+          [
+            "easeInOut",
+            "cubic ease-in-out of a 0..1 value"
+          ],
+          [
+            "noise",
+            "smooth deterministic noise, about -1..1"
+          ],
+          [
+            "tri",
+            "triangle wave, -1..1, period 1"
+          ],
+          [
+            "lt",
+            "1 when a < b"
+          ],
+          [
+            "lte",
+            "1 when a <= b"
+          ],
+          [
+            "gt",
+            "1 when a > b"
+          ],
+          [
+            "gte",
+            "1 when a >= b"
+          ],
+          [
+            "between",
+            "between(x, low, high) is 1 inside the range"
+          ],
+          [
+            "if",
+            "if(condition, then, else)"
+          ],
+          [
+            "wiggle",
+            "wiggle(frequency, amount) is smooth noise over time"
+          ]
+        ]
+      },
+      {
+        "title": "Looping recipes",
+        "text": "apply_code_motion writes ready-made expressions that read each property's base value, so they work from wherever the layer sits. speed (0.1 to 5) and strength (0.1 to 3) tune them. In Studio use Animate with code in the Motion tab.",
+        "code": "{\n  \"op\": \"apply_code_motion\",\n  \"args\": {\n    \"clipIds\": [\n      \"badge\",\n      \"logo\"\n    ],\n    \"recipe\": \"float\",\n    \"speed\": 1.2,\n    \"strength\": 1\n  }\n}",
+        "rows": [
+          [
+            "Recipe",
+            "Behaviour"
+          ],
+          [
+            "float",
+            "Gentle vertical bob"
+          ],
+          [
+            "sway",
+            "Slow side-to-side drift"
+          ],
+          [
+            "breathe",
+            "Soft scale in and out"
+          ],
+          [
+            "heartbeat",
+            "Double-thump pulse"
+          ],
+          [
+            "wiggle",
+            "Organic random-feeling jitter"
+          ],
+          [
+            "orbit",
+            "Circle around its position"
+          ],
+          [
+            "spin",
+            "Continuous rotation"
+          ],
+          [
+            "pendulum",
+            "Swing back and forth"
+          ],
+          [
+            "bounce",
+            "Repeated hops that never sink below the start"
+          ],
+          [
+            "flicker",
+            "Neon-sign opacity flicker"
+          ],
+          [
+            "pulse-glow",
+            "Opacity breathes between soft and full"
+          ],
+          [
+            "drift-loop",
+            "Slow ping-pong pan"
+          ],
+          [
+            "glitch",
+            "Brief horizontal jumps with flicker"
+          ]
+        ]
+      },
+      {
+        "title": "Bake to keyframes",
+        "text": "bake_expression samples an expression into linear keyframes (2 to 64, default 48) and removes the code, so you can drag the points in the graph. Applying a motion preset to a property also takes over from any expression on it.",
+        "code": "{\n  \"op\": \"bake_expression\",\n  \"args\": {\n    \"clipId\": \"badge\",\n    \"property\": \"x\",\n    \"samples\": 32\n  }\n}"
+      },
+      {
+        "title": "Rules",
+        "text": "Reveal expressions are rejected on text clips. A clip accepts up to 10 expressions. Invalid code returns a readable message with the character position, and Studio shows it under the editor as you type.",
+        "links": [
+          {
+            "label": "Motion presets",
+            "slug": "motion-presets"
+          },
+          {
+            "label": "Fit & layout",
+            "slug": "fit-and-layout"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "transitions",
+    "group": "Motion graphics",
+    "title": "Transitions",
+    "description": "Dissolves, wipes, an iris, barn doors and a diamond between video clips.",
+    "sections": [
+      {
+        "title": "Add a transition",
+        "text": "set_transition overlaps a video or image clip with the clip before it. With join:true (the default) the clip first moves to touch its predecessor, then later video clips move up by the overlap. Duration is 0.1 to 3 seconds and never more than half of either clip. Use type none to remove one.",
+        "code": "{\n  \"op\": \"set_transition\",\n  \"args\": {\n    \"clipId\": \"clip-b\",\n    \"type\": \"iris\",\n    \"duration\": 1\n  }\n}"
+      },
+      {
+        "title": "Available types",
+        "text": "Every type previews in Studio and renders in FFmpeg. Wipes reveal the incoming clip from the named edge; the iris opens a circle from the centre; barn doors open from the middle; the diamond grows from the centre; the diagonal wipe sweeps from the top-left corner.",
+        "rows": [
+          [
+            "Type",
+            "Effect"
+          ],
+          [
+            "dissolve",
+            "Dissolve"
+          ],
+          [
+            "wipe-left",
+            "Wipe from left"
+          ],
+          [
+            "wipe-right",
+            "Wipe from right"
+          ],
+          [
+            "wipe-up",
+            "Wipe from bottom"
+          ],
+          [
+            "wipe-down",
+            "Wipe from top"
+          ],
+          [
+            "iris",
+            "Iris open"
+          ],
+          [
+            "barn-h",
+            "Barn doors (horizontal)"
+          ],
+          [
+            "barn-v",
+            "Barn doors (vertical)"
+          ],
+          [
+            "diamond",
+            "Diamond open"
+          ],
+          [
+            "wipe-diagonal",
+            "Diagonal wipe"
+          ]
+        ]
+      },
+      {
+        "title": "Audio",
+        "text": "Overlapping clips cross-fade their audio over the same duration, so the sound follows the picture.",
+        "links": [
+          {
+            "label": "Using the editor",
+            "slug": "editor"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "examples",
+    "group": "Examples",
+    "title": "Examples gallery",
+    "description": "17 asset-free compositions you can play, copy and render.",
+    "sections": [
+      {
+        "title": "How the examples work",
+        "text": "Each example is a plain list of timeline ops. The gallery below plays them live with the Studio engine, the repository renders them to GIFs with the real FFmpeg pipeline, and the test suite builds every one, so an example that stops working fails CI. None of them needs uploaded media."
+      },
+      {
+        "title": "Run one against your server",
+        "text": "Create a project, then POST the ops from the gallery. Replace PROJECT with the id from the first response.",
+        "language": "SHELL",
+        "code": "curl -X POST \"$BASE/api/projects\" -H \"Authorization: Bearer $KEY\" -H \"Content-Type: application/json\" \\\n  -d '{\"name\":\"Beat drop\",\"timeline\":{\"fps\":30,\"resolution\":{\"width\":1280,\"height\":720},\"background\":\"#0f1020\",\"clips\":[]}}'\n\ncurl -X POST \"$BASE/api/projects/$PROJECT/timeline/ops\" -H \"Authorization: Bearer $KEY\" -H \"Content-Type: application/json\" \\\n  -d @ops.json   # paste the JSON from the gallery into ops.json\n\ncurl \"$BASE/api/projects/$PROJECT/frame?t=1.5&width=640\" -H \"Authorization: Bearer $KEY\" -o frame.png"
+      },
+      {
+        "title": "What each one shows",
+        "text": "Pick the example closest to what you want to build and change the text, colors and timing.",
+        "rows": [
+          [
+            "Example",
+            "Shows"
+          ],
+          [
+            "preset-sampler",
+            "Every entrance preset side by side: slides, springs, bounces, wipes and fades, each one a handful of editable keyframes. (13 entrance presets, apply_motion delay + duration, wipe reveal, damped spring)"
+          ],
+          [
+            "emphasis-sampler",
+            "Pulse, shake, wobble, rubber band, tada, heartbeat, blink, flash, glitch and more: beats that draw the eye to a layer that is already on screen. (11 emphasis presets, sampled keyframes, hold easing)"
+          ],
+          [
+            "exit-sampler",
+            "Nine ways to leave: slides, shrinks, spins, pops and wipes that finish exactly at the end of the clip. (9 exit presets, ends at clip end, reveal-out)"
+          ],
+          [
+            "code-orbit",
+            "A sun and three planets driven only by expressions of time. No keyframes, so the motion never runs out. (animate_code, sin / cos, base + t)"
+          ],
+          [
+            "loop-recipes",
+            "Thirteen ready-made looping behaviours: float, orbit, wiggle, heartbeat, glitch and more, each a single apply_code_motion call. (apply_code_motion, 13 recipes, wiggle noise)"
+          ],
+          [
+            "fit-demo",
+            "A headline far too long for one line wraps and shrinks to fit, while an oversized card and a stray caption are pulled back into the frame with fit_all. (textFit auto, fit_all, wrap + shrink)"
+          ],
+          [
+            "bullet-points",
+            "A headline and four points that slide in one after another. (bullet-list, items[], stagger)"
+          ],
+          [
+            "starburst-badge",
+            "A rocking two-square burst with a label, rocked by an expression instead of keyframes. (starburst, expressions, back-out easing)"
+          ],
+          [
+            "chapter-opener",
+            "A huge chapter number, a rule and the chapter title. (chapter-number, number option)"
+          ],
+          [
+            "social-handle",
+            "A rounded pill wipes open around a handle with a call to action beneath it. (social-handle, reveal on a rounded shape)"
+          ],
+          [
+            "lower-third-reveal",
+            "The classic nameplate, with the plate wiping open and each line rising in on its own delay. (add_motion_template, reveal property, per-layer delay)"
+          ],
+          [
+            "kinetic-whip",
+            "A headline whips in word by word using one sequenced preset instead of hand-placed keyframes. (kinetic-type, apply_motion_sequence, anticipate easing)"
+          ],
+          [
+            "quote-card",
+            "A springing quotation mark, a rising quote and an attribution rule. (quote-card, spring preset, idPrefix)"
+          ],
+          [
+            "split-reveal",
+            "Two accent rules wipe open and a headline rises between them. (split-reveal, reveal keyframes, snappy easing)"
+          ],
+          [
+            "progress-bar",
+            "A rounded track fills to 100 percent using a reveal keyframe on a shape. (progress-bar, reveal on shapes)"
+          ],
+          [
+            "stat-highlight",
+            "A big number inside a springing accent ring with a supporting caption. (stat-highlight, ellipse stroke, back-out easing)"
+          ],
+          [
+            "beat-drop",
+            "Four circles spring in one beat apart at 120 BPM and leave together. Beat markers show up on the Studio timeline. (add_beat_markers, apply_motion_sequence, spring preset)"
+          ]
+        ]
+      },
+      {
+        "title": "Render the GIFs yourself",
+        "text": "npm run examples renders every composition plus a transitions reel from generated footage into docs/examples. Pass one or more ids to render only those.",
+        "language": "SHELL",
+        "code": "npm run examples\nnpm run examples -- beat-drop quote-card",
+        "links": [
+          {
+            "label": "Motion presets",
+            "slug": "motion-presets"
+          },
+          {
+            "label": "Transitions",
+            "slug": "transitions"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "editor",
+    "group": "Studio",
+    "title": "Using the editor",
+    "description": "Cut media, build graphics and refine keyframes visually.",
+    "sections": [
+      {
+        "title": "Open your workspace",
+        "text": "Open Studio and sign in with a read, write or admin key. The left library holds Media, Effects, Graphics and Projects. Drag the dividers to resize the library, inspector and timeline. Focus a divider and use arrow keys to resize with a keyboard. Tools lets you hide panels or reset the layout. Layout changes last for the current page session."
+      },
+      {
+        "title": "Work on a smaller screen",
+        "text": "On mobile, the preview stays above the active Timeline, Library or Inspector panel. Switch panels with the panel buttons rather than scrolling away from the preview. Tools contains composition JSON, add title, redo, snapping and documentation links."
+      },
+      {
+        "title": "Create graphics",
+        "text": "Open Graphics and select a visual template card. Hover a preview to see its animation; reduced-motion preferences keep previews still. Customize the headline, supporting text, accent and duration, then choose Add to timeline. Generated clips are inserted at the playhead and selected. Click a single object in the canvas or its named timeline lane to edit it. Shift-click adds or removes objects from the selection. Shape primitives can also be inserted directly."
+      },
+      {
+        "title": "Animate and refine",
+        "text": "Choose Animate to open a dedicated property graph alongside the timeline. Selected graphic clips expand into property-labelled keyframe lanes. Click a diamond to seek and select that exact property and key in the graph. Add keys at the playhead, drag graph diamonds and adjust outgoing tween slopes. The inspector's Motion tab remains available in Edit mode. On-canvas handles move and scale selected visual clips."
+      },
+      {
+        "title": "Understand graphic lanes",
+        "text": "Each overlay clip has a named lane in document order, so moving it in time does not repack it onto a different row. These are clip lanes, not user-defined tracks or a new layer-order system. Existing rendering order is unchanged: media first, then shapes, then text. Video and audio categories still pack overlapping clips."
+      },
+      {
+        "title": "Share a composition with your agent",
+        "text": "Open Tools → Composition JSON to copy or download the full timeline. Paste a JSON composition, validate it, then apply it as one undoable edit. Missing assets must be uploaded first. With several clips selected, Stagger places them at the playhead with 0.15-second spacing."
+      },
+      {
+        "title": "Keyboard shortcuts",
+        "text": "Shortcuts are ignored while typing in an input. Editing commands require a write-capable key.",
+        "rows": [
+          [
+            "Key",
+            "Action"
+          ],
+          [
+            "Space",
+            "Play / pause"
+          ],
+          [
+            "S",
+            "Split at playhead"
+          ],
+          [
+            "Ctrl/Cmd + Z",
+            "Undo"
+          ],
+          [
+            "Ctrl/Cmd + Shift + Z",
+            "Redo"
+          ],
+          [
+            "Delete",
+            "Delete selection"
+          ],
+          [
+            "Shift + Delete",
+            "Ripple delete"
+          ],
+          [
+            "Left / Right",
+            "Seek one frame"
+          ],
+          [
+            "[ / ]",
+            "Trim to playhead"
+          ],
+          [
+            "+ / -",
+            "Timeline zoom"
+          ]
+        ]
+      },
+      {
+        "title": "Save and export",
+        "text": "Projects autosave as you edit. Check the save status before leaving. Export queues a server-side MP4 job. Public sharing requires an admin to change visibility and a completed render. A public share link does not expose your API key or source footage.",
+        "links": [
+          {
+            "label": "Rendering",
+            "slug": "rendering"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "agent-workflow",
+    "group": "Agent API",
+    "title": "Agent workflow",
+    "description": "A reliable observe, edit, verify loop for AI-driven video production.",
+    "sections": [
+      {
+        "title": "Discover before composing",
+        "text": "Read GET /api/capabilities, GET /api/motion/templates and GET /api/graphics/schema. Use their operations, limits and enums instead of guessing endpoints or inventing properties. Generate only structured JSON; VideoForge does not execute agent-supplied code."
+      },
+      {
+        "title": "Plan an atomic edit",
+        "text": "Fetch the latest project and retain updatedAt. Build one operation or an ops array, then dry-run the batch. If it succeeds, submit the batch again with expectedUpdatedAt. A 409 means another editor changed the project; fetch and re-plan instead of overwriting.",
+        "code": "{\n  \"expectedUpdatedAt\": 1790000000000,\n  \"dryRun\": true,\n  \"ops\": [\n    {\n      \"op\": \"add_motion_template\",\n      \"args\": {\n        \"template\": \"lower-third\",\n        \"title\": \"Ada Lovelace\",\n        \"subtitle\": \"Pioneer of computing\",\n        \"color\": \"#f6a447\",\n        \"start\": 0,\n        \"duration\": 4\n      }\n    }\n  ]\n}"
+      },
+      {
+        "title": "Observe the actual output",
+        "text": "GET state returns numeric animation values. GET frame returns the composed PNG and GET storyboard returns a contact sheet. Do not assume that valid JSON means a visually correct result. Inspect at the entry, hold and exit times, especially if text is long."
+      },
+      {
+        "title": "Render and report",
+        "text": "Queue POST /api/renders with the projectId, poll the returned jobId, and download only when status is done. Be explicit about errors and never report a render as complete merely because it was queued.",
+        "links": [
+          {
+            "label": "Batch operations",
+            "slug": "batch-operations"
+          },
+          {
+            "label": "Rendering",
+            "slug": "rendering"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "batch-operations",
+    "group": "Agent API",
+    "title": "Batch operations",
+    "description": "Atomic edits, dry-run validation and revision guards.",
+    "sections": [
+      {
+        "title": "Atomic by default",
+        "text": "Send {op,args} or {ops:[...]} to POST /api/projects/:id/timeline/ops. Every operation is applied to an isolated timeline. If any fails, none of the batch is saved. Errors include a zero-based failedIndex and the failing operation in message."
+      },
+      {
+        "title": "Dry-run before writing",
+        "text": "dryRun:true runs the same validation and returns the proposed timeline without saving, updating the revision or announcing a live edit. Generated IDs in dry-run are provisional; get the final createdClipIds from the committed response. Supply explicit IDs to add_shape_clip if you need stable references within a batch.",
+        "code": "{\n  \"dryRun\": true,\n  \"ops\": [\n    {\n      \"op\": \"add_shape_clip\",\n      \"args\": {\n        \"id\": \"accent\",\n        \"duration\": 4,\n        \"shape\": {\n          \"type\": \"ellipse\"\n        }\n      }\n    },\n    {\n      \"op\": \"apply_motion\",\n      \"args\": {\n        \"clipId\": \"accent\",\n        \"preset\": \"fade\"\n      }\n    }\n  ]\n}"
+      },
+      {
+        "title": "Avoid stale writes",
+        "text": "expectedUpdatedAt must match the latest project's updatedAt. On mismatch, the server returns HTTP 409 and REVISION_CONFLICT. Fetch the project again and adjust your plan. The guard is optional for backwards compatibility; it applies to ops requests, not to full-timeline PUT replacement."
+      },
+      {
+        "title": "Validate a whole timeline",
+        "text": "POST /api/projects/:id/timeline/validate with {timeline} checks structure, clips, animation, shape bounds and missing media references. It returns a normalized timeline, duration and clipCount, or HTTP 422 with a readable error. Normalization may clamp legacy fields; shape fields are strictly bounded."
+      },
+      {
+        "title": "Operation catalog",
+        "text": "These descriptions come from the shared capabilities catalog used by the backend.",
+        "rows": [
+          [
+            "Operation",
+            "Arguments"
+          ],
+          [
+            "add_shape_clip",
+            "shape: {type,width?,height?,fill?,stroke?,strokeWidth?,radius?}, id?, start?, duration?, x?, y?, plus transform/keyframe fields"
+          ],
+          [
+            "add_motion_template",
+            "template (lower-third|title-card|callout|kinetic-type|countdown|quote-card|split-reveal|progress-bar|stat-highlight|bullet-list|social-handle|chapter-number|starburst); bullet-list takes items[] (1..6), chapter-number takes number, title?, subtitle?, color?, start?, duration? (0.5..60), idPrefix? (stable layer ids: prefix-0, prefix-1, ...)"
+          ],
+          [
+            "stagger_clips",
+            "clipIds: [id...] in desired order, delay (0..60 seconds), start?"
+          ],
+          [
+            "add_clip",
+            "assetId, track?, start?, inPoint?, outPoint?, plus any clip field"
+          ],
+          [
+            "add_text_clip",
+            "text, id?, start?, duration?, plus text and transform fields"
+          ],
+          [
+            "remove_clip",
+            "clipId"
+          ],
+          [
+            "ripple_delete",
+            "clipId"
+          ],
+          [
+            "duplicate_clip",
+            "clipId, start?"
+          ],
+          [
+            "trim_clip",
+            "clipId, inPoint?, outPoint?"
+          ],
+          [
+            "move_clip",
+            "clipId, start?, track?"
+          ],
+          [
+            "split_clip",
+            "clipId, at (timeline seconds)"
+          ],
+          [
+            "update_clip",
+            "clipId plus any clip field"
+          ],
+          [
+            "swap_asset",
+            "clipId, assetId, duration?, inPoint?, outPoint?, keepKeyframes? — replaces the media source of an existing clip (kept id, style, and placement). not supported on text/shape clips."
+          ],
+          [
+            "set_audio",
+            "clipId, volume?, muted?"
+          ],
+          [
+            "add_text",
+            "clipId, text"
+          ],
+          [
+            "set_keyframes",
+            "clipId, property, keyframes: [{time,value,easing?}] replaces that property; [] clears it"
+          ],
+          [
+            "upsert_keyframe",
+            "clipId, property, time, value, easing?"
+          ],
+          [
+            "remove_keyframe",
+            "clipId, property, time"
+          ],
+          [
+            "apply_motion",
+            "clipId, preset (see motionPresets), duration? (seconds the move takes), delay? (seconds into the clip), strength? (0.1..2, distance/overshoot multiplier)"
+          ],
+          [
+            "apply_motion_sequence",
+            "clipIds[], preset, stagger? (default 0.12 s between clips), start?, plus apply_motion's duration/delay/strength. Applies one preset to many clips and offsets their starts"
+          ],
+          [
+            "reverse_animation",
+            "clipId - plays every keyframe curve backwards, mirroring each easing"
+          ],
+          [
+            "retime_animation",
+            "clipId, duration, delay? - compresses or stretches all keyframes of a clip into one window, keeping relative timing"
+          ],
+          [
+            "add_beat_markers",
+            "bpm (20..300), count? (1..100, default 8), start?, every? (markers on every Nth beat), label?, color?"
+          ],
+          [
+            "snap_to_beats",
+            "clipIds[], bpm, start? - moves clip starts to the nearest beat"
+          ],
+          [
+            "set_track",
+            "track, settings: {muted?, hidden?, locked?}"
+          ],
+          [
+            "add_marker",
+            "time, label?, color?"
+          ],
+          [
+            "remove_marker",
+            "id"
+          ],
+          [
+            "set_project",
+            "fps?, resolution?: {width,height}, background?: #rrggbb, refit? (true refits text, shapes and overlays to the new canvas)"
+          ],
+          [
+            "reorder",
+            "order: [clipId...] re-spaces video clips sequentially"
+          ],
+          [
+            "shift_clips",
+            "delta (seconds, may be negative), from? (only clips starting at or after), track?, clipIds?"
+          ],
+          [
+            "close_gaps",
+            "track? (default video) packs the track's clips end to end in their current order"
+          ],
+          [
+            "update_clips",
+            "patch: {any clip field}, plus clipIds? or track? (omit both to hit every clip)"
+          ],
+          [
+            "copy_style",
+            "fromClipId, toClipIds: copies transform, color, fades, text style and keyframes (scaled to the target length)"
+          ],
+          [
+            "set_marker",
+            "id, time?, label?, color?"
+          ],
+          [
+            "set_transition",
+            "clipId, type (none|dissolve|wipe-left|wipe-right|wipe-up|wipe-down|iris|barn-h|barn-v|diamond|wipe-diagonal), duration? (0.1-3, default 0.6), join? (default true: move the clip to touch the previous video clip first). Overlaps the clip with the one before it and moves later video clips up"
+          ],
+          [
+            "animate_code",
+            "clipId, expressions: {property: code}, replace? - see codeAnimation"
+          ],
+          [
+            "apply_code_motion",
+            "clipId or clipIds[], recipe (see codeAnimation.recipes), speed? (0.1..5), strength? (0.1..3)"
+          ],
+          [
+            "bake_expression",
+            "clipId, property?, samples? (2..64, default 48) - converts expressions to linear keyframes"
+          ],
+          [
+            "fit_clip",
+            "clipId, mode? (safe|contain|cover|fill, default safe), margin? (0..0.3, default 0.04)"
+          ],
+          [
+            "fit_all",
+            "media? (keep|contain|cover|fill), clipIds?, margin? - fits every visual clip inside the frame"
+          ],
+          [
+            "remove_clips",
+            "clipIds[] - delete several clips in one step"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "api-reference",
+    "group": "Agent API",
+    "title": "HTTP API reference",
+    "description": "The HTTP endpoints used by the Studio and external agents.",
+    "sections": [
+      {
+        "title": "Request conventions",
+        "text": "Use your own server origin as BASE. Private routes require a Bearer key. JSON requests require Content-Type: application/json. Uploads use multipart/form-data with repeated files fields. :id denotes a path parameter; query parameters are shown where useful."
+      },
+      {
+        "title": "Endpoints",
+        "text": "Project and media restrictions are checked server-side. Read routes require read or higher. Mutation routes normally require write or higher; keys, visibility and live watching require admin.",
+        "rows": [
+          [
+            "Method",
+            "Path",
+            "Purpose"
+          ],
+          [
+            "GET",
+            "/api/health",
+            "Public health check."
+          ],
+          [
+            "GET",
+            "/api/auth/me",
+            "Check your key and scope."
+          ],
+          [
+            "GET",
+            "/api/capabilities",
+            "Operation, property and preset discovery."
+          ],
+          [
+            "GET",
+            "/api/graphics/schema",
+            "JSON Schema for shape primitives."
+          ],
+          [
+            "GET",
+            "/api/motion/templates",
+            "List motion graphics templates."
+          ],
+          [
+            "GET / POST",
+            "/api/keys",
+            "Admin: list or generate scoped keys."
+          ],
+          [
+            "DELETE",
+            "/api/keys/:id",
+            "Admin: revoke a key."
+          ],
+          [
+            "POST",
+            "/api/media/upload",
+            "Multipart upload; repeat the files field."
+          ],
+          [
+            "GET",
+            "/api/media",
+            "List accessible assets."
+          ],
+          [
+            "GET / DELETE",
+            "/api/media/:id",
+            "Read metadata or delete an asset."
+          ],
+          [
+            "GET",
+            "/api/media/:id/raw",
+            "Stream original media."
+          ],
+          [
+            "GET",
+            "/api/media/:id/thumb",
+            "JPEG thumbnail."
+          ],
+          [
+            "GET",
+            "/api/media/:id/waveform",
+            "Peak-envelope data."
+          ],
+          [
+            "GET / POST",
+            "/api/projects",
+            "List projects or create with {name,timeline}."
+          ],
+          [
+            "GET / PUT / DELETE",
+            "/api/projects/:id",
+            "Read, replace/rename, or delete a project."
+          ],
+          [
+            "POST",
+            "/api/projects/:id/duplicate",
+            "Duplicate a project."
+          ],
+          [
+            "POST",
+            "/api/projects/:id/timeline/ops",
+            "Atomic operations; dryRun and expectedUpdatedAt supported."
+          ],
+          [
+            "POST",
+            "/api/projects/:id/timeline/validate",
+            "Check and normalize {timeline}, without saving."
+          ],
+          [
+            "GET",
+            "/api/projects/:id/state?t=1.5",
+            "Animated state at timeline time t."
+          ],
+          [
+            "GET",
+            "/api/projects/:id/frame?t=1.5&width=640",
+            "PNG composed frame."
+          ],
+          [
+            "GET",
+            "/api/projects/:id/storyboard?count=6",
+            "PNG contact sheet."
+          ],
+          [
+            "POST",
+            "/api/projects/:id/presence",
+            "Live playhead, cursor and selection."
+          ],
+          [
+            "GET",
+            "/api/projects/:id/activity",
+            "Recent project edits."
+          ],
+          [
+            "GET / POST",
+            "/api/renders",
+            "List render jobs or enqueue with {projectId}."
+          ],
+          [
+            "GET",
+            "/api/renders/:id",
+            "Poll render status and progress."
+          ],
+          [
+            "GET",
+            "/api/renders/:id/download",
+            "Download a finished MP4."
+          ],
+          [
+            "GET",
+            "/api/live",
+            "Admin: view live projects."
+          ],
+          [
+            "GET",
+            "/api/live/:id",
+            "Admin: watch an unsaved edit."
+          ]
+        ]
+      },
+      {
+        "title": "Response and error conventions",
+        "text": "Project responses contain id, name, visibility, timeline, createdAt and updatedAt. Ops responses add applied and createdClipIds. Render creation returns jobId. Errors include message; invalid ops return 422 and failedIndex, stale guarded ops return 409, unknown resources return 404, and denied credentials return 401 or 403."
+      },
+      {
+        "title": "Detailed repository reference",
+        "text": "The repository's docs/API.md retains the expanded endpoint contracts, key restrictions, security notes and deployment guidance. The motion graphics additions are also documented there.",
+        "links": [
+          {
+            "label": "Your first composition",
+            "slug": "quickstart"
+          },
+          {
+            "label": "Authentication",
+            "slug": "authentication"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "rendering",
+    "group": "Agent API",
+    "title": "Rendering & inspection",
+    "description": "See your composition before paying the cost of a full export.",
+    "sections": [
+      {
+        "title": "Frame inspection",
+        "text": "GET /api/projects/:id/frame?t=1.5&width=640 renders a PNG at a timeline time. Shapes, text, media, fades and keyframes go through the same FFmpeg composition path as exports. Width is optional. Use an authenticated request or supported signed media URLs when embedding protected media."
+      },
+      {
+        "title": "Storyboards",
+        "text": "GET /api/projects/:id/storyboard?count=6 returns a PNG contact sheet of evenly spaced frames. The X-Storyboard header contains column, row and time metadata. Use it to evaluate pacing and content coverage."
+      },
+      {
+        "title": "MP4 exports",
+        "text": "POST /api/renders accepts {projectId} and returns jobId. GET /api/renders/:id reports queued, rendering, done or error and numeric progress. The download endpoint serves the finished MP4. Rendering requires FFmpeg and ffprobe on the server.",
+        "code": "{\n  \"projectId\": \"<project-id>\"\n}"
+      },
+      {
+        "title": "Known boundaries",
+        "text": "This release does not provide arbitrary SVG paths, Lottie import, 3D, expressions, nested compositions or motion blur. Shape fill and size are static; transforms animate. Preview and export can differ slightly in font metrics, cubic easing approximation and shape edge antialiasing. Inspect exported frames for final approval."
+      }
+    ]
+  },
+  {
+    "slug": "self-hosting",
+    "group": "Resources",
+    "title": "Self-hosting",
+    "description": "Run the Studio and rendering API on infrastructure you control.",
+    "sections": [
+      {
+        "title": "Requirements",
+        "text": "Use Node 20 or newer with ffmpeg and ffprobe on PATH. SQLite stores project data, data/media holds uploads and data/renders holds exports. These contain private data; back them up and never commit them."
+      },
+      {
+        "title": "Development and production",
+        "text": "The default port is 5000. Production serves the compiled frontend from dist/public and runs the API from the bundled server.",
+        "language": "SHELL",
+        "code": "npm ci\nnpm run dev\n\n# Production\nnpm run check\nnpm run build\nnpm start"
+      },
+      {
+        "title": "Frontend hosting",
+        "text": "If you host the frontend separately, set VITE_API_BASE to your HTTPS API origin at build time and configure CORS_ORIGIN on the backend. The frontend alone cannot render video; FFmpeg and the API must remain running. Hash routes support GitHub Pages without rewrite rules."
+      },
+      {
+        "title": "Secure your deployment",
+        "text": "Use HTTPS, secure the owner key, restrict agent keys and configure your frontend origin. Do not expose data directories directly. Keep dependency security updates current. See docs/API.md in the repository for the detailed security and deployment notes."
+      }
+    ]
+  }
+];

@@ -42,6 +42,9 @@ function AppRouter() {
       <Route path="/live">{() => <RequireApiKey><LiveListPage /></RequireApiKey>}</Route>
       <Route path="/api-key" component={ApiKeyPage} />
       <Route path="/api-docs">{()=> <ApiDocsPage/>}</Route>
+      {/* #/docs and #/docs/ land on the introduction instead of a 404. */}
+      <Route path="/docs">{() => <Redirect to="/docs/introduction" />}</Route>
+      <Route path="/docs/">{() => <Redirect to="/docs/introduction" />}</Route>
       <Route path="/docs/:slug">{params=><ApiDocsPage params={params as {slug:string}}/>}</Route>
       <Route path="/" component={HomePage} />
       <Route path="/editor">

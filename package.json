@@ -4,15 +4,16 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "test": "tsx test/graphics.spec.ts && tsx test/api.spec.ts && tsx test/durable.spec.ts && tsx test/deployment.spec.ts && tsx test/media-lifecycle.ts",
+    "test": "tsx test/graphics.spec.ts && tsx test/api.spec.ts && tsx test/durable.spec.ts && tsx test/deployment.spec.ts && tsx test/media-lifecycle.ts && tsx test/docs.spec.ts",
     "dev": "NODE_ENV=development tsx server/index.ts",
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
-    "check": "tsc",
+    "check": "npm run docs && tsc",
     "examples": "tsx script/render-examples.ts",
     "db:push": "drizzle-kit push",
     "durable:restore": "tsx script/durable-restore.ts",
-    "mongo:check": "tsx script/mongo-check.ts"
+    "mongo:check": "tsx script/mongo-check.ts",
+    "docs": "tsx script/generate-docs.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

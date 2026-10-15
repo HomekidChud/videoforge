@@ -1,0 +1,191 @@
+// Generates client/src/lib/docs-generated.ts from the markdown files in docs/.
+// Docs content lives in docs/*.md so contributors can edit it without touching app code.
+// Run with: npm run docs  (also runs as part of npm run check and npm run build)
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { capabilities } from "../shared/capabilities";
+import { MOTION_TEMPLATES } from "../shared/graphics";
+import { MOTION_PRESETS, presetGroup } from "../shared/presets";
+import { CODE_RECIPES, EXPRESSION_FUNCTIONS } from "../shared/expr";
+import { EXAMPLES } from "../shared/examples";
+import { TRANSITIONS, TRANSITION_LABELS } from "../shared/transitions";
+export const DOC_ENDPOINTS = [
+  ["GET","/api/health","Public health check."],["GET","/api/auth/me","Check your key and scope."],
+  ["GET","/api/capabilities","Operation, property and preset discovery."],
+  ["GET","/api/graphics/schema","JSON Schema for shape primitives."],["GET","/api/motion/templates","List motion graphics templates."],
+  ["GET / POST","/api/keys","Admin: list or generate scoped keys."],["DELETE","/api/keys/:id","Admin: revoke a key."],
+  ["POST","/api/media/upload","Multipart upload; repeat the files field."],["GET","/api/media","List accessible assets."],
+  ["GET / DELETE","/api/media/:id","Read metadata or delete an asset."],["GET","/api/media/:id/raw","Stream original media."],["GET","/api/media/:id/thumb","JPEG thumbnail."],["GET","/api/media/:id/waveform","Peak-envelope data."],
+  ["GET / POST","/api/projects","List projects or create with {name,timeline}."],["GET / PUT / DELETE","/api/projects/:id","Read, replace/rename, or delete a project."],
+  ["POST","/api/projects/:id/duplicate","Duplicate a project."],["POST","/api/projects/:id/timeline/ops","Atomic operations; dryRun and expectedUpdatedAt supported."],
+  ["POST","/api/projects/:id/timeline/validate","Check and normalize {timeline}, without saving."],["GET","/api/projects/:id/state?t=1.5","Animated state at timeline time t."],
+  ["GET","/api/projects/:id/frame?t=1.5&width=640","PNG composed frame."],["GET","/api/projects/:id/storyboard?count=6","PNG contact sheet."],
+  ["POST","/api/projects/:id/presence","Live playhead, cursor and selection."],["GET","/api/projects/:id/activity","Recent project edits."],
+  ["GET / POST","/api/renders","List render jobs or enqueue with {projectId}."],["GET","/api/renders/:id","Poll render status and progress."],["GET","/api/renders/:id/download","Download a finished MP4."],
+  ["GET","/api/live","Admin: view live projects."],["GET","/api/live/:id","Admin: watch an unsaved edit."],
+];
+
+
+export type DocSection = { title: string; text: string; code?: string; language?: string; rows?: string[][]; links?: { label: string; slug: string }[] };
+export type DocPage = { slug: string; group: string; title: string; description: string; sections: DocSection[] };
+
+/** Tables that must always match the code: generated from the shared catalogs. */
+const AUTO_ROWS: Record<string, () => string[][]> = {
+  endpoints: () => DOC_ENDPOINTS.map((r) => [...r]),
+  ops: () => Object.entries(capabilities().ops).map(([k, v]) => [k, v]),
+  templates: () => MOTION_TEMPLATES.map((t) => [t.id, t.description]),
+  animatable: () => Object.entries(capabilities().animatableProperties).map(([k, v]) => [k, `${v.min}..${v.max}`]),
+  presets: () => MOTION_PRESETS.map((p) => [p.id, presetGroup(p.id), p.description]),
+  functions: () => [...Object.entries(EXPRESSION_FUNCTIONS).map(([k, v]) => [k, v.doc]), ["wiggle", "wiggle(frequency, amount) is smooth noise over time"]],
+  recipes: () => CODE_RECIPES.map((r) => [r.id, r.description]),
+  transitions: () => TRANSITIONS.map((t) => [t, TRANSITION_LABELS[t]]),
+  examples: () => EXAMPLES.map((e) => [e.id, `${e.summary} (${e.features.join(", ")})`]),
+};
+
+const cell = (raw: string) => raw.replace(/^ | $/g, "");
+
+function splitRow(line: string): string[] {
+  const inner = line.replace(/^\|/, "").replace(/\|$/, "");
+  return inner.split("|").map(cell);
+}
+
+/** Parse one markdown document into a DocPage. Throws readable errors for malformed input. */
+export function parseDocPage(slug: string, md: string): DocPage {
+  const lines = md.replace(/\r/g, "").split("\n");
+  if (lines[0]?.trim() !== "---") throw new Error(`${slug}.md: expected frontmatter to start with ---`);
+  const fmEnd = lines.indexOf("---", 1);
+  if (fmEnd < 0) throw new Error(`${slug}.md: unterminated frontmatter`);
+  const fm: Record<string, string> = {};
+  for (const line of lines.slice(1, fmEnd)) {
+    const m = line.match(/^([a-z]+):\s*(.*)$/);
+    if (m) fm[m[1]] = m[2].trim();
+  }
+  for (const key of ["title", "group", "description"]) if (!fm[key]) throw new Error(`${slug}.md: frontmatter is missing ${key}`);
+
+  const sections: DocSection[] = [];
+  let current: DocSection | null = null;
+  let paragraph: string[] = [];
+  const flushParagraph = () => {
+    if (current && paragraph.length) {
+      const text = paragraph.join(" ").trim();
+      if (text) current.text = current.text ? `${current.text} ${text}` : text;
+      paragraph = [];
+    }
+  };
+  const newSection = (title: string) => {
+    flushParagraph();
+    if (current) sections.push(current);
+    current = { title: title.trim(), text: "" };
+  };
+
+  let i = fmEnd + 1;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.startsWith("## ")) {
+      newSection(line.slice(3));
+      i++;
+    } else if (line.startsWith("```")) {
+      flushParagraph();
+      const language = line.slice(3).trim();
+      const close = lines.indexOf("```", i + 1);
+      if (close < 0) throw new Error(`${slug}.md: unterminated code block in section "${current?.title}"`);
+      const code = lines.slice(i + 1, close).join("\n");
+      if (!current) throw new Error(`${slug}.md: code block before any section heading`);
+      // "json" is the docs UI default label, so omit it; keep upper-case labels otherwise.
+      if (language && language.toLowerCase() !== "json") current.language = language.toUpperCase();
+      current.code = code;
+      i = close + 1;
+    } else if (line.startsWith("|")) {
+      flushParagraph();
+      if (!current) throw new Error(`${slug}.md: table before any section heading`);
+      const table: string[] = [];
+      while (i < lines.length && lines[i].startsWith("|")) table.push(lines[i++]);
+      const rows = table.map(splitRow);
+      if (rows.length < 2 || !rows[1].every((c) => /^:?-{3,}:?$/.test(c))) throw new Error(`${slug}.md: table in "${current.title}" needs a header row and a --- separator`);
+      const header = rows[0], body: string[][] = [];
+      for (const r of rows.slice(2)) {
+        if (r.length === 1 && /^\{\{auto:[a-z]+\}\}$/.test(r[0])) {
+          const name = r[0].slice(7, -2);
+          const make = AUTO_ROWS[name];
+          if (!make) throw new Error(`${slug}.md: unknown marker {{auto:${name}}}`);
+          for (const auto of make()) body.push(auto);
+        } else {
+          // Cells may contain literal pipes; rejoin the overflow instead of failing.
+          if (r.length > header.length) {
+            const extras = r.splice(header.length);
+            r[header.length - 1] += extras.map((e) => ` | ${e}`).join("");
+          }
+          while (r.length < header.length) r.push("");
+          body.push(r);
+        }
+      }
+      current.rows = [header, ...body];
+    } else if (/^- \[(.+?)\]\(([a-z0-9-]+)\)$/.test(line.trim())) {
+      flushParagraph();
+      if (!current) throw new Error(`${slug}.md: link before any section heading`);
+      const m = line.trim().match(/^- \[(.+?)\]\(([a-z0-9-]+)\)$/)!;
+      current.links = [...(current.links ?? []), { label: m[1], slug: m[2] }];
+      i++;
+    } else if (line.trim() === "") {
+      flushParagraph();
+      i++;
+    } else {
+      if (!current) throw new Error(`${slug}.md: content before any section heading`);
+      paragraph.push(line.trim());
+      i++;
+    }
+  }
+  flushParagraph();
+  if (current) sections.push(current);
+  if (!sections.length) throw new Error(`${slug}.md: no sections`);
+  return { slug, group: fm.group, title: fm.title, description: fm.description, sections };
+}
+
+/** Read every docs/*.md page, in frontmatter order, and return the page list. */
+export async function readDocPages(): Promise<DocPage[]> {
+  const entries = await readdir("docs", { withFileTypes: true });
+  const pages: { order: number; page: DocPage }[] = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
+    const slug = entry.name.replace(/\.md$/, "");
+    const md = await readFile(path.join("docs", entry.name), "utf-8");
+    // Reference documents (API.md, UPGRADE.md) live alongside the pages without frontmatter.
+    if (!md.startsWith("---")) continue;
+    const page = parseDocPage(slug, md);
+    const orderMatch = md.match(/^order:\s*(\d+)\s*$/m);
+    pages.push({ order: orderMatch ? Number(orderMatch[1]) : 999, page });
+  }
+  pages.sort((a, b) => a.order - b.order || a.page.slug.localeCompare(b.page.slug));
+  validatePages(pages.map((p) => p.page));
+  return pages.map((p) => p.page);
+}
+
+/** Cross-page checks: unique slugs and links that resolve. */
+export function validatePages(pages: DocPage[]) {
+  const slugs = new Set(pages.map((p) => p.slug));
+  if (slugs.size !== pages.length) throw new Error("duplicate doc slugs");
+  for (const p of pages) for (const s of p.sections) for (const l of s.links ?? []) if (!slugs.has(l.slug)) throw new Error(`${p.slug}.md links to unknown page "${l.slug}"`);
+}
+
+/** Write the generated module. Returns the pages that were baked. */
+export async function generateDocs(): Promise<DocPage[]> {
+  const pages = await readDocPages();
+  const body = `// AUTO-GENERATED from docs/*.md — edit the markdown, not this file.
+// Regenerate with: npm run docs
+import type { DocPage } from "./docs-content";
+
+export const DOC_PAGES: DocPage[] = ${JSON.stringify(pages, null, 2)};
+`;
+  await mkdir(path.dirname("client/src/lib/docs-generated.ts"), { recursive: true });
+  await writeFile("client/src/lib/docs-generated.ts", body, "utf-8");
+  return pages;
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve("script/generate-docs.ts")) {
+  generateDocs()
+    .then((pages) => console.log(`docs: generated ${pages.length} pages from docs/*.md`))
+    .catch((err) => {
+      console.error(err);
+      process.exit(1);
+    });
+}
