@@ -17,7 +17,7 @@ import { GRAPHICS_SCHEMA, MOTION_TEMPLATES } from "@shared/graphics";
 import { buildRenderPlan, runFfmpeg } from "./render";
 import { requireScope, requireMediaAccess, projectAllowed, assetAllowed, keyRestrictions } from "./auth";
 import { actorOf, syncTimeline, logEvent, renameLive, dropLive, registerLiveRoutes } from "./live";
-import { mongoHealth } from "./mongo";
+import { mongoConfigured } from "./mongo";
 
 const MEDIA_DIR = path.resolve(process.env.VIDEOFORGE_MEDIA_DIR || "data/media");
 const OUTPUT_DIR = path.resolve(process.env.VIDEOFORGE_RENDER_DIR || "data/renders");
@@ -171,15 +171,17 @@ export async function registerRoutes(
   // ---------- health ----------
   // mongo is optional: only reported when MONGODB_URI is configured, and a
   // mongo outage never marks the whole API unhealthy (SQLite is the datastore).
-  app.get("/api/health", async (_req, res) => {
-    const mongo = await mongoHealth();
+  app.get("/api/health", (_req, res) => {
     const warnings: string[] = [];
-    if (storageDegraded) warnings.push("configured database path is not writable; a fallback database is in use and data is ephemeral");
+    if (storageDegraded) warnings.push("configured database path is not writable; the server is running on an in-memory database and rejects write requests (503) until VIDEOFORGE_DB points inside a mounted, writable persistent disk");
+    // Configuration status only — never pings the cluster, so an unreachable
+    // optional integration cannot delay or fail app liveness. Use
+    // `npm run mongo:check` to verify connectivity on demand.
     res.json({
-      ok: true,
+      ok: !storageDegraded,
       service: "videoforge-api",
       version: 1,
-      ...(mongo.status === "notConfigured" ? {} : { mongo }),
+      ...(mongoConfigured() ? { mongo: "configured" } : {}),
       ...(warnings.length ? { warnings } : {}),
     });
   });

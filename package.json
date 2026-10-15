@@ -4,13 +4,14 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "test": "tsx test/graphics.spec.ts && tsx test/api.spec.ts && tsx test/durable.spec.ts && tsx test/mongo.spec.ts && tsx test/media-lifecycle.ts",
+    "test": "tsx test/graphics.spec.ts && tsx test/api.spec.ts && tsx test/durable.spec.ts && tsx test/deployment.spec.ts && tsx test/media-lifecycle.ts",
     "dev": "NODE_ENV=development tsx server/index.ts",
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "db:push": "drizzle-kit push",
-    "durable:restore": "tsx script/durable-restore.ts"
+    "durable:restore": "tsx script/durable-restore.ts",
+    "mongo:check": "tsx script/mongo-check.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
@@ -97,6 +98,7 @@
     "autoprefixer": "^10.4.20",
     "drizzle-kit": "^0.31.8",
     "esbuild": "^0.25.0",
+    "mongodb-memory-server": "^11.3.0",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.20.5",

@@ -197,10 +197,25 @@ the DB.
 The durable directories are created on boot with graceful degradation: if a
 configured path cannot be created or written (e.g. on Render, when the
 persistent disk is missing or mounted elsewhere than the env vars expect), the
-server logs a clear warning and keeps running instead of crashing with
-`EACCES` at startup. Uploads, renders and the manifest backup report a clear
-per-operation error until the path is fixed. Point every `VIDEOFORGE_*` path
-inside the actual disk mount and the warnings disappear.
+server never crashes with `EACCES` at startup. Instead it boots and degrades
+explicitly:
+
+- **Save-manifest backup** — disables itself with a warning; the SQLite DB is
+  untouched and everything else works normally.
+- **Database** — the server boots on an in-memory database, `GET /api/health`
+  returns `ok: false` with a `warnings` array, and every mutating `/api`
+  request is rejected with a `503` that names the fix. Writes are refused
+  rather than silently accepted into a database that would lose them on
+  redeploy. Fix `VIDEOFORGE_DB` and redeploy to return to normal.
+- **Media / renders / tmp** — uploads and renders that need an unwritable
+  directory fail with a clear per-request error; reads and everything else
+  keep working.
+- The manifest never mirrors a degraded database, and the bootstrap owner key
+  is discarded (with guidance to set `VIDEOFORGE_BOOTSTRAP_KEY`) rather than
+  printed into deployment logs.
+
+Point every `VIDEOFORGE_*` path inside the actual disk mount and the warnings
+disappear.
 
 ## MongoDB (optional)
 
@@ -219,12 +234,16 @@ Behaviour:
 - **No `MONGODB_URI`** — nothing connects, no network access, app unchanged.
 - **`MONGODB_URI` set** — the connection is created lazily on first use with
   bounded timeouts (5s server selection, 10s socket), so a dead cluster never
-  hangs the server. `GET /api/health` gains a `mongo` object:
-  `{ status: "ok", database: "videoforge" }` or
-  `{ status: "error", message: "..." }` (credentials redacted).
+  hangs the server.
+- **`GET /api/health` reports only whether MongoDB is configured** (`mongo:
+  "configured"`) — it never pings the cluster, so an unreachable integration
+  can never delay or fail app liveness. Verify connectivity on demand with
+  `npm run mongo:check` (exit 0 on ok / not-configured, 1 on error — usable
+  in deploy hooks and health scripts).
 - Server code can `import { getMongoDb } from "./mongo"` and use the handle;
   the pool is closed on SIGTERM/SIGINT.
 - A failed connection never falls back to another store and never crashes the
-  process — callers get an error, `/api/health` reports it.
+  process — callers get an error, and errors never expose credentials or
+  driver messages (only the error name and code).
 
 All env vars are documented in [`.env.example`](.env.example).

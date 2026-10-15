@@ -39,33 +39,25 @@ ensureDir(DATA_ROOT, "database");
 
 let sqlite: ReturnType<typeof Database>;
 const dbPath = process.env.VIDEOFORGE_DB || "data.db";
-/** True when the configured DB path failed and a fallback is in use. */
+/** True when the configured DB path failed and an in-memory fallback is in use. */
 export let storageDegraded = false;
 try {
   sqlite = new Database(dbPath);
 } catch (e: any) {
   // A configured-but-unopenable DB (e.g. the env points outside the mounted
-  // Render disk) must not stop the server from booting. Fall back to a local
-  // file with an unmissable warning: the service runs, but data is EPHEMERAL
-  // until the path is fixed. Health reports the degraded state.
-  const fallback = "data.db";
+  // Render disk) must not crash the process at import time, but it must also
+  // never accept data into a disposable database: writes would be silently
+  // lost on redeploy. So the server boots on an IN-MEMORY database for reads
+  // and health, marks itself degraded, and every mutating /api request is
+  // rejected with a 503 carrying the fix (see index.ts). Fixing the env
+  // (point VIDEOFORGE_DB inside the disk mount) restores normal operation.
   console.warn(
     `[storage] WARNING: cannot open the configured database at ${dbPath} (${e.code ?? e.message}). ` +
-    `FALLING BACK to ${path.resolve(fallback)} — DATA IS EPHEMERAL and will reset on redeploy. ` +
-    `Point VIDEOFORGE_DB at a file inside a mounted, writable persistent disk ` +
-    `(e.g. /var/lib/<disk>/data.db).`
+    `The server is booting on an IN-MEMORY database and WRITE REQUESTS ARE REJECTED (503) ` +
+    `until this is fixed — nothing can be saved. Point VIDEOFORGE_DB at a file inside ` +
+    `a mounted, writable persistent disk (e.g. /var/lib/<disk>/data.db).`
   );
-  try {
-    sqlite = new Database(fallback);
-  } catch {
-    // Even the fallback is unwritable (read-only filesystem): run in memory
-    // rather than crash. Data does not survive the process — same warning.
-    console.warn(
-      `[storage] WARNING: cannot open ${path.resolve(fallback)} either; running on an IN-MEMORY database. ` +
-      `Nothing persists — fix VIDEOFORGE_DB before relying on this deployment.`
-    );
-    sqlite = new Database(":memory:");
-  }
+  sqlite = new Database(":memory:");
   storageDegraded = true;
 }
 sqlite.pragma("journal_mode = WAL");
@@ -80,7 +72,10 @@ export const db = drizzle(sqlite);
 // It is written continuously (as the DB changes) so the snapshot stays fresh,
 // and can be restored by hand via `npm run durable:restore` if a rebuild loses
 // the DB. It never contains a plaintext key — only hashes, same as the DB.
-if (process.env.VIDEOFORGE_SYNC_DIR) {
+// Never back up a degraded (in-memory) database: the manifest must only ever
+// mirror the real configured database, and restoring a backup of a real DB
+// over an empty fallback would be the one way to corrupt it.
+if (process.env.VIDEOFORGE_SYNC_DIR && !storageDegraded) {
   const raw = sqlite;
   const lastSave: { [key: string]: string } = {};
   const touch = () => {

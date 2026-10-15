@@ -91,16 +91,17 @@ export async function ensureOwnerKeyExists(): Promise<string> {
     console.log("You can also create more keys later with POST /api/keys.");
     console.log("=".repeat(64));
   } catch (e: any) {
-    // The key row is already in the database; only the local file failed.
-    // Print it once so it is not lost, and point at the env-var bootstrap
-    // which is the reliable path on read-only filesystems.
-    console.log("=".repeat(64));
-    console.log("Created your first admin (owner) API key, but could NOT write it to disk:");
-    console.log("  " + ADMIN_KEY_FILE + ` (${e.code ?? e.message})`);
-    console.log("SAVE THIS KEY NOW — it is shown once:");
-    console.log("  " + key);
-    console.log("On read-only deployments, set VIDEOFORGE_BOOTSTRAP_KEY in the environment instead.");
-    console.log("=".repeat(64));
+    // The plaintext key is NEVER printed to logs (deployment logs are not a
+    // safe place for an admin credential). Since it cannot be delivered to
+    // the operator, remove the useless hash-only row and point at the env-var
+    // bootstrap, which works on read-only filesystems.
+    ownerKeyPlaintext = null;
+    try { db.delete(apiKeys).where(eq(apiKeys.id, row.id)); } catch { /* best effort */ }
+    console.warn(
+      `[auth] WARNING: created an owner key but could NOT write it to ${ADMIN_KEY_FILE} (${e.code ?? e.message}). ` +
+      `The key was discarded — nothing was saved. On read-only deployments, set ` +
+      `VIDEOFORGE_BOOTSTRAP_KEY=<your chosen key> in the environment and restart; it will be seeded as the owner key.`
+    );
   }
   return row.id;
 }
