@@ -193,9 +193,10 @@
 .monitor { grid-area:monitor; min-width:0; min-height:0; display:flex; flex-direction:column; background:#0b0b0c; }
 .inspector { grid-area:inspector; border-left:1px solid var(--forge-border); overflow-y:auto; background:var(--forge-panel); min-height:0; }
 .timeline-panel { grid-area:timeline; border-top:1px solid var(--forge-border); min-width:0; min-height:0; background:#151516; }
-.panel-tabs { display:flex; border-bottom:1px solid var(--forge-border); }
-.panel-tabs button { flex:1; padding:13px 0; color:var(--forge-muted); font-weight:600; border-bottom:2px solid transparent; }
-.panel-tabs button.active { color:var(--forge-text); border-color:var(--forge-accent); }
+.panel-tabs { display:flex; flex-wrap:wrap; gap:5px; padding:10px 10px 8px; border-bottom:1px solid var(--forge-border); }
+.panel-tabs button { flex:1 1 calc(33.4% - 5px); min-width:0; padding:7px 2px; color:var(--forge-muted); font-weight:600; font-size:12px; border-radius:7px; border:1px solid transparent; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition:background .12s, color .12s; }
+.panel-tabs button:hover { color:var(--forge-text); background:#232326; }
+.panel-tabs button.active { color:var(--forge-accent); background:rgba(246,164,71,.13); border-color:rgba(246,164,71,.25); }
 .dropzone { position:relative; overflow:hidden; margin:12px; padding:18px 12px; display:flex; flex-direction:column; align-items:center; gap:4px; text-align:center; border:1px dashed #5b5b61; border-radius:8px; color:var(--forge-muted); cursor:pointer; flex-shrink:0; }
 .dropzone:hover { border-color:var(--forge-accent); background:#241f18; }
 .dropzone.disabled { opacity:.45; pointer-events:none; }
@@ -328,7 +329,6 @@
 .marker-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:4px; } .marker-list li { display:flex; align-items:center; } .marker-list li > button:first-child { flex:1; display:flex; align-items:center; gap:8px; padding:6px 4px; border-radius:6px; text-align:left; } .marker-list li > button:first-child:hover { background:#2a2a2d; } .marker-list b { margin-left:auto; color:var(--forge-muted); font-weight:500; }
 
 /* ───────────── Effects, drag and drop, live watching ───────────── */
-.panel-tabs button { font-size:var(--text-sm); }
 .effects-panel { padding:14px; display:flex; flex-direction:column; gap:16px; overflow-y:auto; min-height:0; }
 .effect-group h4 { display:flex; align-items:center; gap:6px; margin:0 0 8px; font-size:var(--text-xs); letter-spacing:.1em; text-transform:uppercase; color:var(--forge-muted); font-weight:600; }
 .effect-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:6px; }
