@@ -519,6 +519,55 @@ await check("value blocks fill arguments", async () => {
   assert.equal(valueNodeValue({ id: "x", type: "value", valueType: "text", value: "hi" }), "hi");
   assert.equal(valueNodeValue({ id: "x", type: "value", valueType: "number", value: "2.5" }), 2.5);
   assert.throws(() => valueNodeValue({ id: "x", type: "value", valueType: "number", value: "oops" }), /number block/);
+  assert.throws(() => valueNodeValue({ id: "x", type: "value", valueType: "number", value: "1e999" }), /number block/, "Infinity is not a valid number");
+  // A value can fill a friendly-block field the op catalog doesn't list (font).
+  const fontGraph: ToolGraph = {
+    nodes: [
+      { id: "start", type: "start" },
+      { id: "t", type: "action", block: "add-title", args: {} },
+      { id: "f", type: "value", valueType: "text", value: "anton" },
+    ],
+    edges: [
+      { id: "e1", source: "start", sourceHandle: "next", target: "t", targetHandle: "in" },
+      { id: "e2", source: "f", sourceHandle: "value", target: "t", targetHandle: "param:font" },
+    ],
+  };
+  const fontOps = compileGraph(fontGraph, ctx);
+  assert.equal(fontOps[0].args.font, "anton", "value fills a friendly-block-only field like font");
+  assert.deepEqual(runCodeTool(graphToCode(fontGraph), ctx), fontOps, "font graph converts identically");
+  // Text values with $-templates, quotes and newlines behave the same in code.
+  const fancy = 'At $playhead — "quotes"\nand a new line';
+  const tmplGraph: ToolGraph = {
+    nodes: [
+      { id: "start", type: "start" },
+      { id: "t", type: "action", block: "add-title", args: {} },
+      { id: "v", type: "value", valueType: "text", value: fancy },
+    ],
+    edges: [
+      { id: "e1", source: "start", sourceHandle: "next", target: "t", targetHandle: "in" },
+      { id: "e2", source: "v", sourceHandle: "value", target: "t", targetHandle: "param:text" },
+    ],
+  };
+  const tmplOps = compileGraph(tmplGraph, ctx);
+  assert.equal(tmplOps[0].args.text, 'At 2.5 — "quotes"\nand a new line', "$playhead resolves in connected values");
+  assert.deepEqual(runCodeTool(graphToCode(tmplGraph), ctx), tmplOps, "template values convert identically");
+  // Validation checks the args that will run: a connected preset overrides a bad typed one.
+  const motionGraph = (typed: string, connected: string): ToolGraph => ({
+    nodes: [
+      { id: "start", type: "start" },
+      { id: "m", type: "action", block: "motion-springy", args: { clipId: "a", preset: typed } },
+      { id: "v", type: "value", valueType: "text", value: connected },
+    ],
+    edges: [
+      { id: "e1", source: "start", sourceHandle: "next", target: "m", targetHandle: "in" },
+      { id: "e2", source: "v", sourceHandle: "value", target: "m", targetHandle: "param:preset" },
+    ],
+  });
+  const fixed = validateGraph(motionGraph("nope", "spring"), ctx);
+  assert.ok(!fixed.some((i) => i.level === "error" && /motion preset/i.test(i.message)), "a connected good preset overrides the bad typed one");
+  const broken = validateGraph(motionGraph("spring", "nope"), ctx);
+  assert.ok(broken.some((i) => i.level === "error" && /motion preset/i.test(i.message)), "a connected bad preset is caught");
+  assert.equal(compileGraph(motionGraph("nope", "spring"), ctx)[0].args.preset, "spring", "the connected preset runs");
   // Validation: an unplugged value warns; a bad number errors.
   const issues = validateGraph({
     nodes: [

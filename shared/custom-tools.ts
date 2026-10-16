@@ -832,11 +832,21 @@ export const BLOCK_GROUPS = ["Create", "Edit", "Entrances", "Exits", "Attention"
 export function valueNodeValue(node: ToolGraphNode): unknown {
   if (node.valueType === "number") {
     const n = Number(node.value);
-    if (Number.isNaN(n)) throw new Error("a number block does not hold a number yet");
+    if (!Number.isFinite(n)) throw new Error("a number block does not hold a (whole, finite) number yet");
     return n;
   }
   if (node.valueType === "yesno") return node.value === "yes";
   return String(node.value ?? "");
+}
+
+/** Every field an action node exposes: the friendly block's params plus the operation's. */
+export function nodeParamKeys(node: ToolGraphNode): string[] {
+  const block = node.block ? BLOCK_MAP.get(node.block) : undefined;
+  const op = node.op ?? block?.op ?? "";
+  const keys: string[] = [];
+  for (const p of OP_PARAMS[op] ?? []) keys.push(p.key);
+  if (block) for (const p of block.params) if (!keys.includes(p.key)) keys.push(p.key);
+  return keys;
 }
 
 /** Params of a friendly block that a clip can connect to. */
@@ -878,12 +888,14 @@ export function validateGraph(graph: ToolGraph, ctx: ToolContext): GraphIssue[] 
   if (!starts.length) issues.push({ level: "error", message: "The tool needs a Start block." });
   const nextCount = new Map<string, number>(), bodyCount = new Map<string, number>(), inCount = new Map<string, number>();
   const outgoing = new Map<string, ToolGraphEdge[]>();
+  const paramIn = new Map<string, ToolGraphEdge>();
   for (const e of graph.edges) {
     if (!nodes.has(e.source) || !nodes.has(e.target)) { issues.push({ level: "error", message: "A connection points at a deleted block." }); continue; }
     if (e.source === e.target) issues.push({ nodeId: e.source, level: "error", message: "A block cannot connect to itself." });
     if (e.sourceHandle === "next") nextCount.set(e.source, (nextCount.get(e.source) ?? 0) + 1);
     if (e.sourceHandle === "body") bodyCount.set(e.source, (bodyCount.get(e.source) ?? 0) + 1);
     if (e.targetHandle === "in") inCount.set(e.target, (inCount.get(e.target) ?? 0) + 1);
+    if (e.targetHandle?.startsWith("param:")) paramIn.set(`${e.target}:${e.targetHandle.slice(6)}`, e);
     if (e.sourceHandle === "next" || e.sourceHandle === "body") {
       outgoing.set(e.source, [...(outgoing.get(e.source) ?? []), e]);
     }
@@ -915,43 +927,61 @@ export function validateGraph(graph: ToolGraph, ctx: ToolContext): GraphIssue[] 
   const paramTargets = new Set(graph.edges.filter((e) => e.targetHandle?.startsWith("param:")).map((e) => e.source));
   for (const n of graph.nodes) {
     if (n.type !== "value") continue;
-    if (n.valueType === "number" && n.value != null && String(n.value).trim() !== "" && Number.isNaN(Number(n.value))) {
+    if (n.valueType === "number" && n.value != null && String(n.value).trim() !== "" && !Number.isFinite(Number(n.value))) {
       issues.push({ nodeId: n.id, level: "error", message: "This number block does not hold a number yet." });
     }
     if (!paramTargets.has(n.id)) issues.push({ nodeId: n.id, level: "warning", message: "This value block is not plugged into a field, so it does nothing." });
   }
-  // Action nodes: op known, JSON valid, friendly fields sane.
+  // Action nodes: op known, JSON valid, friendly fields sane — on the args that
+  // will actually run, with any connected clip/frame/value applied first.
   const ANIMATABLE_KEYS = Object.keys(ANIMATABLE);
   const EASING_IDS = [...Object.keys(EASINGS), "hold", "step-start", "bounce-out", "elastic-out"];
   const numericish = (v: unknown) => typeof v === "number" || (typeof v === "string" && v.trim() !== "" && (v.includes("$") || Number.isFinite(Number(v))));
+  const effectiveArgs = (n: ToolGraphNode): Record<string, unknown> => {
+    const eff: Record<string, unknown> = { ...(n.args ?? {}) };
+    const allowed = nodeParamKeys(n);
+    for (const [slot, e] of Array.from(paramIn)) {
+      if (!slot.startsWith(`${n.id}:`)) continue;
+      const key = slot.split(":")[1];
+      const src = nodes.get(e.source);
+      if (!src) continue;
+      if (src.type === "clipRef" && ["clipId", "clipIds"].includes(key)) eff[key] = src.clipId ?? "";
+      else if (src.type === "frame" && ["start", "delay"].includes(key)) eff[key] = (src.frame ?? 0) / Math.max(1, ctx.fps);
+      else if (src.type === "value" && (!allowed.length || allowed.includes(key))) {
+        try { eff[key] = valueNodeValue(src); } catch { /* the value block's own error already flags it */ }
+      }
+    }
+    return eff;
+  };
   for (const n of graph.nodes) {
     if (n.type !== "action") continue;
     const op = n.op ?? (n.block ? BLOCK_MAP.get(n.block)?.op : undefined);
     if (!op) { issues.push({ nodeId: n.id, level: "error", message: "Choose what this block does." }); continue; }
+    const eff = effectiveArgs(n);
     for (const p of OP_PARAMS[op] ?? []) {
-      if (p.type === "json" && typeof n.args?.[p.key] === "string") {
-        try { JSON.parse(n.args[p.key] as string); } catch { issues.push({ nodeId: n.id, level: "error", message: `${p.label} is not valid JSON.` }); }
+      if (p.type === "json" && typeof eff[p.key] === "string") {
+        try { JSON.parse(eff[p.key] as string); } catch { issues.push({ nodeId: n.id, level: "error", message: `${p.label} is not valid JSON.` }); }
       }
     }
     // Motion blocks: the preset must exist in the engine.
-    if (op === "apply_motion" && typeof n.args?.preset === "string" && !PRESET_IDS.includes(n.args.preset)) {
-      issues.push({ nodeId: n.id, level: "error", message: `"${n.args.preset}" is not a motion preset — pick one from the list.` });
+    if (op === "apply_motion" && typeof eff.preset === "string" && !PRESET_IDS.includes(eff.preset)) {
+      issues.push({ nodeId: n.id, level: "error", message: `"${eff.preset}" is not a motion preset — pick one from the list.` });
     }
     // Animate-property blocks: property, easing and from/to must make sense.
-    if (op === "set_keyframes" && n.args?.keyframes === undefined && n.args?.from !== undefined) {
-      if (typeof n.args.property !== "string" || !ANIMATABLE_KEYS.includes(n.args.property)) issues.push({ nodeId: n.id, level: "error", message: "Pick a property to animate." });
-      if (typeof n.args.easing === "string" && n.args.easing && !EASING_IDS.includes(n.args.easing)) issues.push({ nodeId: n.id, level: "error", message: `"${n.args.easing}" is not an easing — pick one from the list.` });
-      if (!numericish(n.args.from) || !numericish(n.args.to)) issues.push({ nodeId: n.id, level: "error", message: "From and To must be numbers." });
+    if (op === "set_keyframes" && eff.keyframes === undefined && eff.from !== undefined) {
+      if (typeof eff.property !== "string" || !ANIMATABLE_KEYS.includes(eff.property)) issues.push({ nodeId: n.id, level: "error", message: "Pick a property to animate." });
+      if (typeof eff.easing === "string" && eff.easing && !EASING_IDS.includes(eff.easing)) issues.push({ nodeId: n.id, level: "error", message: `"${eff.easing}" is not an easing — pick one from the list.` });
+      if (!numericish(eff.from) || !numericish(eff.to)) issues.push({ nodeId: n.id, level: "error", message: "From and To must be numbers." });
     }
     // Text-effect blocks: mode, duration and delay must make sense.
-    if (op === "update_clip" && typeof n.args?.__textRevealMode === "string" && !["typewriter", "words", "lines"].includes(n.args.__textRevealMode)) {
+    if (op === "update_clip" && typeof eff.__textRevealMode === "string" && !["typewriter", "words", "lines"].includes(eff.__textRevealMode)) {
       issues.push({ nodeId: n.id, level: "error", message: "Pick a text effect: typewriter, words or lines." });
     }
     // Friendly fields are validated live: numbers must be numbers in range, picks must be on the list.
     const friendly = n.block ? BLOCK_MAP.get(n.block) : undefined;
     if (friendly) {
       for (const p of friendly.params) {
-        const v = n.args?.[p.key];
+        const v = eff[p.key];
         if (v === undefined || v === null || typeof v !== "string" || v.includes("$")) continue;
         if (p.type === "number" && v.trim() !== "") {
           const n2 = Number(v);
@@ -1043,11 +1073,6 @@ export function compileGraph(graph: ToolGraph, ctx: ToolContext): TimelineOp[] {
     if (ops.length >= 100) throw new Error("the tool expands to more than 100 operations; the batch limit");
     ops.push({ op, args });
   };
-  const connectable = (op: string, key: string, kind: "clipRef" | "frame" | "value"): boolean => {
-    if (kind === "clipRef") return ["clipId", "clipIds"].includes(key);
-    if (kind === "frame") return ["start", "delay"].includes(key);
-    return (OP_PARAMS[op] ?? []).some((p) => p.key === key) || !(OP_PARAMS[op] ?? []).length;
-  };
   const runChain = (id: string | undefined, vars: ToolVars, visited: Set<string>) => {
     while (id) {
       if (visited.has(id)) throw new Error("the blocks form a loop; remove the cycle");
@@ -1057,18 +1082,20 @@ export function compileGraph(graph: ToolGraph, ctx: ToolContext): TimelineOp[] {
       if (node.type === "action") {
         const op = node.op ?? (node.block ? BLOCK_MAP.get(node.block)?.op : undefined);
         if (!op) throw new Error("a block is missing its operation");
-        const args = resolveArgs(node.args, vars);
-        // Connected clip and frame values override the editable fields.
+        // Connected clip, frame and value sources override the editable fields,
+        // then $-templates in the effective args resolve at run time.
+        const args: Record<string, unknown> = { ...(node.args ?? {}) };
+        const allowed = nodeParamKeys(node);
         for (const [slot, e] of Array.from(paramIn)) {
           if (!slot.startsWith(`${node.id}:`)) continue;
           const key = slot.split(":")[1];
           const src = nodes.get(e.source);
-          if (!src || !connectable(op, key, src.type === "clipRef" ? "clipRef" : src.type === "frame" ? "frame" : "value")) continue;
-          if (src.type === "clipRef") args[key] = src.clipId ?? "";
-          else if (src.type === "frame") args[key] = (src.frame ?? 0) / Math.max(1, ctx.fps);
-          else if (src.type === "value") args[key] = valueNodeValue(src);
+          if (!src) continue;
+          if (src.type === "clipRef") { if (["clipId", "clipIds"].includes(key)) args[key] = src.clipId ?? ""; }
+          else if (src.type === "frame") { if (["start", "delay"].includes(key)) args[key] = (src.frame ?? 0) / Math.max(1, ctx.fps); }
+          else if (src.type === "value") { if (!allowed.length || allowed.includes(key)) args[key] = valueNodeValue(src); }
         }
-        push(op, convertOpArgs(op, args));
+        push(op, convertOpArgs(op, resolveArgs(args, vars)));
       } else if (node.type === "repeat") {
         const count = Math.max(0, Math.min(1000, Math.round(Number(node.count) || 0)));
         for (let i = 0; i < count; i++) runChain(body.get(id), { ...vars, index: i, count }, new Set(visited));
@@ -1276,8 +1303,9 @@ export function graphToCode(graph: ToolGraph): string {
   const emit = (depth: number, line: string) => lines.push("  ".repeat(depth) + line);
 
   /** The args of an action node with clip/frame/value connections applied (as at run time). */
-  const nodeArgs = (node: ToolGraphNode, op: string): Record<string, unknown> => {
+  const nodeArgs = (node: ToolGraphNode): Record<string, unknown> => {
     const args: Record<string, unknown> = { ...(node.args ?? {}) };
+    const allowed = nodeParamKeys(node);
     for (const [slot, e] of Array.from(paramIn)) {
       if (!slot.startsWith(`${node.id}:`)) continue;
       const key = slot.split(":")[1];
@@ -1285,7 +1313,7 @@ export function graphToCode(graph: ToolGraph): string {
       if (!src) continue;
       if (src.type === "clipRef" && ["clipId", "clipIds"].includes(key)) args[key] = src.clipId ?? "";
       else if (src.type === "frame" && ["start", "delay"].includes(key)) args[key] = { __frame: src.frame ?? 0 };
-      else if (src.type === "value" && ((OP_PARAMS[op] ?? []).some((p) => p.key === key) || !(OP_PARAMS[op] ?? []).length)) args[key] = valueNodeValue(src);
+      else if (src.type === "value" && (!allowed.length || allowed.includes(key))) args[key] = valueNodeValue(src);
     }
     return args;
   };
@@ -1296,7 +1324,7 @@ export function graphToCode(graph: ToolGraph): string {
     const block = node.block ? BLOCK_MAP.get(node.block) : undefined;
     const label = block?.label ?? op ?? "Advanced op";
     emit(depth, `// ${label}${block?.description ? " — " + block.description.toLowerCase() : ""}`);
-    const args = nodeArgs(node, op);
+    const args = nodeArgs(node);
     const rendered = renderArgs(op, args, vars);
     const entries = (skip: string[] = []) => rendered.exprs.filter((e) => !skip.some((k) => e.startsWith(JSON.stringify(k) + ":")));
     const obj = (list: string[]) => `{ ${list.join(", ")} }`;

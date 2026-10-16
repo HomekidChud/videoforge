@@ -7,7 +7,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
-  BLOCK_GROUPS, BLOCK_LIBRARY, BLOCK_MAP, OP_IDS, OP_PARAMS, blocksToGraph, connectableParamKeys,
+  BLOCK_GROUPS, BLOCK_LIBRARY, BLOCK_MAP, OP_IDS, OP_PARAMS, blocksToGraph, connectableParamKeys, nodeParamKeys,
   codeErrorLine, compileGraph, graphToCode, validateGraph, runTool, TEMPLATE_DOCS, VF_HELPERS,
   type CustomTool, type ToolContext, type ToolGraph, type ToolGraphNode, type ToolParam,
 } from "@shared/custom-tools";
@@ -64,7 +64,7 @@ const TUTORIAL_STEPS = [
   },
   {
     title: "5. Find it later",
-    body: "Your tool saves in this browser by itself. Press ✕ to close the studio and you will find it in the Tools list, where you can Run it any time. Curious about code? The Code tab shows the JavaScript your blocks make.",
+    body: "Press ✕ to close the studio — that saves your tool in this browser. You will find it in the Tools list, where you can Run it any time. Curious about code? The Code tab shows the JavaScript your blocks make.",
     target: '[data-testid="bs-close"]',
   },
 ];
@@ -550,13 +550,13 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh }: Studio
       return allowed.frame.includes(key);
     }
     if (c.sourceHandle === "value") {
-      // A value block plugs into any field that block's operation has.
+      // A value block plugs into any field that block exposes.
       if (!c.targetHandle?.startsWith("param:")) return false;
       const key = c.targetHandle.slice(6);
       const target = graph.nodes.find((n) => n.id === c.target);
-      const op = (target?.block ? (BLOCK_MAP.get(target.block!)?.op ?? target.op) : target?.op) ?? "";
-      const params = OP_PARAMS[op] ?? [];
-      return params.some((p) => p.key === key) || !params.length;
+      if (!target) return false;
+      const allowed = nodeParamKeys(target);
+      return !allowed.length || allowed.includes(key);
     }
     return false;
   }, [graph, readOnly, reaches]);
