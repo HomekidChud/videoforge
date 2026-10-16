@@ -21,7 +21,7 @@ export type ToolParam = {
 export type ToolBlock =
   | { kind: "op"; op: string; args?: Record<string, unknown> }
   | { kind: "repeat"; count: number; blocks: ToolBlock[] }
-  | { kind: "eachClip"; select?: "all" | "text" | "shape" | "media" | "selected"; blocks: ToolBlock[] }
+  | { kind: "eachClip"; select?: string; blocks: ToolBlock[] }
   | { kind: "comment"; text: string };
 
 export type CustomTool = {
@@ -69,7 +69,7 @@ export type ToolContext = {
   /** Ids of the selected clips. */
   selection: string[];
   /** Every visual clip with its kind and timing. */
-  clips: { id: string; kind: "text" | "shape" | "media"; start: number; duration: number; label?: string }[];
+  clips: { id: string; kind: "text" | "shape" | "media"; start: number; duration: number; label?: string; color?: string; text?: string }[];
   /** Canvas size. */
   resolution: { width: number; height: number };
   /** Project fps, so frame blocks resolve to seconds. */
@@ -100,6 +100,24 @@ export const OP_PARAMS: Record<string, ToolParam[]> = {
     { key: "clipId", label: "Clip id", type: "text", def: "$clipId", placeholder: "$clipId" },
     { key: "patch", label: "Patch (JSON)", type: "json", def: "{}" },
   ],
+  move_clip: [
+    { key: "clipId", label: "Clip id", type: "text", def: "$clipId", placeholder: "$clipId" },
+    { key: "start", label: "Start (s)", type: "number", def: "$playhead", min: 0, max: 86400, step: 0.1 },
+    { key: "track", label: "Track", type: "select", def: "overlay", options: ["overlay", "video", "audio"] },
+  ],
+  trim_clip: [
+    { key: "clipId", label: "Clip id", type: "text", def: "$clipId", placeholder: "$clipId" },
+    { key: "inPoint", label: "In point (s)", type: "number", def: 0, min: 0, max: 86400, step: 0.1 },
+    { key: "outPoint", label: "Out point (s)", type: "number", def: 3, min: 0.1, max: 86400, step: 0.1 },
+  ],
+  align_clips: [
+    { key: "clipIds", label: "Clip ids", type: "text", def: "$selection", placeholder: "$selection" },
+    { key: "mode", label: "Mode", type: "select", def: "center", options: ["left", "center", "right", "top", "middle", "bottom", "distribute-h", "distribute-v"] },
+  ],
+  snap_to_grid: [
+    { key: "clipIds", label: "Clip ids", type: "text", def: "$selection", placeholder: "$selection" },
+    { key: "grid", label: "Grid size", type: "number", def: 0.1, min: 0.02, max: 0.5, step: 0.01 },
+  ],
   apply_motion: [
     { key: "clipId", label: "Clip id", type: "text", def: "$clipId" },
     { key: "preset", label: "Preset", type: "text", def: "spring" },
@@ -117,7 +135,12 @@ export const OP_PARAMS: Record<string, ToolParam[]> = {
     { key: "start", label: "Start", type: "number", def: "$playhead", min: 0, max: 86400, step: 0.1 },
     { key: "delay", label: "Delay", type: "number", def: 0.15, min: 0, max: 60, step: 0.05 },
   ],
-  duplicate_clip: [{ key: "clipId", label: "Clip id", type: "text", def: "$clipId" }],
+  duplicate_clip: [
+    { key: "clipId", label: "Clip id", type: "text", def: "$clipId" },
+    { key: "start", label: "Start (s)", type: "number", def: "$playhead", min: 0, max: 86400, step: 0.1 },
+    { key: "dx", label: "Sideways offset", type: "number", def: 0, min: -1, max: 1, step: 0.01 },
+    { key: "dy", label: "Up/down offset", type: "number", def: 0, min: -1, max: 1, step: 0.01 },
+  ],
   remove_clip: [{ key: "clipId", label: "Clip id", type: "text", def: "$clipId" }],
   animate_code: [
     { key: "clipId", label: "Clip id", type: "text", def: "$clipId" },
@@ -246,6 +269,33 @@ function resolveArgs(args: Record<string, unknown> | undefined, vars: ToolVars):
   return out;
 }
 
+/** Block fields that must become numbers or booleans once they reach an op. */
+const CLIP_NUMBERS = new Set(["x", "y", "scale", "rotation", "opacity", "blur", "brightness", "contrast", "saturation", "volume", "speed", "fadeIn", "fadeOut", "inPoint", "outPoint", "textSize", "lineHeight", "letterSpacing", "textMaxWidth", "textMaxHeight", "reveal", "dx", "dy", "grid"]);
+const CLIP_BOOLEANS = new Set(["flipX", "flipY", "muted", "textBg"]);
+
+/** A string a block field holds ("0.5", "true") as the number or boolean the op wants. */
+export function coerceClipArg(key: string, value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  if (CLIP_NUMBERS.has(key)) { const n = Number(value); if (value.trim() !== "" && Number.isFinite(n)) return n; }
+  if (CLIP_BOOLEANS.has(key) && (value === "true" || value === "false")) return value === "true";
+  return value;
+}
+
+/** The clips a For-each filter matches: by kind, selection, colour or contained text. */
+export function selectCtxClips(select: string, ctx: ToolContext) {
+  if (select.startsWith("colour:")) {
+    const colour = select.slice(7).trim().toLowerCase();
+    if (!colour) return [];
+    return ctx.clips.filter((c) => (c.color ?? "").toLowerCase() === colour);
+  }
+  if (select.startsWith("contains:")) {
+    const phrase = select.slice(9).trim().toLowerCase();
+    if (!phrase) return [];
+    return ctx.clips.filter((c) => (c.text ?? "").toLowerCase().includes(phrase));
+  }
+  return ctx.clips.filter((c) => select === "all" || (select === "selected" ? ctx.selection.includes(c.id) : c.kind === select));
+}
+
 /**
  * The shared argument conversions: JSON params parse (update_clip patches merge in),
  * number params coerce (templates included), id lists become arrays, and the flat
@@ -304,6 +354,12 @@ export function convertOpArgs(op: string, args: Record<string, unknown>): Record
     args.shape = { type: args.shapeType ?? "rectangle", width: args.width, height: args.height, fill: args.fill };
     delete args.shapeType; delete args.width; delete args.height; delete args.fill;
   }
+  // Direct clip fields arrive as strings from block inputs; numbers and booleans
+  // must reach the op as real numbers and booleans.
+  for (const key of Object.keys(args)) {
+    const coerced = coerceClipArg(key, args[key]);
+    if (coerced !== args[key]) args[key] = coerced;
+  }
   return args;
 }
 
@@ -357,8 +413,7 @@ export function compileBlocks(blocks: ToolBlock[], ctx: ToolContext, into: Timel
         const count = Math.max(0, Math.min(1000, Math.round(Number(block.count) || 0)));
         for (let i = 0; i < count; i++) walk(block.blocks, { ...vars, index: i, count });
       } else if (block.kind === "eachClip") {
-        const select = block.select ?? "all";
-        const clips = ctx.clips.filter((c) => select === "all" || (select === "selected" ? ctx.selection.includes(c.id) : c.kind === select));
+        const clips = selectCtxClips(block.select ?? "all", ctx);
         clips.forEach((c, i) => walk(block.blocks, { ...vars, clipId: c.id, index: i, count: clips.length }));
       }
     }
@@ -522,7 +577,7 @@ export function codeErrorLine(error: string): number | null {
 export type FriendlyBlock = {
   id: string;
   label: string;
-  group: "Create" | "Entrances" | "Exits" | "Attention" | "Springy" | "Camera" | "Animate" | "Text" | "Style" | "Clips" | "Timing" | "Advanced";
+  group: "Create" | "Edit" | "Entrances" | "Exits" | "Attention" | "Springy" | "Camera" | "Animate" | "Text" | "Style" | "Clips" | "Timing" | "Advanced";
   op: string;
   args?: Record<string, unknown>;
   params: ToolParam[];
@@ -599,6 +654,82 @@ export const BLOCK_LIBRARY: FriendlyBlock[] = [
   { id: "advanced", label: "Advanced op", group: "Advanced", op: "update_clip", description: "Any timeline operation, with raw JSON.",
     args: { clipId: "$clipId", patch: "{}" },
     params: [{ key: "__op", label: "Operation", type: "select", def: "update_clip", options: OP_IDS }, { key: "args", label: "Arguments (JSON)", type: "json", def: "{}" }] },
+  // Edit: friendly blocks that change clips you already have.
+  { id: "edit-move", label: "Move", group: "Edit", op: "update_clip", description: "Moves a clip to a new spot on the frame.",
+    args: { x: 0.5, y: 0.5 },
+    params: [P.clipId, { key: "x", label: "Across (0..1)", type: "number", def: 0.5, min: 0, max: 1, step: 0.01 }, { key: "y", label: "Down (0..1)", type: "number", def: 0.5, min: 0, max: 1, step: 0.01 }] },
+  { id: "edit-scale", label: "Set size", group: "Edit", op: "update_clip", description: "Makes a clip bigger or smaller (1 = normal size).",
+    args: { scale: 1 },
+    params: [P.clipId, { key: "scale", label: "Size", type: "number", def: 1, min: 0.1, max: 2, step: 0.05 }] },
+  { id: "edit-rotate", label: "Rotate", group: "Edit", op: "update_clip", description: "Turns a clip round, in degrees.",
+    args: { rotation: 15 },
+    params: [P.clipId, { key: "rotation", label: "Angle (°)", type: "number", def: 15, min: -360, max: 360, step: 5 }] },
+  { id: "edit-flip", label: "Flip upside down", group: "Edit", op: "update_clip", description: "Flips a clip top to bottom.",
+    args: { flipY: true },
+    params: [P.clipId, { key: "flipY", label: "Flip", type: "select", def: "true", options: ["true", "false"] }] },
+  { id: "edit-mirror", label: "Mirror", group: "Edit", op: "update_clip", description: "Flips a clip side to side, like a mirror.",
+    args: { flipX: true },
+    params: [P.clipId, { key: "flipX", label: "Mirror", type: "select", def: "true", options: ["true", "false"] }] },
+  { id: "edit-align", label: "Line up", group: "Edit", op: "align_clips", description: "Lines clips up in a row or column, or spreads them evenly across the frame.",
+    args: { mode: "center" },
+    params: [{ key: "clipIds", label: "Clips", type: "text", def: "$selection", placeholder: "$selection" }, { key: "mode", label: "How", type: "select", def: "center", options: ["left", "center", "right", "top", "middle", "bottom", "distribute-h", "distribute-v"] }] },
+  { id: "edit-snap", label: "Snap to grid", group: "Edit", op: "snap_to_grid", description: "Rounds clip positions to a grid so they line up neatly.",
+    args: { grid: 0.1 },
+    params: [{ key: "clipIds", label: "Clips", type: "text", def: "$selection", placeholder: "$selection" }, { key: "grid", label: "Grid size", type: "number", def: 0.1, min: 0.02, max: 0.5, step: 0.01 }] },
+  { id: "edit-crop", label: "Crop", group: "Edit", op: "update_clip", description: "Shows only the left part of a picture or shape (0.7 keeps 70%).",
+    args: { reveal: 0.7 },
+    params: [P.clipId, { key: "reveal", label: "Keep", type: "number", def: 0.7, min: 0.05, max: 1, step: 0.05 }] },
+  { id: "edit-opacity", label: "See-through", group: "Edit", op: "update_clip", description: "Sets how see-through a clip is (1 = solid, 0 = invisible).",
+    args: { opacity: 0.5 },
+    params: [P.clipId, { key: "opacity", label: "Opacity", type: "number", def: 0.5, min: 0, max: 1, step: 0.05 }] },
+  { id: "edit-filter", label: "Colour look", group: "Edit", op: "update_clip", description: "Gives a clip a look: black and white, old-timey, vivid and more.",
+    args: { filter: "mono" },
+    params: [P.clipId, { key: "filter", label: "Look", type: "select", def: "mono", options: ["mono", "sepia", "vivid", "cool", "warm", "faded"] }] },
+  { id: "edit-brightness", label: "Brightness", group: "Edit", op: "update_clip", description: "Makes a clip lighter or darker.",
+    args: { brightness: 0.2 },
+    params: [P.clipId, { key: "brightness", label: "Brightness", type: "number", def: 0.2, min: -0.5, max: 0.5, step: 0.05 }] },
+  { id: "edit-contrast", label: "Contrast", group: "Edit", op: "update_clip", description: "Makes the dark and light parts stand apart more (or less).",
+    args: { contrast: 1.3 },
+    params: [P.clipId, { key: "contrast", label: "Contrast", type: "number", def: 1.3, min: 0.5, max: 2, step: 0.05 }] },
+  { id: "edit-saturation", label: "Colour strength", group: "Edit", op: "update_clip", description: "Turns the colours up bright or down grey.",
+    args: { saturation: 1.5 },
+    params: [P.clipId, { key: "saturation", label: "Strength", type: "number", def: 1.5, min: 0, max: 2, step: 0.05 }] },
+  { id: "edit-blur", label: "Blur", group: "Edit", op: "update_clip", description: "Blurs a clip softly (in pixels).",
+    args: { blur: 4 },
+    params: [P.clipId, { key: "blur", label: "Blur", type: "number", def: 4, min: 0, max: 20, step: 1 }] },
+  { id: "edit-speed", label: "Change speed", group: "Edit", op: "update_clip", description: "Plays a clip faster or slower (2 = double speed, 0.5 = half).",
+    args: { speed: 1.5 },
+    params: [P.clipId, { key: "speed", label: "Speed", type: "number", def: 1.5, min: 0.25, max: 4, step: 0.25 }] },
+  { id: "edit-duration", label: "Set duration", group: "Edit", op: "trim_clip", description: "Sets how long a text or shape clip is, in seconds.",
+    args: { inPoint: 0, outPoint: 3 },
+    params: [P.clipId, { key: "inPoint", label: "In point (s)", type: "number", def: 0, min: 0, max: 86400, step: 0.1 }, { key: "outPoint", label: "Out point (s)", type: "number", def: 3, min: 0.1, max: 86400, step: 0.1 }] },
+  { id: "edit-volume", label: "Volume", group: "Edit", op: "update_clip", description: "Sets how loud a clip is (1 = full volume).",
+    args: { volume: 0.5 },
+    params: [P.clipId, { key: "volume", label: "Volume", type: "number", def: 0.5, min: 0, max: 1, step: 0.05 }] },
+  { id: "edit-mute", label: "Mute", group: "Edit", op: "update_clip", description: "Silences a clip without deleting it.",
+    args: { muted: true },
+    params: [P.clipId, { key: "muted", label: "Mute", type: "select", def: "true", options: ["true", "false"] }] },
+  { id: "edit-fade-in-sound", label: "Fade sound in", group: "Edit", op: "update_clip", description: "Fades a clip's sound up from silence over a few seconds.",
+    args: { fadeIn: 1 },
+    params: [P.clipId, { key: "fadeIn", label: "Fade time (s)", type: "number", def: 1, min: 0, max: 10, step: 0.1 }] },
+  { id: "edit-fade-out-sound", label: "Fade sound out", group: "Edit", op: "update_clip", description: "Fades a clip's sound down to silence over a few seconds.",
+    args: { fadeOut: 1 },
+    params: [P.clipId, { key: "fadeOut", label: "Fade time (s)", type: "number", def: 1, min: 0, max: 10, step: 0.1 }] },
+  { id: "edit-track", label: "Move to track", group: "Edit", op: "move_clip", description: "Moves a clip to another track: overlay on top, video behind, audio for sound.",
+    args: { track: "overlay" },
+    params: [P.clipId, { key: "track", label: "Track", type: "select", def: "overlay", options: ["overlay", "video", "audio"] }] },
+  { id: "edit-front", label: "Bring to front", group: "Edit", op: "move_clip", description: "Moves a clip to the overlay track, which draws on top of everything.",
+    args: { track: "overlay" },
+    params: [P.clipId, { key: "track", label: "Track", type: "select", def: "overlay", options: ["overlay", "video", "audio"] }] },
+  { id: "edit-back", label: "Send to back", group: "Edit", op: "move_clip", description: "Moves a clip to the video track, which draws behind everything.",
+    args: { track: "video" },
+    params: [P.clipId, { key: "track", label: "Track", type: "select", def: "video", options: ["overlay", "video", "audio"] }] },
+  { id: "edit-copy-offset", label: "Copy with offset", group: "Edit", op: "duplicate_clip", description: "Copies a clip and nudges the copy sideways — great for shadows and rows.",
+    args: { dx: 0.05, dy: 0 },
+    params: [P.clipId, { key: "start", label: "Start (s)", type: "number", def: "$playhead", min: 0, max: 86400, step: 0.1 }, { key: "dx", label: "Sideways offset", type: "number", def: 0.05, min: -1, max: 1, step: 0.01 }, { key: "dy", label: "Up/down offset", type: "number", def: 0, min: -1, max: 1, step: 0.01 }] },
+  { id: "edit-replace-text", label: "Change words", group: "Edit", op: "update_clip", description: "Changes what a text clip says, keeping its font, colour and size.",
+    args: { text: "New words" },
+    params: [P.clipId, { key: "text", label: "New text", type: "text", def: "New words" }] },
   // Motion presets, grouped for the palette.
   ...MOTION_GROUPS.map((g) => ({
     id: `motion-${g.group.toLowerCase()}`, label: g.label, group: g.group, op: "apply_motion", description: g.description,
@@ -672,7 +803,7 @@ export const BLOCK_LIBRARY: FriendlyBlock[] = [
     params: [P.clipId, { key: "duration", label: "New duration (s)", type: "number", def: 2, min: 0.1, max: 60, step: 0.1 }, { key: "delay", label: "Delay (s)", type: "number", def: 0, min: 0, max: 60, step: 0.1 }] },
 ];
 export const BLOCK_MAP = new Map(BLOCK_LIBRARY.map((b) => [b.id, b]));
-export const BLOCK_GROUPS = ["Create", "Entrances", "Exits", "Attention", "Springy", "Camera", "Animate", "Text", "Style", "Clips", "Timing", "Advanced"] as const;
+export const BLOCK_GROUPS = ["Create", "Edit", "Entrances", "Exits", "Attention", "Springy", "Camera", "Animate", "Text", "Style", "Clips", "Timing", "Advanced"] as const;
 
 /** Params of a friendly block that a clip can connect to. */
 export function clipConnectableKeys(block: FriendlyBlock): string[] {
@@ -777,7 +908,13 @@ export function validateGraph(graph: ToolGraph, ctx: ToolContext): GraphIssue[] 
   // Control nodes.
   for (const n of graph.nodes) {
     if (n.type === "repeat" && !(Number(n.count) >= 1)) issues.push({ nodeId: n.id, level: "error", message: "Repeat needs a count of at least 1." });
-    if (n.type === "eachClip" && !["all", "text", "shape", "media", "selected"].includes(n.select ?? "all")) issues.push({ nodeId: n.id, level: "error", message: "For each clip needs a valid clip filter." });
+    if (n.type === "eachClip") {
+      const s = n.select ?? "all";
+      const ok = ["all", "text", "shape", "media", "selected"].includes(s)
+        || (s.startsWith("colour:") && /^#[0-9a-fA-F]{6}$/.test(s.slice(7).trim()))
+        || (s.startsWith("contains:") && s.slice(9).trim() !== "");
+      if (!ok) issues.push({ nodeId: n.id, level: "error", message: "For each clip needs a valid clip filter — pick one from the list." });
+    }
   }
   // Functions: names, calls, recursion.
   const fnNodes = graph.nodes.filter((n) => n.type === "function");
@@ -873,8 +1010,7 @@ export function compileGraph(graph: ToolGraph, ctx: ToolContext): TimelineOp[] {
         const count = Math.max(0, Math.min(1000, Math.round(Number(node.count) || 0)));
         for (let i = 0; i < count; i++) runChain(body.get(id), { ...vars, index: i, count }, new Set(visited));
       } else if (node.type === "eachClip") {
-        const select = node.select ?? "all";
-        const clips = ctx.clips.filter((c) => select === "all" || (select === "selected" ? ctx.selection.includes(c.id) : c.kind === select));
+        const clips = selectCtxClips(node.select ?? "all", ctx);
         clips.forEach((c, i) => runChain(body.get(id ?? ""), { ...vars, clipId: c.id, index: i, count: clips.length }, new Set(visited)));
       } else if (node.type === "call") {
         const fn = functions.get(node.name ?? "");
@@ -1001,6 +1137,9 @@ function argExpr(key: string, value: unknown, op: string, vars: CodeVars): strin
   if (isArithmeticTemplate(value)) return arithmeticExpr(value, vars);
   if (hasTemplate(value)) return concatExpr(value, vars);
   if (param?.type === "number" && Number.isFinite(Number(value))) return String(Number(value));
+  // The same number/boolean coercion convertOpArgs applies, so ops stay identical.
+  const coerced = coerceClipArg(key, value);
+  if (coerced !== value) return typeof coerced === "number" ? String(coerced) : JSON.stringify(coerced);
   return JSON.stringify(value);
 }
 
@@ -1110,7 +1249,7 @@ export function graphToCode(graph: ToolGraph): string {
       stmt = `ops.push(vf.update(${idExpr}, ${patch}));`;
     } else if (op === "remove_clip" && safeId(idExpr)) {
       stmt = `ops.push(vf.remove(${idExpr}));`;
-    } else if (op === "duplicate_clip" && args.newId === undefined && safeId(idExpr)) {
+    } else if (op === "duplicate_clip" && args.newId === undefined && args.dx === undefined && args.dy === undefined && safeId(idExpr)) {
       stmt = args.start === undefined ? `ops.push(vf.duplicate(${idExpr}));` : `ops.push(vf.duplicate(${idExpr}, ${argExpr("start", args.start, op, vars)}));`;
     } else if (op === "apply_motion" && Object.keys(args).every((k) => ["clipId", "preset", "duration", "delay", "strength"].includes(k)) && safeId(idExpr)) {
       const preset = argExpr("preset", args.preset ?? "", op, vars);
@@ -1175,8 +1314,14 @@ export function graphToCode(graph: ToolGraph): string {
         loopDepth++;
         const arr = `clips${loopDepth}`;
         const iter = `c${loopDepth}`;
-        const filter = select === "all" ? "vf.clips" : select === "selected" ? "vf.clips.filter((c) => vf.selection.includes(c.id))" : `vf.clips.filter((c) => c.kind === ${JSON.stringify(select)})`;
-        emit(depth, `// For every ${select === "all" ? "" : select + " "}clip`);
+        let filter: string;
+        let label: string;
+        if (select === "all") { filter = "vf.clips"; label = "clip"; }
+        else if (select === "selected") { filter = "vf.clips.filter((c) => vf.selection.includes(c.id))"; label = "selected clip"; }
+        else if (select.startsWith("colour:")) { const colour = JSON.stringify(select.slice(7).trim().toLowerCase()); filter = `vf.clips.filter((c) => String(c.color ?? "").toLowerCase() === ${colour})`; label = `clip coloured ${select.slice(7).trim()}`; }
+        else if (select.startsWith("contains:")) { const phrase = JSON.stringify(select.slice(9).trim().toLowerCase()); filter = `vf.clips.filter((c) => String(c.text ?? "").toLowerCase().includes(${phrase}))`; label = `clip whose text has "${select.slice(9).trim()}" in it`; }
+        else { filter = `vf.clips.filter((c) => c.kind === ${JSON.stringify(select)})`; label = `${select} clip`; }
+        emit(depth, `// For every ${label}`);
         emit(depth, `const ${arr} = ${filter};`);
         emit(depth, `let ${v} = 0;`);
         emit(depth, `for (const ${iter} of ${arr}) {`);
@@ -1243,7 +1388,7 @@ export function saveUserTools(tools: CustomTool[], storage: { getItem: (k: strin
 export function toolContext(timeline: { clips: Clip[]; resolution: { width: number; height: number }; fps?: number }, playhead: number, selection: string[], duration: number): ToolContext {
   const clips = timeline.clips
     .filter((c) => c.track !== "audio")
-    .map((c) => ({ id: c.id, kind: (c.shape ? "shape" : c.assetId ? "media" : "text") as "text" | "shape" | "media", start: c.start, duration: (c.outPoint - c.inPoint) / (c.speed ?? 1), label: c.label ?? c.text?.slice(0, 40) }));
+    .map((c) => ({ id: c.id, kind: (c.shape ? "shape" : c.assetId ? "media" : "text") as "text" | "shape" | "media", start: c.start, duration: (c.outPoint - c.inPoint) / (c.speed ?? 1), label: c.label ?? c.text?.slice(0, 40), color: c.shape ? c.shape.fill : (c.textColor ?? "#ffffff").toLowerCase(), text: c.text }));
   return { playhead, duration, selection: [...selection], clips, resolution: { ...timeline.resolution }, fps: timeline.fps ?? 30 };
 }
 

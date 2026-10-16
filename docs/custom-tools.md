@@ -26,6 +26,7 @@ Open any tool (or create one) and the studio takes over the screen. Blocks live 
 | Block family | What it does |
 |---|---|
 | Create | add a title, shape or sticker |
+| Edit | change clips you already have: move, resize, rotate, flip and mirror, line up and distribute, snap to grid, crop, opacity, colour looks and filters, speed and duration, volume, mute, fades, tracks and layering, copy with offset, replace words |
 | Entrances | every entrance move: fade, slide, rise, drop, pop, spring, swing, spin, wipe reveal and more |
 | Exits | slide out, fade out, shrink, spin out, pop out |
 | Attention | pulse, shake, wobble, tada, heartbeat, blink, flash, glitch |
@@ -37,6 +38,10 @@ Open any tool (or create one) and the studio takes over the screen. Blocks live 
 | Clips | delete or duplicate clips, stagger a selection, beat markers |
 | Timing | stagger to beats, speed changes, reverse and stretch motion, Repeat and For each clip |
 | Flow | Function defines a named group; Call runs it by name |
+
+### Editing clips you already have
+
+The **Edit** group is for everything that changes an existing clip. **Move**, **Set size** and **Rotate** transform a clip; **Flip upside down** and **Mirror** flip it; **Line up** and **Snap to grid** tidy a whole selection — line them up left, centre or right, or spread them evenly across the frame; **Crop** keeps only the left part of a picture or shape. Colour and mood come from **Colour look**, **Brightness**, **Contrast**, **Colour strength** and **Blur**. Timing and sound: **Change speed**, **Set duration**, **Volume**, **Mute**, **Fade sound in/out**. **Bring to front** and **Send to back** move a clip between the overlay and video tracks (overlay always draws on top); **Move to track** goes further and can move a clip to the audio track. **Copy with offset** duplicates a clip and nudges the copy sideways — perfect for shadows and rows — and **Change words** rewrites a text clip while keeping its font, colour and size.
 
 ### Animating anything
 
@@ -74,6 +79,8 @@ Any string value in a block can hold a template that is resolved when the tool r
 | $selection | the selected clip ids, comma separated |
 
 Arithmetic works too: `"$playhead + $index * 0.4"` staggers each step from the playhead. Fields marked JSON (patches, keyframes, expressions) are parsed into objects, so an update step can carry any clip fields, including the new text style.
+
+For-each groups can also filter by what a clip looks like or says: pick **colour** and a colour swatch to run blocks for every clip of that colour, or pick **contains** and type a few words to catch every text clip containing them.
 
 Switching a blocks tool to the Code tab converts the graph into readable JavaScript that produces the same operations; the `vf` helpers cover everything the blocks can do, including `vf.animateProperty`, `vf.textEffect` and `vf.colorCycle`.
 

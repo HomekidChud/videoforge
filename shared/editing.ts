@@ -1,5 +1,5 @@
 import { setTransition } from "./transitions";
-import { normalizeClip, normalizeTimeline, clipDuration, clipEnd, TRACKS, type Clip, type Timeline, type TrackName } from "./timeline";
+import { normalizeClip, normalizeTimeline, clipDuration, clipEnd, clipX, clipY, TRACKS, type Clip, type Timeline, type TrackName } from "./timeline";
 import { normalizeKeyframes, isProperty, sliceKeyframes, type AnimationProperty, type Keyframe } from "./animation";
 import { motionPreset } from "./presets";
 import { templateClips } from "./graphics";
@@ -244,7 +244,43 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
           const p=args.property as AnimationProperty;
           c.keyframes = { ...c.keyframes, [p]: (c.keyframes?.[p]??[]).filter(k=>Math.abs(k.time-args.time)>.0005) }; break;
         }
-        case "duplicate_clip": { const c=find(args?.clipId); clips.push({...JSON.parse(JSON.stringify(c)),id:args.newId??uid(),start:args.start??clipEnd(c)}); break; }
+        case "duplicate_clip": {
+          const c=find(args?.clipId), copy=JSON.parse(JSON.stringify(c));
+          copy.id=args.newId??uid();
+          copy.start=args.start??clipEnd(c);
+          // Optional position offset for the copy — shadows, rows, patterns.
+          if (args.dx!==undefined) { const n=Number(args.dx); if(!Number.isFinite(n)) throw new Error("dx must be a number"); copy.x=Math.round((clipX(c)+n)*1000)/1000; }
+          if (args.dy!==undefined) { const n=Number(args.dy); if(!Number.isFinite(n)) throw new Error("dy must be a number"); copy.y=Math.round((clipY(c)+n)*1000)/1000; }
+          clips.push(copy); break;
+        }
+        case "align_clips": {
+          // Line clips up or spread them evenly across the frame. Uses each clip's
+          // live position, so it needs no absolute values in the op itself.
+          if (!Array.isArray(args.clipIds) || !args.clipIds.length) throw new Error("clipIds required");
+          const modes=["left","center","right","top","middle","bottom","distribute-h","distribute-v"];
+          const mode=modes.includes(args.mode)?args.mode:"center";
+          const targets=args.clipIds.map((id: string)=>find(id)).filter((c: Clip)=>c.track!=="audio");
+          if(!targets.length) throw new Error("no visual clips to line up");
+          const round3=(n:number)=>Math.round(n*1000)/1000;
+          if (mode==="distribute-h") targets.forEach((c: Clip,i: number)=>{ c.x=round3(targets.length===1?0.5:(i+1)/(targets.length+1)); });
+          else if (mode==="distribute-v") targets.forEach((c: Clip,i: number)=>{ c.y=round3(targets.length===1?0.5:(i+1)/(targets.length+1)); });
+          else if (mode==="left") { const x=Math.min(...targets.map(clipX)); targets.forEach((c: Clip)=>{ c.x=round3(x); }); }
+          else if (mode==="right") { const x=Math.max(...targets.map(clipX)); targets.forEach((c: Clip)=>{ c.x=round3(x); }); }
+          else if (mode==="center") { const x=targets.reduce((s: number,c: Clip)=>s+clipX(c),0)/targets.length; targets.forEach((c: Clip)=>{ c.x=round3(x); }); }
+          else if (mode==="top") { const y=Math.min(...targets.map(clipY)); targets.forEach((c: Clip)=>{ c.y=round3(y); }); }
+          else if (mode==="bottom") { const y=Math.max(...targets.map(clipY)); targets.forEach((c: Clip)=>{ c.y=round3(y); }); }
+          else { const y=targets.reduce((s: number,c: Clip)=>s+clipY(c),0)/targets.length; targets.forEach((c: Clip)=>{ c.y=round3(y); }); } // middle
+          break;
+        }
+        case "snap_to_grid": {
+          // Round positions to a grid so clips line up neatly.
+          if (!Array.isArray(args.clipIds) || !args.clipIds.length) throw new Error("clipIds required");
+          const grid=args.grid??0.1;
+          if (!Number.isFinite(grid) || grid<0.02 || grid>0.5) throw new Error("grid must be 0.02..0.5");
+          const round3=(n:number)=>Math.round(n*1000)/1000;
+          for (const id of args.clipIds) { const c=find(id); if (c.track==="audio") continue; c.x=round3(Math.round(clipX(c)/grid)*grid); c.y=round3(Math.round(clipY(c)/grid)*grid); }
+          break;
+        }
         case "ripple_delete": { const c=find(args?.clipId),end=clipEnd(c),dur=clipDuration(c); timeline.clips=clips.filter(x=>x!==c).map(x=>x.track===c.track && x.start>=end ? {...x,start:Math.max(0,x.start-dur)} : x); break; }
         case "set_track": { if(!TRACKS.includes(args?.track)) throw new Error("unknown track"); timeline.tracks={...timeline.tracks,[args.track]:{...timeline.tracks?.[args.track as TrackName],...args.settings}}; break; }
         case "add_marker": { timeline.markers=[...(timeline.markers??[]),{id:args.id??uid(),time:args.time,label:args.label??"Marker",color:args.color}]; break; }

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { compileBlocks, runCodeTool, runTool, normalizeOps, loadUserTools, saveUserTools, toolContext, BUILT_IN_TOOLS, OP_PARAMS, validateGraph, compileGraph, blocksToGraph, graphToCode, codeErrorLine, VF_HELPERS, TEMPLATE_DOCS, BLOCK_LIBRARY, convertOpArgs } from "../shared/custom-tools";
+import { compileBlocks, runCodeTool, runTool, normalizeOps, loadUserTools, saveUserTools, toolContext, BUILT_IN_TOOLS, OP_PARAMS, validateGraph, compileGraph, blocksToGraph, graphToCode, codeErrorLine, VF_HELPERS, TEMPLATE_DOCS, BLOCK_LIBRARY, BLOCK_GROUPS, convertOpArgs } from "../shared/custom-tools";
 import { MOTION_PRESETS } from "../shared/presets";
 import { normalizeTimeline } from "../shared/timeline";
 import { applyTimelineOp } from "../shared/editing";
@@ -454,6 +454,120 @@ await check("graph op limit", async () => {
     edges.push(e(i === 0 ? "s" : `a${i - 1}`, "next", id, "in"), e(id, "body", `a${i}`, "in"));
   }
   assert.throws(() => compileGraph(G(nodes, edges), ctx), /more than 100 operations/);
+});
+
+console.log(`custom-tools.spec: ${checks} checks passed`);
+
+// ── Edit tools: friendly blocks that change clips you already have ──
+const ectx = {
+  ...ctx,
+  clips: [
+    { id: "a", kind: "text" as const, start: 0, duration: 4, color: "#e74c3c", text: "Hello world" },
+    { id: "b", kind: "shape" as const, start: 1, duration: 4, color: "#f6a447" },
+    { id: "c", kind: "media" as const, start: 2, duration: 4 },
+  ],
+};
+
+await check("edit blocks in the palette", async () => {
+  const ids = ["edit-move", "edit-scale", "edit-rotate", "edit-flip", "edit-mirror", "edit-align", "edit-snap", "edit-crop", "edit-opacity", "edit-filter", "edit-brightness", "edit-contrast", "edit-saturation", "edit-blur", "edit-speed", "edit-duration", "edit-volume", "edit-mute", "edit-fade-in-sound", "edit-fade-out-sound", "edit-track", "edit-front", "edit-back", "edit-copy-offset", "edit-replace-text"];
+  for (const id of ids) {
+    const block = BLOCK_LIBRARY.find((b) => b.id === id);
+    assert.ok(block, `${id} is in the library`);
+    assert.equal(block?.group, "Edit", `${id} is in the Edit group`);
+    assert.ok(block?.description, `${id} has a friendly description`);
+    assert.ok(block?.params.length, `${id} has params`);
+  }
+  assert.ok((BLOCK_GROUPS as readonly string[]).includes("Edit"), "Edit is a palette group");
+  assert.ok(OP_PARAMS["align_clips"] && OP_PARAMS["snap_to_grid"], "new ops are in the catalog");
+});
+
+await check("edit blocks compile, coerce and convert identically", async () => {
+  const graph: ToolGraph = {
+    nodes: [
+      { id: "start", type: "start" },
+      { id: "bright", type: "action", block: "edit-brightness", args: { clipId: "a", brightness: "0.2" } },
+      { id: "flip", type: "action", block: "edit-mirror", args: { clipId: "a", flipX: "true" } },
+      { id: "align", type: "action", block: "edit-align", args: { clipIds: "a,b", mode: "distribute-h" } },
+      { id: "snap", type: "action", block: "edit-snap", args: { clipIds: "$selection", grid: "0.25" } },
+      { id: "copy", type: "action", block: "edit-copy-offset", args: { clipId: "a", dx: "0.05", dy: "0" } },
+      { id: "track", type: "action", block: "edit-back", args: { clipId: "a", track: "video" } },
+    ],
+    edges: [
+      { id: "e1", source: "start", sourceHandle: "next", target: "bright", targetHandle: "in" },
+      { id: "e2", source: "bright", sourceHandle: "next", target: "flip", targetHandle: "in" },
+      { id: "e3", source: "flip", sourceHandle: "next", target: "align", targetHandle: "in" },
+      { id: "e4", source: "align", sourceHandle: "next", target: "snap", targetHandle: "in" },
+      { id: "e5", source: "snap", sourceHandle: "next", target: "copy", targetHandle: "in" },
+      { id: "e6", source: "copy", sourceHandle: "next", target: "track", targetHandle: "in" },
+    ],
+  };
+  const ops = compileGraph(graph, ectx);
+  assert.deepEqual(ops[0].args, { clipId: "a", brightness: 0.2 }, "string numbers become numbers");
+  assert.deepEqual(ops[1].args, { clipId: "a", flipX: true }, "string booleans become booleans");
+  assert.deepEqual(ops[2].args, { clipIds: ["a", "b"], mode: "distribute-h" }, "clip id lists become arrays");
+  assert.deepEqual(ops[3].args, { clipIds: ["a", "b"], grid: 0.25 });
+  assert.deepEqual(ops[4].args, { clipId: "a", dx: 0.05, dy: 0 });
+  assert.deepEqual(ops[5].args, { clipId: "a", track: "video" });
+  // The converted code produces the exact same operations.
+  const code = graphToCode(graph);
+  assert.ok(code.includes("vf.update"), "direct fields use vf.update");
+  assert.deepEqual(runCodeTool(code, ectx), ops, "edit blocks convert to identical code");
+});
+
+await check("for-each colour and text filters", async () => {
+  const walk = (select: string) => compileBlocks([{ kind: "eachClip", select, blocks: [{ kind: "op", op: "update_clip", args: { clipId: "$clipId" } }] }], ectx);
+  assert.deepEqual(walk("colour:#e74c3c").map((o) => o.args.clipId), ["a"], "colour filter matches the red text clip");
+  assert.deepEqual(walk("contains:world").map((o) => o.args.clipId), ["a"], "text filter matches by content");
+  assert.equal(walk("contains:").length, 0, "an empty phrase matches nothing");
+  // An invalid colour is flagged live.
+  const issues = validateGraph(G([
+    { id: "s", type: "start", position: pos },
+    { id: "e", type: "eachClip", select: "colour:red", position: pos },
+  ], [e("s", "next", "e", "in")]), ectx);
+  assert.ok(issues.some((i) => i.level === "error" && /clip filter/.test(i.message)));
+  // The graph compiles and converts to the same ops as the generated code.
+  const graph = G([
+    { id: "s", type: "start", position: pos },
+    { id: "f", type: "eachClip", select: "colour:#e74c3c", position: pos },
+    { id: "u", type: "action", block: "edit-brightness", args: { clipId: "$clipId", brightness: 0.1 }, position: pos },
+  ], [e("s", "next", "f", "in"), e("f", "body", "u", "in")]);
+  const ops = compileGraph(graph, ectx);
+  assert.deepEqual(ops.map((o) => o.args.clipId), ["a"]);
+  const code = graphToCode(graph);
+  assert.ok(code.includes("c.color"), "the colour filter appears in the code");
+  assert.deepEqual(runCodeTool(code, ectx), ops, "colour-filtered code runs identically");
+});
+
+await check("edit ops apply to a timeline", async () => {
+  const tl = normalizeTimeline({ fps: 30, resolution: { width: 1280, height: 720 }, clips: [
+    { id: "t1", assetId: "", track: "overlay", text: "One", start: 0, outPoint: 3, volume: 1, muted: false, x: 0.11, y: 0.52 },
+    { id: "t2", assetId: "", track: "overlay", text: "Two", start: 0, outPoint: 3, volume: 1, muted: false, x: 0.77, y: 0.48 },
+    { id: "t3", assetId: "", track: "overlay", text: "Three", start: 0, outPoint: 3, volume: 1, muted: false, x: 0.44, y: 0.61 },
+  ] });
+  const apply = (op: any) => applyTimelineOp(tl, op, () => undefined);
+  // Distribute spreads the clips evenly across the frame.
+  const spread = apply({ op: "align_clips", args: { clipIds: ["t1", "t2", "t3"], mode: "distribute-h" } });
+  assert.deepEqual(spread.clips.map((c) => c.x ?? 0.5), [0.25, 0.5, 0.75]); // 0.5 is the default position
+  // Align left lines them up on the leftmost clip.
+  const left = apply({ op: "align_clips", args: { clipIds: ["t1", "t2", "t3"], mode: "left" } });
+  assert.deepEqual(left.clips.map((c) => c.x ?? 0.5), [0.11, 0.11, 0.11]);
+  // Snap to grid rounds positions.
+  const snapped = apply({ op: "snap_to_grid", args: { clipIds: ["t1", "t2", "t3"], grid: 0.25 } });
+  assert.deepEqual(snapped.clips.map((c) => c.x ?? 0.5), [0, 0.75, 0.5]);
+  assert.deepEqual(snapped.clips.map((c) => c.y ?? 0.5), [0.5, 0.5, 0.5]);
+  // Duplicate with offset nudges the copy.
+  const copied = apply({ op: "duplicate_clip", args: { clipId: "t1", dx: 0.1, dy: -0.1 } });
+  const dupe = copied.clips.find((c) => c.id !== "t1" && c.text === "One");
+  assert.ok(dupe, "the copy exists");
+  assert.equal(dupe?.x, 0.21);
+  assert.equal(dupe?.y, 0.42);
+  assert.equal(dupe?.start, 3, "the copy starts after the original ends");
+  // Audio clips cannot be aligned, and bad input throws readably.
+  const audioTl = normalizeTimeline({ fps: 30, resolution: { width: 1280, height: 720 }, clips: [
+    { id: "s1", assetId: "snd", track: "audio", start: 0, outPoint: 3, volume: 1, muted: false },
+  ] });
+  assert.throws(() => applyTimelineOp(audioTl, { op: "align_clips", args: { clipIds: ["s1"], mode: "left" } }, () => undefined), /no visual clips/);
+  assert.throws(() => apply({ op: "snap_to_grid", args: { clipIds: ["t1"], grid: 9 } }), /grid must be/);
 });
 
 console.log(`custom-tools.spec: ${checks} checks passed`);

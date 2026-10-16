@@ -9,7 +9,7 @@ import { FONT_CATALOG, FONT_CATEGORIES, FONT_IDS } from "./fonts";
 /** Machine-readable description of what the editor and API can do. Served at GET /api/capabilities. */
 export function capabilities() {
   return {
-    version: 6,
+    version: 7,
     fonts: { families: FONT_CATALOG.map(f => ({ id: f.id, label: f.label, category: f.category, weights: f.weights, google: f.google })), categories: FONT_CATEGORIES, default: "noto-sans", notes: "Preview loads them from Google Fonts; the renderer downloads each family on first use and caches it. Widths use per-family estimates." },
     graphics: { shapeTypes: SHAPE_TYPES, templates: MOTION_TEMPLATES, shapeSchema: GRAPHICS_SCHEMA, units: "shape width/height are canvas fractions; strokeWidth/radius are output pixels. All primitives use existing transform keyframes." },
     batch: { dryRun: "true validates and returns the proposed timeline without saving", expectedUpdatedAt: "optional timestamp from GET project; stale writes return 409", createdClipIds: "IDs of clips added by this batch, in creation order" },
@@ -54,7 +54,7 @@ export function capabilities() {
       stagger_clips: "clipIds: [id...] in desired order, delay (0..60 seconds), start?",
       add_clip: "assetId, track?, start?, inPoint?, outPoint?, plus any clip field",
       add_text_clip: "text, id?, start?, duration?, plus text and transform fields",
-      remove_clip: "clipId", ripple_delete: "clipId", duplicate_clip: "clipId, start?",
+      remove_clip: "clipId", ripple_delete: "clipId", duplicate_clip: "clipId, start?, dx?, dy? (position offset for the copy)",
       trim_clip: "clipId, inPoint?, outPoint?", move_clip: "clipId, start?, track?",
       split_clip: "clipId, at (timeline seconds)", update_clip: "clipId plus any clip field",
       swap_asset: "clipId, assetId, duration?, inPoint?, outPoint?, keepKeyframes? — replaces the media source of an existing clip (kept id, style, and placement). not supported on text/shape clips.",
@@ -67,6 +67,8 @@ export function capabilities() {
       retime_animation: "clipId, duration, delay? - compresses or stretches all keyframes of a clip into one window, keeping relative timing",
       add_beat_markers: "bpm (20..300), count? (1..100, default 8), start?, every? (markers on every Nth beat), label?, color?",
       snap_to_beats: "clipIds[], bpm, start? - moves clip starts to the nearest beat",
+      align_clips: "clipIds[], mode (left|center|right|top|middle|bottom|distribute-h|distribute-v) - lines clips up or spreads them evenly across the frame",
+      snap_to_grid: "clipIds[], grid (0.02..0.5, default 0.1) - rounds positions to a grid",
       set_track: "track, settings: {muted?, hidden?, locked?}",
       add_marker: "time, label?, color?", remove_marker: "id",
       set_project: "fps?, resolution?: {width,height}, background?: #rrggbb, refit? (true refits text, shapes and overlays to the new canvas)",

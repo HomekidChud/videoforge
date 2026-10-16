@@ -726,7 +726,7 @@ async function main() {
     const dryText=await post({op:"add_text_clip",args:{text:"x",duration:2,expressions:{reveal:"p"}}});
     assert(dryText.status===422,"reveal expressions are rejected on text");
     const caps=await jsonFetch("/api/capabilities",{headers:AUTH_ADMIN});
-    assert(caps.body.version===6&&caps.body.ops.animate_code&&caps.body.ops.fit_all&&caps.body.codeAnimation.recipes.length===13&&caps.body.fit.endpoint.includes("fit-report")&&caps.body.transitions.includes("diamond")&&caps.body.motionPresets.length===33,"capabilities advertise fit, code animation and the larger library");
+    assert(caps.body.version===7&&caps.body.ops.animate_code&&caps.body.ops.align_clips&&caps.body.ops.snap_to_grid&&caps.body.ops.fit_all&&caps.body.codeAnimation.recipes.length===13&&caps.body.fit.endpoint.includes("fit-report")&&caps.body.transitions.includes("diamond")&&caps.body.motionPresets.length===33,"capabilities advertise fit, code animation and the larger library");
     const tpl=await post({op:"add_motion_template",args:{template:"bullet-list",title:"Points",items:["One","Two"],duration:3}});
     assert(tpl.status===200&&tpl.body.createdClipIds.length>=5,"new templates are available over the API");
     const presets=await post({ops:[{op:"apply_motion",args:{clipId:"big",preset:"bounce-in"}},{op:"apply_motion",args:{clipId:"big",preset:"exit-up"}}]});

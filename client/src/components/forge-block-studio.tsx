@@ -112,7 +112,7 @@ function ActionNode({ data, selected }: NodeProps) {
   const update = (key: string, value: unknown) => { (data as any).__update(node.id, { args: { ...(node.args ?? {}), [key]: value } }); };
   return (
     <NodeShell tone="action" hasError={d.hasError} hasWarning={d.hasWarning}
-      title={block?.label ?? node.op ?? "Advanced op"} icon={block ? ({ Create: "＋", Entrances: "↗", Exits: "↘", Attention: "❗", Springy: "🌀", Camera: "🎥", Animate: "✦", Text: "T", Style: "✎", Clips: "🎞", Timing: "⏱" } as Record<string, string>)[block.group] ?? "★" : "★"}
+      title={block?.label ?? node.op ?? "Advanced op"} icon={block ? ({ Create: "＋", Edit: "✂", Entrances: "↗", Exits: "↘", Attention: "❗", Springy: "🌀", Camera: "🎥", Animate: "✦", Text: "T", Style: "✎", Clips: "🎞", Timing: "⏱" } as Record<string, string>)[block.group] ?? "★" : "★"}
       onDelete={(data as any).__delete ? () => (data as any).__delete(node.id) : undefined}>
       {block?.description ? <p className="bs-hint">{block.description}</p> : null}
       {advanced ? (
@@ -152,15 +152,26 @@ function RepeatNode({ data }: NodeProps) {
 function EachClipNode({ data }: NodeProps) {
   const d = data as unknown as NodeData;
   const node = d.node;
+  const select = node.select ?? "all";
+  const base = select.split(":")[0];
+  const setSelect = (v: string) => (data as any).__update(node.id, { select: v });
   return (
     <div className={`bs-node bs-node-control${d.hasError ? " bs-node-error" : ""}`}>
       <InHandle />
       <div className="bs-node-head">
         <span className="bs-node-icon">🎞</span><b>For each clip</b>
-        <select aria-label="Which clips" value={node.select ?? "all"} disabled={(data as any).__readOnly}
-          onChange={(e) => (data as any).__update(node.id, { select: e.target.value })}>
-          {["all", "text", "shape", "media", "selected"].map((s) => <option key={s} value={s}>{s}</option>)}
+        <select aria-label="Which clips" value={base} disabled={(data as any).__readOnly}
+          onChange={(e) => setSelect(e.target.value === "colour" ? "colour:#ffffff" : e.target.value === "contains" ? "contains:" : e.target.value)}>
+          {["all", "text", "shape", "media", "selected", "colour", "contains"].map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
+        {base === "colour" ? (
+          <input className="bs-count" type="color" aria-label="Clip colour" value={select.slice(7) || "#ffffff"}
+            onChange={(e) => setSelect(`colour:${e.target.value}`)} disabled={(data as any).__readOnly} />
+        ) : null}
+        {base === "contains" ? (
+          <input className="bs-name" type="text" aria-label="Text to find" placeholder="words to find" value={select.slice(9)}
+            onChange={(e) => setSelect(`contains:${e.target.value}`)} disabled={(data as any).__readOnly} />
+        ) : null}
         <button className="bs-node-delete" aria-label="Delete block" onClick={() => (data as any).__delete(node.id)}>✕</button>
       </div>
       <p className="bs-hint">Use <code>$clipId</code> inside, or connect a clip into a field.</p>
