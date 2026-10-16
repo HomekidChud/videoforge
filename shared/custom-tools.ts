@@ -826,9 +826,11 @@ export const BLOCK_LIBRARY: FriendlyBlock[] = [
     params: [P.clipId, { key: "duration", label: "New duration (s)", type: "number", def: 2, min: 0.1, max: 60, step: 0.1 }, { key: "delay", label: "Delay (s)", type: "number", def: 0, min: 0, max: 60, step: 0.1 }] },
 ];
 export const BLOCK_MAP = new Map(BLOCK_LIBRARY.map((b) => [b.id, b]));
-export const BLOCK_GROUPS = ["Create", "Edit", "Move in", "Move out", "Attention", "Springy", "Camera", "Animate", "Text", "Style", "Clips", "Timing"] as const;
-/** Blocks kept out of the palette for compatibility with older saved tools. */
-export const HIDDEN_BLOCKS = ["advanced"] as const;
+export const BLOCK_GROUPS = ["Create", "Edit", "Animate", "Text", "Style", "Clips", "Timing"] as const;
+/** Blocks kept out of the palette: the raw-JSON op block, the canned motion-preset chips and their
+ *  Animate duplicates (presets and the friendly from/to blocks cover them), all still loadable
+ *  so older saved tools keep working. */
+export const HIDDEN_BLOCKS = ["advanced", "motion-entrances", "motion-exits", "motion-attention", "motion-springy", "motion-camera", "fade-in", "spring-in", "bounce-in", "wobble"] as const;
 
 /** The typed value a value block holds: text, a number, or yes/no. */
 export function valueNodeValue(node: ToolGraphNode): unknown {

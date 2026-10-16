@@ -7,7 +7,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
-  BLOCK_GROUPS, BLOCK_LIBRARY, BLOCK_MAP, OP_IDS, OP_PARAMS, blocksToGraph, connectableParamKeys, nodeParamKeys,
+  BLOCK_GROUPS, BLOCK_LIBRARY, BLOCK_MAP, OP_IDS, OP_PARAMS, blocksToGraph, connectableParamKeys, nodeParamKeys, HIDDEN_BLOCKS,
   codeErrorLine, compileGraph, graphToCode, validateGraph, runTool, TEMPLATE_DOCS, VF_HELPERS,
   type CustomTool, type ToolContext, type ToolGraph, type ToolGraphNode, type ToolParam,
 } from "@shared/custom-tools";
@@ -799,7 +799,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
               </div>
             ) : (
               <div className="bs-palette-group">
-                {BLOCK_LIBRARY.filter((b) => b.group === category).map((b) => (
+                {BLOCK_LIBRARY.filter((b) => b.group === category && !(HIDDEN_BLOCKS as readonly string[]).includes(b.id)).map((b) => (
                   <div key={b.id} className={`bs-chip bs-group-${category.toLowerCase().replace(/\s+/g, "-")}`} draggable={!readOnly}
                     data-testid={`bs-chip-${b.id}`}
                     onDragStart={(e) => { e.dataTransfer.setData("application/videoforge-block", b.id); e.dataTransfer.effectAllowed = "move"; }}

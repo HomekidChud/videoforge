@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
-import { compileBlocks, runCodeTool, runTool, normalizeOps, loadUserTools, saveUserTools, toolContext, BUILT_IN_TOOLS, OP_PARAMS, validateGraph, compileGraph, blocksToGraph, graphToCode, codeErrorLine, VF_HELPERS, TEMPLATE_DOCS, BLOCK_LIBRARY, BLOCK_GROUPS, HIDDEN_BLOCKS, convertOpArgs, selectCtxClips, valueNodeValue } from "../shared/custom-tools";
+import { compileBlocks, runCodeTool, runTool, normalizeOps, loadUserTools, saveUserTools, toolContext, BUILT_IN_TOOLS, OP_PARAMS, validateGraph, compileGraph, blocksToGraph, graphToCode, codeErrorLine, VF_HELPERS, TEMPLATE_DOCS, BLOCK_LIBRARY, BLOCK_GROUPS, BLOCK_MAP, HIDDEN_BLOCKS, convertOpArgs, selectCtxClips, valueNodeValue } from "../shared/custom-tools";
 import { MOTION_PRESETS } from "../shared/presets";
 import { normalizeTimeline } from "../shared/timeline";
 import { applyTimelineOp } from "../shared/editing";
@@ -483,18 +483,18 @@ await check("edit blocks in the palette", async () => {
   assert.ok(OP_PARAMS["align_clips"] && OP_PARAMS["snap_to_grid"], "new ops are in the catalog");
 });
 
-await check("palette categories cover every block", async () => {
+await check("palette categories cover every visible block", async () => {
   for (const block of BLOCK_LIBRARY) {
-    const known = (BLOCK_GROUPS as readonly string[]).includes(block.group);
     const hidden = (HIDDEN_BLOCKS as readonly string[]).includes(block.id);
-    assert.ok(known || hidden, `${block.id} is either in a category or hidden for compatibility`);
-    assert.ok(!(hidden && known), `${block.id} cannot be both visible and hidden`);
+    if (!hidden) assert.ok((BLOCK_GROUPS as readonly string[]).includes(block.group), `${block.id} sits in a known category`);
   }
   for (const group of BLOCK_GROUPS) {
-    assert.ok(BLOCK_LIBRARY.some((b) => b.group === group), `${group} has at least one block`);
+    assert.ok(BLOCK_LIBRARY.some((b) => b.group === group && !(HIDDEN_BLOCKS as readonly string[]).includes(b.id)), `${group} has at least one visible block`);
   }
-  assert.ok(!(BLOCK_GROUPS as readonly string[]).includes("Advanced"), "the raw-JSON Advanced category is gone from the palette");
-  assert.ok(BLOCK_LIBRARY.some((b) => b.id === "motion-entrances" && b.group === "Move in"), "saved motion ids keep working under a friendlier category");
+  for (const id of HIDDEN_BLOCKS) assert.ok(BLOCK_MAP.has(id), `${id} stays loadable for saved tools`);
+  for (const gone of ["Advanced", "Move in", "Move out", "Attention", "Springy", "Camera"] as const) {
+    assert.ok(!(BLOCK_GROUPS as readonly string[]).includes(gone), `the ${gone} category is gone from the palette`);
+  }
 });
 
 await check("value blocks fill arguments", async () => {

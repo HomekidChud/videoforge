@@ -8,7 +8,7 @@ description: Write your own one-click automations in JavaScript or snap them tog
 
 ## Your own tools
 
-Custom tools are small automations you write once and run with a click: "three beat titles at the playhead", "bold every title", "orbit the selection". A tool returns a list of timeline operations, and running it applies them as one atomic, undoable step — the same operations the API uses, with the same validation. Open the **Blocks** panel of the Studio library, next to Effects; code tools also live in the Tools tab.
+Custom tools are small automations you write once and run with a click: "three beat titles at the playhead", "bold every title", "orbit the selection". A tool returns a list of timeline operations, and running it applies them as one atomic, undoable step — the same operations the API uses, with the same validation. Click the **Blocks** tab, next to Effects, and the block studio opens straight away; code tools live in the Tools tab.
 
 ## Two ways to write one
 
@@ -21,7 +21,7 @@ Duplicate a built-in example to get started; your tools are stored in your brows
 
 ## The block studio
 
-Open any tool (or create one) and the studio takes over the screen. Blocks live in the palette on the left. The narrow rail of coloured dots picks a **category** — Create, Edit, Move in, Move out, Attention, Springy, Camera, Animate, Text, Style, Clips, Timing, Values and Flow — and the palette shows that category's blocks. Drag them onto the canvas. Connect a block's bottom dot to the next block's top dot to say "then do this": the line snaps in place and that becomes the run order. A tool starts at the **Start** block and follows the lines.
+Open any tool (or create one) and the studio takes over the screen. Blocks live in the palette on the left. The narrow rail of coloured dots picks a **category** — Create, Edit, Animate, Text, Style, Clips, Timing, Values and Flow — and the palette shows that category's blocks. Drag them onto the canvas. Connect a block's bottom dot to the next block's top dot to say "then do this": the line snaps in place and that becomes the run order. A tool starts at the **Start** block and follows the lines.
 
 Creating your first tool with **New tool with blocks** opens a short tutorial: name the tool, meet the block menu, change the text of the Add title block, press Run, and find your tool again in the Blocks panel. The 🎓 Tutorial button in the header replays it any time.
 
@@ -31,12 +31,7 @@ Every field on a block has a small dot on its left. Clip and frame blocks plug i
 |---|---|
 | Create | add a title, shape or sticker |
 | Edit | change clips you already have: move, resize, rotate, flip and mirror, line up and distribute, snap to grid, crop, opacity, colour looks and filters, speed and duration, volume, mute, fades, tracks, real layer order, copy with offset, replace words |
-| Move in | animate a clip you already have in: fade, slide, rise, drop, pop, spring, swing, spin, wipe reveal and more |
-| Move out | animate a clip away: slide out, fade out, shrink, spin out, pop out |
-| Attention | pulse, shake, wobble, tada, heartbeat, blink, flash, glitch |
-| Springy | spring, whip, rubber, bounce — the bouncy ones |
-| Camera | slow zoom and drift, like a moving camera |
-| Animate | animate any property from one value to another with an easing, plus ready-made moves and expression-driven floats and glows |
+| Animate | friendly from-to moves — fade in or out, slide in, rise up, drop down, zoom, spin, draw on — plus animate any property yourself, and expression-driven floats, glows and orbits |
 | Text | typewriter, word-by-word and line-by-line reveal, colour cycling |
 | Style | bold or colour the text of a clip |
 | Clips | delete or duplicate clips, stagger a selection, beat markers |

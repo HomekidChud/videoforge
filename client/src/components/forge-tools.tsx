@@ -1,14 +1,31 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BUILT_IN_TOOLS, loadUserTools, saveUserTools, runTool, type CustomTool } from "@shared/custom-tools";
 import type { ToolContext } from "@shared/custom-tools";
 import type { TimelineOp } from "@shared/editing";
 import BlockStudio, { defaultGraph } from "./forge-block-studio";
 
-export function ForgeTools({ disabled, onRun, onError, getCtx, studio = true }: { disabled: boolean; onRun: (ops: TimelineOp[]) => void; onError: (message: string) => void; getCtx: () => ToolContext; studio?: boolean }) {
+export function ForgeTools({ disabled, onRun, onError, getCtx, studio = true, autoOpen = false, onExitStudio }: { disabled: boolean; onRun: (ops: TimelineOp[]) => void; onError: (message: string) => void; getCtx: () => ToolContext; studio?: boolean; autoOpen?: boolean; onExitStudio?: () => void }) {
   const [userTools, setUserTools] = useState<CustomTool[]>(() => loadUserTools(window.localStorage));
   const [editing, setEditing] = useState<CustomTool | null>(null);
   const [freshTool, setFreshTool] = useState(false);
+  /** The untouched state of a brand-new draft, so closing it without changes doesn't save a junk tool. */
+  const draftRef = useRef<string | null>(null);
   useEffect(() => saveUserTools(userTools, window.localStorage), [userTools]);
+
+  const freshDraft = () => {
+    const tool: CustomTool = { id: `tool-${Date.now().toString(36)}`, name: "My tool", description: "What this tool does", mode: "blocks", graph: defaultGraph() };
+    draftRef.current = JSON.stringify(tool);
+    return tool;
+  };
+
+  // The Blocks tab opens the canvas straight away: your latest tool, or a fresh draft.
+  useEffect(() => {
+    if (!autoOpen || disabled) return;
+    const last = userTools.filter((t) => t.mode === "blocks").slice(-1)[0];
+    if (last) { draftRef.current = null; setEditing(structuredClone(last)); }
+    else { setFreshTool(true); setEditing(freshDraft()); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const runToolNow = (tool: CustomTool) => {
     if (disabled) return;
@@ -26,12 +43,18 @@ export function ForgeTools({ disabled, onRun, onError, getCtx, studio = true }: 
       ctx={getCtx()}
       readOnly={disabled}
       allowBlocks={studio}
-      onChange={(next) => setEditing(next)}
+      onChange={(next) => { setEditing(next); draftRef.current = null; }}
       fresh={freshTool}
       onClose={() => {
-        setUserTools((list) => list.some((t) => t.id === editing.id) ? list.map((t) => (t.id === editing.id ? editing : t)) : [...list, editing]);
+        const untouched = draftRef.current !== null && JSON.stringify(editing) === draftRef.current;
+        if (!untouched) {
+          const next = userTools.some((t) => t.id === editing.id) ? userTools.map((t) => (t.id === editing.id ? editing : t)) : [...userTools, editing];
+          setUserTools(next);
+          saveUserTools(next, window.localStorage); // synchronous: the panel switch below can unmount us before an effect runs
+        }
         setEditing(null);
         setFreshTool(false);
+        onExitStudio?.();
       }}
       onRun={onRun}
     />;
@@ -55,7 +78,7 @@ export function ForgeTools({ disabled, onRun, onError, getCtx, studio = true }: 
     {userTools.length > 0 && <section className="effect-group"><h4>Your tools</h4>{userTools.map((t) => card(t, false))}</section>}
     <div className="tool-add-row">
       <button className="primary-btn" disabled={disabled} data-testid="tool-new-code" onClick={() => setEditing({ id: `tool-${Date.now().toString(36)}`, name: "My tool", description: "What this tool does", mode: "code", code: "// vf.playhead, vf.selection, vf.clips\nreturn [];" })}>New tool with code</button>
-      {studio && <button className="primary-btn" disabled={disabled} data-testid="tool-new-blocks" onClick={() => { setFreshTool(true); setEditing({ id: `tool-${Date.now().toString(36)}`, name: "My tool", description: "What this tool does", mode: "blocks", graph: defaultGraph() }); }}>New tool with blocks</button>}
+      {studio && <button className="primary-btn" disabled={disabled} data-testid="tool-new-blocks" onClick={() => { setFreshTool(true); setEditing(freshDraft()); }}>New tool with blocks</button>}
     </div>
     <p className="help-text">Tools are stored in this browser. Open an example in the studio to see how it works.</p>
     <a href="#/docs/custom-tools" className="ghost-link">Custom tools guide</a>
