@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
-import { compileBlocks, runCodeTool, runTool, normalizeOps, loadUserTools, saveUserTools, toolContext, BUILT_IN_TOOLS, OP_PARAMS, validateGraph, compileGraph, blocksToGraph, graphToCode, codeErrorLine, VF_HELPERS, TEMPLATE_DOCS, BLOCK_LIBRARY, BLOCK_GROUPS, convertOpArgs, selectCtxClips, valueNodeValue } from "../shared/custom-tools";
+import { compileBlocks, runCodeTool, runTool, normalizeOps, loadUserTools, saveUserTools, toolContext, BUILT_IN_TOOLS, OP_PARAMS, validateGraph, compileGraph, blocksToGraph, graphToCode, codeErrorLine, VF_HELPERS, TEMPLATE_DOCS, BLOCK_LIBRARY, BLOCK_GROUPS, HIDDEN_BLOCKS, convertOpArgs, selectCtxClips, valueNodeValue } from "../shared/custom-tools";
 import { MOTION_PRESETS } from "../shared/presets";
 import { normalizeTimeline } from "../shared/timeline";
 import { applyTimelineOp } from "../shared/editing";
@@ -485,11 +485,16 @@ await check("edit blocks in the palette", async () => {
 
 await check("palette categories cover every block", async () => {
   for (const block of BLOCK_LIBRARY) {
-    assert.ok((BLOCK_GROUPS as readonly string[]).includes(block.group), `${block.id} sits in a known category`);
+    const known = (BLOCK_GROUPS as readonly string[]).includes(block.group);
+    const hidden = (HIDDEN_BLOCKS as readonly string[]).includes(block.id);
+    assert.ok(known || hidden, `${block.id} is either in a category or hidden for compatibility`);
+    assert.ok(!(hidden && known), `${block.id} cannot be both visible and hidden`);
   }
   for (const group of BLOCK_GROUPS) {
     assert.ok(BLOCK_LIBRARY.some((b) => b.group === group), `${group} has at least one block`);
   }
+  assert.ok(!(BLOCK_GROUPS as readonly string[]).includes("Advanced"), "the raw-JSON Advanced category is gone from the palette");
+  assert.ok(BLOCK_LIBRARY.some((b) => b.id === "motion-entrances" && b.group === "Move in"), "saved motion ids keep working under a friendlier category");
 });
 
 await check("value blocks fill arguments", async () => {

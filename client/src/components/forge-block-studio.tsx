@@ -23,6 +23,8 @@ type StudioProps = {
   onRun: (ops: TimelineOp[]) => void;
   /** True when the tool was just created with "New tool with blocks" — opens the tutorial. */
   fresh?: boolean;
+  /** False when opened from a place that only edits code — hides the Blocks tab. */
+  allowBlocks?: boolean;
 };
 
 const uid = () => `n-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
@@ -64,7 +66,7 @@ const TUTORIAL_STEPS = [
   },
   {
     title: "5. Find it later",
-    body: "Press ✕ to close the studio — that saves your tool in this browser. You will find it in the Tools list, where you can Run it any time. Curious about code? The Code tab shows the JavaScript your blocks make.",
+    body: "Press ✕ to close the studio — that saves your tool in this browser. You will find it in the Blocks panel, where you can Run it any time. Curious about code? The Code tab shows the JavaScript your blocks make.",
     target: '[data-testid="bs-close"]',
   },
 ];
@@ -85,25 +87,10 @@ export function defaultGraph(): ToolGraph {
   };
 }
 
-/** A JSON field that keeps the raw text while you type and flags mistakes inline. */
-function JsonField({ label, value, onCommit, testId }: { label: string; value: object; onCommit: (v: Record<string, unknown>) => void; testId: string }) {
-  const [draft, setDraft] = useState<string | null>(null);
-  const text = draft ?? JSON.stringify(value ?? {}, null, 1);
-  const parsed = useMemo(() => { try { return { v: JSON.parse(text) as Record<string, unknown>, ok: true }; } catch { return { v: null as unknown as Record<string, unknown>, ok: false }; } }, [text]);
-  return (
-    <label className="bs-field">
-      <span className="bs-field-label">{label}</span>
-      <textarea rows={3} className="bs-code" spellCheck={false} aria-label={label} data-testid={testId}
-        value={text} onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => { if (parsed.ok) { setDraft(null); onCommit(parsed.v); } }} />
-      {!parsed.ok && <span className="bs-json-error">This is not valid JSON yet — fix the red text before saving.</span>}
-    </label>
-  );
-}
-
 function ParamField({ param, value, onChange, disabled, connect }: { param: ToolParam; value: unknown; onChange: (v: unknown) => void; disabled: boolean; connect?: "clip" | "frame" | "value" }) {
   const str = String(value ?? "");
   const common = { value: str, disabled, "aria-label": param.label, "data-testid": `bs-param-${param.key}` } as Record<string, unknown>;
+  const showMap = param.type === "json" && !!value && typeof value === "object" && !Array.isArray(value);
   return (
     <label className="bs-field">
       <span className="bs-field-row">
@@ -114,10 +101,53 @@ function ParamField({ param, value, onChange, disabled, connect }: { param: Tool
         ) : null}
         <span className="bs-field-label">{param.label}</span>
       </span>
-      {param.type === "color" ? <input type="color" {...common} onChange={(e: any) => onChange(e.target.value)} />
+      {showMap ? <JsonMapField value={value as Record<string, unknown>} onChange={onChange} disabled={disabled} testId={`bs-param-${param.key}`} />
+        : param.type === "color" ? <input type="color" {...common} onChange={(e: any) => onChange(e.target.value)} />
         : param.type === "select" ? <select {...common} onChange={(e: any) => onChange(e.target.value)}>{(param.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}</select>
         : <input type="text" inputMode={param.type === "number" ? "decimal" : undefined} placeholder={String(param.def)} {...common} onChange={(e: any) => onChange(e.target.value)} />}
     </label>
+  );
+}
+
+/** A saved object shows up as friendly property rows — name on the left, value you can type. */
+function JsonMapField({ value, onChange, disabled, testId }: { value: Record<string, unknown>; onChange: (v: unknown) => void; disabled: boolean; testId: string }) {
+  const [newKey, setNewKey] = useState("");
+  const rows = Object.keys(value);
+  /** Keep each property's type: text stays text, numbers stay numbers, yes/no stays yes/no. */
+  const parseVal = (k: string, raw: string) => {
+    const t = raw.trim();
+    if (t === "") return "";
+    const cur = value[k];
+    if (typeof cur === "number" || typeof cur === "boolean") {
+      try { const p = JSON.parse(t); if (typeof p === typeof cur) return p; } catch { /* keep as text */ }
+      return raw;
+    }
+    if (cur === "" || cur === undefined) {
+      // a brand-new property: numbers and yes/no stay typed, everything else is text
+      try { const p = JSON.parse(t); if (typeof p === "number" || typeof p === "boolean") return p; } catch { /* text */ }
+    }
+    return raw;
+  };
+  const setRow = (k: string, v: unknown) => onChange({ ...value, [k]: v });
+  const removeRow = (k: string) => { const next = { ...value }; delete next[k]; onChange(next); };
+  return (
+    <div className="bs-json-map" data-testid={`${testId}-map`}>
+      {rows.map((k) => (
+        <div key={k} className="bs-json-row">
+          <span className="bs-json-key">{k}</span>
+          <input className="bs-json-val" disabled={disabled} aria-label={`${k} value`} data-testid={`${testId}-row-${k}`}
+            value={typeof value[k] === "object" && value[k] !== null ? JSON.stringify(value[k]) : String(value[k] ?? "")}
+            onChange={(e) => setRow(k, parseVal(k, e.target.value))} />
+          <button type="button" className="bs-json-del" disabled={disabled} aria-label={`Remove ${k}`} onClick={() => removeRow(k)}>✕</button>
+        </div>
+      ))}
+      <div className="bs-json-row bs-json-add">
+        <input className="bs-json-key-input" disabled={disabled} placeholder="property name" aria-label="New property name" data-testid={`${testId}-new-key`}
+          value={newKey} onChange={(e) => setNewKey(e.target.value)} />
+        <button type="button" className="bs-json-add-btn" disabled={disabled || !newKey.trim()} data-testid={`${testId}-add-btn`}
+          onClick={() => { const k = newKey.trim(); if (k) { setRow(k, ""); setNewKey(""); } }}>Add property</button>
+      </div>
+    </div>
   );
 }
 
@@ -166,7 +196,11 @@ function ActionNode({ data, selected }: NodeProps) {
       {advanced ? (
         <>
           <ParamField param={{ key: "__op", label: "Operation", type: "select", def: node.op ?? "", options: OP_IDS }} value={node.op} onChange={(v) => (data as any).__update(node.id, { op: v, args: {} })} disabled={(data as any).__readOnly} />
-          <JsonField label="Arguments (JSON)" value={node.args ?? {}} testId="bs-param-args" onCommit={(v) => (data as any).__update(node.id, { args: v })} />
+          {(OP_PARAMS[node.op ?? ""] ?? []).map((p) => (
+            <ParamField key={p.key} param={p} value={node.args?.[p.key] ?? p.def} onChange={(v) => update(p.key, v)}
+              disabled={(data as any).__readOnly}
+              connect={connectable.clip.includes(p.key) ? "clip" : connectable.frame.includes(p.key) ? "frame" : "value"} />
+          ))}
         </>
       ) : params.map((p) => (
         <ParamField key={p.key} param={p} value={node.args?.[p.key] ?? p.def} onChange={(v) => update(p.key, v)}
@@ -457,7 +491,7 @@ function edgeStyle(edge: Edge) {
   return {};
 }
 
-function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh }: StudioProps) {
+function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlocks = true }: StudioProps) {
   const graph = tool.graph ?? blocksToGraph(tool.blocks ?? []);
   const rf = useReactFlow();
   const wrapper = useRef<HTMLDivElement>(null);
@@ -544,7 +578,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh }: Studio
       // A clip only fits clip fields, a frame only fits time fields — of that block's operation.
       const key = c.targetHandle.slice(6);
       const target = graph.nodes.find((n) => n.id === c.target);
-      const op = (target?.block ? (BLOCK_MAP.get(target.block!)?.op ?? target.op) : target?.op) ?? "";
+      const op = (target?.op ?? (target?.block ? BLOCK_MAP.get(target.block)?.op : undefined)) ?? ""; // an advanced node follows its chosen op, not the compat block's
       const allowed = connectableParamKeys(op);
       if (c.sourceHandle === "clip") return allowed.clip.includes(key);
       return allowed.frame.includes(key);
@@ -666,10 +700,11 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh }: Studio
   }, [tab, readOnly, tool, graph, ctx, onChange]);
 
   const switchToBlocks = useCallback(() => {
+    if (!allowBlocks) return; // code-only entry points keep the tool in code mode
     setTab("blocks");
     setConverted(false);
     onChange({ ...tool, mode: "blocks" });
-  }, [tool, onChange]);
+  }, [tool, onChange, allowBlocks]);
 
   const errorCount = issues.filter((i) => i.level === "error").length + (runError ? 1 : 0);
   const warnCount = issues.filter((i) => i.level === "warning").length;
@@ -700,7 +735,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh }: Studio
       <header className="bs-header">
         <input className="bs-title" aria-label="Tool name" value={tool.name} onChange={(e) => onChange({ ...tool, name: e.target.value })} disabled={readOnly} data-testid="bs-name" />
         <div className="bs-tabs" role="tablist" aria-label="Tool mode">
-          <button role="tab" aria-selected={tab === "blocks"} className={tab === "blocks" ? "active" : ""} onClick={switchToBlocks} data-testid="bs-tab-blocks">🧩 Blocks</button>
+          {allowBlocks && <button role="tab" aria-selected={tab === "blocks"} className={tab === "blocks" ? "active" : ""} onClick={switchToBlocks} data-testid="bs-tab-blocks">🧩 Blocks</button>}
           <button role="tab" aria-selected={tab === "code"} className={tab === "code" ? "active" : ""} onClick={switchToCode} data-testid="bs-tab-code">{"</>"} Code</button>
         </div>
         <span className="bs-spacer" />
@@ -740,7 +775,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh }: Studio
               <button key={c.id} type="button" className={`bs-cat${category === c.id ? " active" : ""}`}
                 aria-pressed={category === c.id} data-testid={`bs-cat-${c.id}`} onClick={() => setCategory(c.id)}
                 title={`${c.label} blocks`}>
-                <i className={`bs-cat-dot bs-dot-cat-${c.id.toLowerCase()}`} />
+                <i className={`bs-cat-dot bs-dot-cat-${c.id.toLowerCase().replace(/\s+/g, "-")}`} />
                 <span className="bs-cat-label">{c.label}</span>
               </button>
             ))}
@@ -765,7 +800,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh }: Studio
             ) : (
               <div className="bs-palette-group">
                 {BLOCK_LIBRARY.filter((b) => b.group === category).map((b) => (
-                  <div key={b.id} className={`bs-chip bs-group-${category.toLowerCase()}`} draggable={!readOnly}
+                  <div key={b.id} className={`bs-chip bs-group-${category.toLowerCase().replace(/\s+/g, "-")}`} draggable={!readOnly}
                     data-testid={`bs-chip-${b.id}`}
                     onDragStart={(e) => { e.dataTransfer.setData("application/videoforge-block", b.id); e.dataTransfer.effectAllowed = "move"; }}
                     title={b.description}>{b.label}</div>

@@ -4,7 +4,7 @@ import type { ToolContext } from "@shared/custom-tools";
 import type { TimelineOp } from "@shared/editing";
 import BlockStudio, { defaultGraph } from "./forge-block-studio";
 
-export function ForgeTools({ disabled, onRun, onError, getCtx }: { disabled: boolean; onRun: (ops: TimelineOp[]) => void; onError: (message: string) => void; getCtx: () => ToolContext }) {
+export function ForgeTools({ disabled, onRun, onError, getCtx, studio = true }: { disabled: boolean; onRun: (ops: TimelineOp[]) => void; onError: (message: string) => void; getCtx: () => ToolContext; studio?: boolean }) {
   const [userTools, setUserTools] = useState<CustomTool[]>(() => loadUserTools(window.localStorage));
   const [editing, setEditing] = useState<CustomTool | null>(null);
   const [freshTool, setFreshTool] = useState(false);
@@ -25,6 +25,7 @@ export function ForgeTools({ disabled, onRun, onError, getCtx }: { disabled: boo
       tool={editing}
       ctx={getCtx()}
       readOnly={disabled}
+      allowBlocks={studio}
       onChange={(next) => setEditing(next)}
       fresh={freshTool}
       onClose={() => {
@@ -41,7 +42,7 @@ export function ForgeTools({ disabled, onRun, onError, getCtx }: { disabled: boo
     <p className="help-text">{tool.description}</p>
     <div className="tool-card-actions">
       <button className="primary-btn" disabled={disabled} onClick={() => runToolNow(tool)} data-testid={`tool-run-${tool.id}`}>Run</button>
-      <button className="chip" disabled={disabled} onClick={() => setEditing(structuredClone(tool))} data-testid={`tool-edit-${tool.id}`}>Open in studio</button>
+      {studio && <button className="chip" disabled={disabled} onClick={() => setEditing(structuredClone(tool))} data-testid={`tool-edit-${tool.id}`}>Open in studio</button>}
       <button className="chip" disabled={disabled} onClick={() => setUserTools((list) => [...list, { ...structuredClone(tool), id: `tool-${Date.now().toString(36)}`, name: `${tool.name} copy`, builtIn: false }])}>Duplicate</button>
       {!builtIn && <button className="chip" disabled={disabled} onClick={() => setUserTools((list) => list.filter((t) => t.id !== tool.id))}>Delete</button>}
     </div>
@@ -53,8 +54,8 @@ export function ForgeTools({ disabled, onRun, onError, getCtx }: { disabled: boo
     <section className="effect-group"><h4>Examples</h4>{BUILT_IN_TOOLS.map((t) => card(t, true))}</section>
     {userTools.length > 0 && <section className="effect-group"><h4>Your tools</h4>{userTools.map((t) => card(t, false))}</section>}
     <div className="tool-add-row">
-      <button className="primary-btn" disabled={disabled} data-testid="tool-new-blocks" onClick={() => { setFreshTool(true); setEditing({ id: `tool-${Date.now().toString(36)}`, name: "My tool", description: "What this tool does", mode: "blocks", graph: defaultGraph() }); }}>New tool with blocks</button>
       <button className="primary-btn" disabled={disabled} data-testid="tool-new-code" onClick={() => setEditing({ id: `tool-${Date.now().toString(36)}`, name: "My tool", description: "What this tool does", mode: "code", code: "// vf.playhead, vf.selection, vf.clips\nreturn [];" })}>New tool with code</button>
+      {studio && <button className="primary-btn" disabled={disabled} data-testid="tool-new-blocks" onClick={() => { setFreshTool(true); setEditing({ id: `tool-${Date.now().toString(36)}`, name: "My tool", description: "What this tool does", mode: "blocks", graph: defaultGraph() }); }}>New tool with blocks</button>}
     </div>
     <p className="help-text">Tools are stored in this browser. Open an example in the studio to see how it works.</p>
     <a href="#/docs/custom-tools" className="ghost-link">Custom tools guide</a>

@@ -8,7 +8,7 @@ description: Write your own one-click automations in JavaScript or snap them tog
 
 ## Your own tools
 
-Custom tools are small automations you write once and run with a click: "three beat titles at the playhead", "bold every title", "orbit the selection". A tool returns a list of timeline operations, and running it applies them as one atomic, undoable step — the same operations the API uses, with the same validation. Open the Tools tab of the Studio library.
+Custom tools are small automations you write once and run with a click: "three beat titles at the playhead", "bold every title", "orbit the selection". A tool returns a list of timeline operations, and running it applies them as one atomic, undoable step — the same operations the API uses, with the same validation. Open the **Blocks** panel of the Studio library, next to Effects; code tools also live in the Tools tab.
 
 ## Two ways to write one
 
@@ -21,9 +21,9 @@ Duplicate a built-in example to get started; your tools are stored in your brows
 
 ## The block studio
 
-Open any tool (or create one) and the studio takes over the screen. Blocks live in the palette on the left. The narrow rail of coloured dots picks a **category** — Create, Edit, Entrances, Exits, Attention, Springy, Camera, Animate, Text, Style, Clips, Timing, Advanced, Values and Flow — and the palette shows that category's blocks. Drag them onto the canvas. Connect a block's bottom dot to the next block's top dot to say "then do this": the line snaps in place and that becomes the run order. A tool starts at the **Start** block and follows the lines.
+Open any tool (or create one) and the studio takes over the screen. Blocks live in the palette on the left. The narrow rail of coloured dots picks a **category** — Create, Edit, Move in, Move out, Attention, Springy, Camera, Animate, Text, Style, Clips, Timing, Values and Flow — and the palette shows that category's blocks. Drag them onto the canvas. Connect a block's bottom dot to the next block's top dot to say "then do this": the line snaps in place and that becomes the run order. A tool starts at the **Start** block and follows the lines.
 
-Creating your first tool with **New tool with blocks** opens a short tutorial: name the tool, meet the block menu, change the text of the Add title block, press Run, and find your tool again in the Tools list. The 🎓 Tutorial button in the header replays it any time.
+Creating your first tool with **New tool with blocks** opens a short tutorial: name the tool, meet the block menu, change the text of the Add title block, press Run, and find your tool again in the Blocks panel. The 🎓 Tutorial button in the header replays it any time.
 
 Every field on a block has a small dot on its left. Clip and frame blocks plug into clip and time fields; **Values** blocks plug into any field. Drag a 📝 Text, 🔢 Number or 🔘 Yes / No block next to a block, type the value, and drag from its dot into the field — the connected value wins over whatever is typed in the field itself. Number blocks that don't hold a number turn red, and an unplugged value block gets a nudge to connect it.
 
@@ -31,8 +31,8 @@ Every field on a block has a small dot on its left. Clip and frame blocks plug i
 |---|---|
 | Create | add a title, shape or sticker |
 | Edit | change clips you already have: move, resize, rotate, flip and mirror, line up and distribute, snap to grid, crop, opacity, colour looks and filters, speed and duration, volume, mute, fades, tracks, real layer order, copy with offset, replace words |
-| Entrances | every entrance move: fade, slide, rise, drop, pop, spring, swing, spin, wipe reveal and more |
-| Exits | slide out, fade out, shrink, spin out, pop out |
+| Move in | animate a clip you already have in: fade, slide, rise, drop, pop, spring, swing, spin, wipe reveal and more |
+| Move out | animate a clip away: slide out, fade out, shrink, spin out, pop out |
 | Attention | pulse, shake, wobble, tada, heartbeat, blink, flash, glitch |
 | Springy | spring, whip, rubber, bounce — the bouncy ones |
 | Camera | slow zoom and drift, like a moving camera |

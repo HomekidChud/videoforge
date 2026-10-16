@@ -241,8 +241,8 @@
 .bs-cat-label { overflow-wrap: anywhere; }
 .bs-dot-cat-create { background: #4a8fd6; }
 .bs-dot-cat-edit { background: #d08a2e; }
-.bs-dot-cat-entrances { background: #3d9a63; }
-.bs-dot-cat-exits { background: #c0564b; }
+.bs-dot-cat-move-in { background: #3d9a63; }
+.bs-dot-cat-move-out { background: #c0564b; }
 .bs-dot-cat-attention { background: #c9a227; }
 .bs-dot-cat-springy { background: #7d5bb5; }
 .bs-dot-cat-camera { background: #2e8f95; }
@@ -302,6 +302,16 @@
 .bs-hint { color: #aeb4bc; font-size: 11.5px; margin: 2px 10px 8px; line-height: 1.45; }
 .bs-hint code { background: #101215; padding: 1px 4px; border-radius: 4px; }
 .bs-field { display: block; margin: 0 10px 8px; }
+/* A saved JSON object becomes friendly property rows: name, value, remove. */
+.bs-json-map { display: grid; gap: 4px; width: 100%; }
+.bs-json-row { display: grid; grid-template-columns: auto 1fr auto; gap: 6px; align-items: center; }
+.bs-json-key { font-size: 12px; color: var(--ink-faint, #8b93a1); overflow-wrap: anywhere; max-width: 90px; }
+.bs-json-val { width: 100%; }
+.bs-json-del { border: 0; background: none; color: var(--ink-faint, #8b93a1); cursor: pointer; padding: 2px; font-size: 12px; }
+.bs-json-del:hover { color: #c0564b; }
+.bs-json-add { grid-template-columns: 1fr auto; }
+.bs-json-key-input { width: 100%; }
+.bs-json-add-btn { font-size: 12px; padding: 3px 8px; }
 .bs-field-label { display: block; color: #9aa0a8; font-size: 10.5px; margin-bottom: 2px; }
 .bs-field input, .bs-field select, .bs-field textarea { width: 100%; background: #101215; border: 1px solid #33373e; color: #e8eaed; border-radius: 7px; padding: 5px 8px; font-size: 12.5px; }
 .bs-field input:focus, .bs-field select:focus, .bs-field textarea:focus { outline: none; border-color: #4a8fd6; }

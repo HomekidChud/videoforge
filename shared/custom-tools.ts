@@ -593,7 +593,7 @@ export function codeErrorLine(error: string): number | null {
 export type FriendlyBlock = {
   id: string;
   label: string;
-  group: "Create" | "Edit" | "Entrances" | "Exits" | "Attention" | "Springy" | "Camera" | "Animate" | "Text" | "Style" | "Clips" | "Timing" | "Advanced";
+  group: "Create" | "Edit" | "Move in" | "Move out" | "Attention" | "Springy" | "Camera" | "Animate" | "Text" | "Style" | "Clips" | "Timing" | "Advanced";
   op: string;
   args?: Record<string, unknown>;
   params: ToolParam[];
@@ -615,12 +615,12 @@ const P = {
 /** The motion presets, grouped the way the palette shows them. */
 const PRESET_IDS: string[] = MOTION_PRESETS.map((p) => p.id);
 const presetOptions = (ids: string[]) => ({ key: "preset", label: "Move", type: "select", def: ids[0], options: ids } as ToolParam);
-const MOTION_GROUPS: { group: "Entrances" | "Exits" | "Attention" | "Springy" | "Camera"; ids: string[]; label: string; description: string }[] = [
-  { group: "Entrances", ids: ["fade", "slide-left", "slide-right", "rise", "drop", "pop", "zoom-out", "swing", "spin", "reveal"], label: "Enter the scene", description: "Brings a clip in with a move like fade, slide, pop or swing." },
-  { group: "Exits", ids: ["exit-left", "exit-right", "exit-up", "exit-down", "fade-out", "shrink-out", "spin-out", "pop-out", "reveal-out"], label: "Make an exit", description: "Sends a clip away — slide out, fade out, shrink or spin." },
-  { group: "Attention", ids: ["pulse", "shake", "wobble", "tada", "heartbeat", "blink", "flash", "glitch"], label: "Get attention", description: "Shakes, pulses or wobbles a clip so people look at it." },
-  { group: "Springy", ids: ["spring", "whip", "rubber", "bounce-in"], label: "Springy move", description: "Bouncy, elastic moves that overshoot and settle." },
-  { group: "Camera", ids: ["zoom", "drift"], label: "Camera move", description: "Slow zooms and drifts, like a camera moving." },
+const MOTION_GROUPS: { id: string; group: "Move in" | "Move out" | "Attention" | "Springy" | "Camera"; ids: string[]; label: string; description: string }[] = [
+  { id: "motion-entrances", group: "Move in", ids: ["fade", "slide-left", "slide-right", "rise", "drop", "pop", "zoom-out", "swing", "spin", "reveal"], label: "Move a clip in", description: "Animates a clip you already have — fade, slide, pop, swing and more." },
+  { id: "motion-exits", group: "Move out", ids: ["exit-left", "exit-right", "exit-up", "exit-down", "fade-out", "shrink-out", "spin-out", "pop-out", "reveal-out"], label: "Move a clip out", description: "Animates a clip away — slide out, fade out, shrink or spin." },
+  { id: "motion-attention", group: "Attention", ids: ["pulse", "shake", "wobble", "tada", "heartbeat", "blink", "flash", "glitch"], label: "Get attention", description: "Shakes, pulses or wobbles a clip so people look at it." },
+  { id: "motion-springy", group: "Springy", ids: ["spring", "whip", "rubber", "bounce-in"], label: "Springy move", description: "Bouncy, elastic moves that overshoot and settle." },
+  { id: "motion-camera", group: "Camera", ids: ["zoom", "drift"], label: "Camera move", description: "Slow zooms and drifts on a clip, like a moving camera." },
 ];
 
 const ANIMATE_PROPERTY_OPTIONS = ["x", "y", "scale", "rotation", "opacity", "brightness", "contrast", "saturation", "reveal", "volume"];
@@ -668,7 +668,7 @@ export const BLOCK_LIBRARY: FriendlyBlock[] = [
     args: { delay: 0.15 }, params: [{ key: "clipIds", label: "Clips", type: "text", def: "$selection", placeholder: "$selection" }, { key: "start", label: "Start (s)", type: "number", def: "$playhead", min: 0, max: 86400, step: 0.1 }, { key: "delay", label: "Gap (s)", type: "number", def: 0.15, min: 0, max: 60, step: 0.05 }] },
   { id: "beat-markers", label: "Beat markers", group: "Timing", op: "add_beat_markers", description: "Drops markers on every beat.",
     args: { bpm: 120, count: 8 }, params: [{ key: "bpm", label: "BPM", type: "number", def: 120, min: 20, max: 300, step: 1 }, { key: "count", label: "Count", type: "number", def: 8, min: 2, max: 64, step: 1 }] },
-  { id: "advanced", label: "Advanced op", group: "Advanced", op: "update_clip", description: "Any timeline operation, with raw JSON.",
+  { id: "advanced", label: "Advanced op", group: "Advanced", op: "update_clip", description: "Any timeline operation, with named fields for everything it needs.",
     args: { clipId: "$clipId", patch: "{}" },
     params: [{ key: "__op", label: "Operation", type: "select", def: "update_clip", options: OP_IDS }, { key: "args", label: "Arguments (JSON)", type: "json", def: "{}" }] },
   // Edit: friendly blocks that change clips you already have.
@@ -755,7 +755,7 @@ export const BLOCK_LIBRARY: FriendlyBlock[] = [
     params: [P.clipId, { key: "text", label: "New text", type: "text", def: "New words" }] },
   // Motion presets, grouped for the palette.
   ...MOTION_GROUPS.map((g) => ({
-    id: `motion-${g.group.toLowerCase()}`, label: g.label, group: g.group, op: "apply_motion", description: g.description,
+    id: g.id, label: g.label, group: g.group, op: "apply_motion", description: g.description,
     args: { preset: g.ids[0], duration: 0.8 },
     params: [P.clipId, presetOptions(g.ids), P.motionDuration, P.motionDelay, P.strength, MOTION_EASING],
   })),
@@ -826,7 +826,9 @@ export const BLOCK_LIBRARY: FriendlyBlock[] = [
     params: [P.clipId, { key: "duration", label: "New duration (s)", type: "number", def: 2, min: 0.1, max: 60, step: 0.1 }, { key: "delay", label: "Delay (s)", type: "number", def: 0, min: 0, max: 60, step: 0.1 }] },
 ];
 export const BLOCK_MAP = new Map(BLOCK_LIBRARY.map((b) => [b.id, b]));
-export const BLOCK_GROUPS = ["Create", "Edit", "Entrances", "Exits", "Attention", "Springy", "Camera", "Animate", "Text", "Style", "Clips", "Timing", "Advanced"] as const;
+export const BLOCK_GROUPS = ["Create", "Edit", "Move in", "Move out", "Attention", "Springy", "Camera", "Animate", "Text", "Style", "Clips", "Timing"] as const;
+/** Blocks kept out of the palette for compatibility with older saved tools. */
+export const HIDDEN_BLOCKS = ["advanced"] as const;
 
 /** The typed value a value block holds: text, a number, or yes/no. */
 export function valueNodeValue(node: ToolGraphNode): unknown {

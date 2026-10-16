@@ -74,7 +74,7 @@ export default function EditorPage() {
   const setSelectedId = useCallback((id: string | null) => { setSel(id ? [id] : []); }, []);
   const [time, setTime] = useState(0), [playing, setPlaying] = useState(false);
   const [pps, setPps] = useState(64), [snapping, setSnapping] = useState(true);
-  const [panel, setPanel] = useState<"media" | "effects" | "graphics" | "projects" | "tools">("media");
+  const [panel, setPanel] = useState<"media" | "effects" | "graphics" | "projects" | "tools" | "blocks">("media");
   const [notice, setNotice] = useState<{ text: string; tone: "info" | "error" } | null>(null);
   const [upload, setUpload] = useState<{ pct: number } | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("empty"), [saveError, setSaveError] = useState("");
@@ -184,7 +184,7 @@ export default function EditorPage() {
     if (draft && draft.timeline.clips.length > 0) {
       loadDocument(draft.timeline, null, draft.name || "Untitled project", "private");
       setPps(draft.pps || 64);
-      setPanel((draft.panel as "media" | "effects" | "graphics" | "projects" | "tools") || "media");
+      setPanel((draft.panel as "media" | "effects" | "graphics" | "projects" | "tools" | "blocks") || "media");
       setSel(draft.selection ?? []);
       setTime(Math.max(0, draft.time ?? 0));
       setSaveState(draft.saveState === "error" ? "error" : "dirty");
@@ -498,8 +498,8 @@ export default function EditorPage() {
     <div className={`studio-grid workspace-${workspace} ${libraryOpen?"":"library-collapsed"} ${inspectorOpen?"":"inspector-collapsed"} mobile-show-${mobilePanel}`}
       style={{"--library-width":`${libraryOpen?libraryWidth:0}px`,"--inspector-width":`${inspectorOpen?inspectorWidth:0}px`,"--timeline-height":`${timelineHeight}px`} as React.CSSProperties}>
       <aside className="library" aria-label="Library">
-        <div className="panel-tabs"><button className={panel === "media" ? "active" : ""} onClick={() => setPanel("media")}>Media</button><button className={panel === "effects" ? "active" : ""} onClick={() => setPanel("effects")} data-testid="tab-effects">Effects</button><button className={panel === "graphics" ? "active" : ""} onClick={() => setPanel("graphics")} data-testid="tab-graphics">Graphics</button><button className={panel === "tools" ? "active" : ""} onClick={() => setPanel("tools")} data-testid="tab-tools">Tools</button><button className={panel === "projects" ? "active" : ""} onClick={() => setPanel("projects")}>Projects</button></div>
-        {panel === "tools" ? <ForgeTools disabled={readOnly} onRun={(ops) => runOps(ops)} onError={(m) => toast(m, "error")} getCtx={getToolCtx} /> : panel === "graphics" ? <ForgeGraphics disabled={readOnly} onApply={op=>{if(readOnly)return;try{const t=tlRef.current,next=applyGraphics(t,op,timeRef.current),ids=next.clips.filter(c=>!t.clips.some(o=>o.id===c.id)).map(c=>c.id);mutate(()=>next);setSel(ids);toast(`Added ${ids.length} editable graphics clip${ids.length===1?"":"s"}`);}catch(e:any){toast(e.message,"error");}}}/> : panel === "effects" ? <ForgeEffects disabled={readOnly} onApply={(e) => applyEffect(e)} /> : panel === "media" ? <>
+        <div className="panel-tabs"><button className={panel === "media" ? "active" : ""} onClick={() => setPanel("media")}>Media</button><button className={panel === "effects" ? "active" : ""} onClick={() => setPanel("effects")} data-testid="tab-effects">Effects</button><button className={panel === "blocks" ? "active" : ""} onClick={() => setPanel("blocks")} data-testid="tab-blocks">Blocks</button><button className={panel === "graphics" ? "active" : ""} onClick={() => setPanel("graphics")} data-testid="tab-graphics">Graphics</button><button className={panel === "tools" ? "active" : ""} onClick={() => setPanel("tools")} data-testid="tab-tools">Tools</button><button className={panel === "projects" ? "active" : ""} onClick={() => setPanel("projects")}>Projects</button></div>
+        {panel === "blocks" ? <ForgeTools disabled={readOnly} onRun={(ops) => runOps(ops)} onError={(m) => toast(m, "error")} getCtx={getToolCtx} studio /> : panel === "tools" ? <ForgeTools disabled={readOnly} onRun={(ops) => runOps(ops)} onError={(m) => toast(m, "error")} getCtx={getToolCtx} studio={false} /> : panel === "graphics" ? <ForgeGraphics disabled={readOnly} onApply={op=>{if(readOnly)return;try{const t=tlRef.current,next=applyGraphics(t,op,timeRef.current),ids=next.clips.filter(c=>!t.clips.some(o=>o.id===c.id)).map(c=>c.id);mutate(()=>next);setSel(ids);toast(`Added ${ids.length} editable graphics clip${ids.length===1?"":"s"}`);}catch(e:any){toast(e.message,"error");}}}/> : panel === "effects" ? <ForgeEffects disabled={readOnly} onApply={(e) => applyEffect(e)} /> : panel === "media" ? <>
           <label className={`dropzone ${readOnly ? "disabled" : ""}`} data-testid="button-upload">{upload ? <><Loader2 className="spin" size={18} /><span>Uploading {Math.round(upload.pct * 100)}%</span><i style={{ width: `${upload.pct * 100}%` }} /></> : <><Upload size={19} /><b>Import media</b><span>Video, audio or images — or drop files anywhere</span></>}
             <input type="file" multiple accept="video/*,audio/*,image/*" disabled={readOnly || !!upload} onChange={(e) => { if (e.target.files?.length) importFiles(e.target.files); e.target.value = ""; }} /></label>
           <div className="asset-list">
