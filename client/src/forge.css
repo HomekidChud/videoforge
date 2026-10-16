@@ -128,6 +128,12 @@
 .feature-list li { display:flex; align-items:center; gap:12px; padding:12px 0; color:var(--forge-muted); }
 .feature-list svg { color:var(--forge-accent); flex-shrink:0; }
 .auth-card { border:1px solid var(--forge-border); background:var(--forge-panel); border-radius:12px; padding:32px; }
+.auth-tabs { display:flex; gap:8px; margin-bottom:18px; }
+.auth-tabs button { display:flex; align-items:center; gap:6px; flex:1; padding:8px 10px; border-radius:8px; border:1px solid var(--forge-border); background:transparent; color:var(--forge-muted, #9aa0a8); cursor:pointer; font-size:13px; }
+.auth-tabs button.active { background:var(--forge-accent-soft, rgba(74,143,214,.15)); color:var(--forge-text, #dbe4f0); border-color:var(--forge-accent, #4a8fd6); }
+.auth-or { display:flex; align-items:center; gap:10px; color:var(--forge-muted, #9aa0a8); font-size:12px; margin:14px 0; }
+.auth-or::before, .auth-or::after { content:""; flex:1; height:1px; background:var(--forge-border); }
+.google-btn { display:flex; align-items:center; justify-content:center; gap:10px; }
 .auth-card h2 { margin:20px 0 12px; }
 .auth-card .primary-btn { margin:12px 0; }
 .auth-card >.help-text { margin-top:20px; border-top:1px solid var(--forge-border); padding-top:20px; }

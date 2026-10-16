@@ -3,6 +3,7 @@ import express, { Response, NextFunction } from 'express';
 import type { Request } from 'express';
 import { registerRoutes } from "./routes";
 import { registerKeyRoutes, ensureOwnerKeyExists } from "./auth";
+import { registerAccountRoutes } from "./accounts";
 import { storageDegraded } from "./storage";
 import { serveStatic } from "./static";
 import { createServer } from "node:http";
@@ -122,6 +123,7 @@ app.use((req, res, next) => {
     try { await ensureOwnerKeyExists(); } catch (e) { console.error("failed to create owner key:", e); }
   }
   registerKeyRoutes(app);
+  registerAccountRoutes(app);
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

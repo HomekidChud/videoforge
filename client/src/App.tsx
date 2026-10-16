@@ -1,5 +1,6 @@
 import { Switch, Route, Router, Redirect } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
+import { useQuery } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -23,14 +24,19 @@ setKeyChangeNotifier(() => {
 });
 
 // ---------------------------------------------------------------------------
-// Studio and administrative pages require a session API key.
-// The homepage, docs, share pages and sign-in remain public.
+// Studio and administrative pages require a signed-in session: an API key in
+// memory, or the account cookie (verified with one request, so a refresh or a
+// server restart keeps you signed in). The homepage, docs, share pages and
+// sign-in remain public.
 // ---------------------------------------------------------------------------
 
 function RequireApiKey({ children }: { children: React.ReactNode }) {
   const { apiKey } = useApiKey();
-  if (!apiKey) return <Redirect to="/api-key" />;
-  return <>{children}</>;
+  const me = useQuery<unknown>({ queryKey: ["/api/auth/me"], retry: false });
+  if (apiKey) return <>{children}</>; // an API key in memory is enough
+  if (me.isLoading) return null; // checking for a cookie session
+  if (me.isSuccess) return <>{children}</>;
+  return <Redirect to="/api-key" />;
 }
 
 function AppRouter() {

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { BUILT_IN_TOOLS, loadUserTools, saveUserTools, runTool, saveSticker, decodeTool, type CustomTool } from "@shared/custom-tools";
 import type { ToolContext } from "@shared/custom-tools";
 import type { TimelineOp } from "@shared/editing";
+import { api } from "@/lib/api";
 import BlockStudio, { defaultGraph } from "./forge-block-studio";
 
 export function ForgeTools({ disabled, onRun, onError, onNote, getCtx, studio = true, autoOpen = false, onExitStudio }: { disabled: boolean; onRun: (ops: TimelineOp[]) => void; onError: (message: string) => void; onNote?: (message: string) => void; getCtx: () => ToolContext; studio?: boolean; autoOpen?: boolean; onExitStudio?: () => void }) {
@@ -12,6 +13,29 @@ export function ForgeTools({ disabled, onRun, onError, onNote, getCtx, studio = 
   /** The untouched state of a brand-new draft, so closing it without changes doesn't save a junk tool. */
   const draftRef = useRef<string | null>(null);
   useEffect(() => saveUserTools(userTools, window.localStorage), [userTools]);
+
+  // The tool library on the server: tools sync per account (or per API key), so
+  // they follow you between browsers. The local copy is the offline fallback —
+  // on load, server tools join it and local-only tools are pushed up.
+  const pushTool = (tool: CustomTool) => api("PUT", `/api/tools/${tool.id}`, { name: tool.name, description: tool.description, mode: tool.mode, code: tool.code, graph: tool.graph }).catch(() => {});
+  const dropTool = (id: string) => api("DELETE", `/api/tools/${id}`).catch(() => {});
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const data = await api<{ tools: CustomTool[] }>("GET", "/api/tools");
+        if (!alive || !Array.isArray(data.tools)) return;
+        const server = data.tools;
+        setUserTools((local) => {
+          const have = new Set(local.map((t) => t.id));
+          for (const t of local) if (!server.some((s) => s.id === t.id)) void pushTool(t);
+          return [...local, ...server.filter((t) => !have.has(t.id))];
+        });
+      } catch { /* offline or read-only: the local library still works */ }
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const freshDraft = () => {
     const tool: CustomTool = { id: `tool-${Date.now().toString(36)}`, name: "My tool", description: "What this tool does", mode: "blocks", graph: defaultGraph() };
@@ -63,6 +87,7 @@ export function ForgeTools({ disabled, onRun, onError, onNote, getCtx, studio = 
           const next = userTools.some((t) => t.id === editing.id) ? userTools.map((t) => (t.id === editing.id ? editing : t)) : [...userTools, editing];
           setUserTools(next);
           saveUserTools(next, window.localStorage); // synchronous: the panel switch below can unmount us before an effect runs
+          void pushTool(editing); // and the server library, so it follows you to other browsers
         }
         setEditing(null);
         setFreshTool(false);
@@ -79,7 +104,7 @@ export function ForgeTools({ disabled, onRun, onError, onNote, getCtx, studio = 
       <button className="primary-btn" disabled={disabled} onClick={() => runToolNow(tool)} data-testid={`tool-run-${tool.id}`}>Run</button>
       {studio && <button className="chip" disabled={disabled} onClick={() => setEditing(structuredClone(tool))} data-testid={`tool-edit-${tool.id}`}>Open in studio</button>}
       <button className="chip" disabled={disabled} onClick={() => setUserTools((list) => [...list, { ...structuredClone(tool), id: `tool-${Date.now().toString(36)}`, name: `${tool.name} copy`, builtIn: false }])}>Duplicate</button>
-      {!builtIn && <button className="chip" disabled={disabled} onClick={() => setUserTools((list) => list.filter((t) => t.id !== tool.id))}>Delete</button>}
+      {!builtIn && <button className="chip" disabled={disabled} onClick={() => { setUserTools((list) => list.filter((t) => t.id !== tool.id)); void dropTool(tool.id); }}>Delete</button>}
     </div>
   </div>;
 
@@ -100,12 +125,13 @@ export function ForgeTools({ disabled, onRun, onError, onNote, getCtx, studio = 
           try {
             const tool = decodeTool(importCode);
             setUserTools((list) => [...list, tool]);
+            void pushTool(tool);
             setImportCode("");
             onNote?.(`Added tool “${tool.name}”`);
           } catch (e: any) { onError(e.message || "That tool code didn't work"); }
         }}>Add tool</button>
     </div>
-    <p className="help-text">Tools are stored in this browser. Share one with the 🔗 Share button in the studio, and add it here from its code.</p>
+    <p className="help-text">Tools sync to your account and also live in this browser as an offline copy. Share one with the 🔗 Share button in the studio, and add it here from its code.</p>
     <a href="#/docs/custom-tools" className="ghost-link">Custom tools guide</a>
   </div>;
 }

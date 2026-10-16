@@ -136,6 +136,36 @@ sqlite.exec(`
     revoked INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL,
+    password_hash TEXT,
+    google_sub TEXT,
+    name TEXT NOT NULL DEFAULT '',
+    role TEXT NOT NULL DEFAULT 'user',
+    created_at INTEGER NOT NULL
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS users_email_idx ON users(email);
+  CREATE UNIQUE INDEX IF NOT EXISTS users_google_idx ON users(google_sub);
+  CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions(user_id);
+  CREATE TABLE IF NOT EXISTS custom_tools (
+    id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    mode TEXT NOT NULL,
+    code TEXT,
+    graph_json TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS custom_tools_owner_idx ON custom_tools(owner_id);
 `);
 
 // Additive migrations preserve existing projects and keys on upgrade.

@@ -16,9 +16,10 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { storage, db } from "./storage";
-import { apiKeys, type ApiKey } from "@shared/schema";
+import { apiKeys, users, type ApiKey } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { restrictionsSchema, DEFAULT_RESTRICTIONS, type KeyRestrictions } from "@shared/policy";
+import { sessionUser } from "./accounts";
 
 export type Scope = "read" | "write" | "admin";
 export const SCOPES: Scope[] = ["read", "write", "admin"];
@@ -195,13 +196,20 @@ export function verifyMediaToken(token: string, resourceId: string): boolean {
   if (!isFinite(expiresAt) || expiresAt < Date.now()) return false;
 
   // Check the issuing key is still valid (exists, not revoked, has read+).
+  // Media tokens can also be minted by signed-in accounts (id "user:<id>").
   const issuingKey = findKeyById(issuingKeyId);
-  if (!issuingKey) return false;
-  if (issuingKey.revoked) return false;
-  const policy = keyRestrictions(issuingKey);
-  if (policy.expiresAt && policy.expiresAt <= Date.now()) return false;
-  if (!resourceAllowed(issuingKey, resourceId)) return false;
-  if (!(["read", "write", "admin"] as Scope[]).includes(issuingKey.scope as Scope)) {
+  if (issuingKey) {
+    if (issuingKey.revoked) return false;
+    const policy = keyRestrictions(issuingKey);
+    if (policy.expiresAt && policy.expiresAt <= Date.now()) return false;
+    if (!resourceAllowed(issuingKey, resourceId)) return false;
+    if (!(["read", "write", "admin"] as Scope[]).includes(issuingKey.scope as Scope)) {
+      return false;
+    }
+  } else if (issuingKeyId.startsWith("user:")) {
+    const user = db.select().from(users).where(eq(users.id, issuingKeyId.slice(5))).get();
+    if (!user) return false;
+  } else {
     return false;
   }
 
@@ -294,8 +302,17 @@ function enforcePolicy(key: ApiKey, req: Request, res: Response): boolean {
 }
 export function requireScope(scope: Scope) {
   return function (req: Request, res: Response, next: NextFunction) {
+    // Two ways in: a Bearer API key (agents and scripts) or a signed-in
+    // account (session cookie). Sessions are never restricted like keys.
+    if (!req.headers.authorization) {
+      const user = sessionUser(req);
+      if (!user) return res.status(401).json({ message: "Sign in with your email and password, or use 'Authorization: Bearer <api-key>'." });
+      const userScope: Scope = user.role === "admin" ? "admin" : "write";
+      if (SCOPES.indexOf(userScope) < SCOPES.indexOf(scope)) return res.status(403).json({ message: `Forbidden: your account is '${userScope}' but this action requires '${scope}'.` });
+      (req as any).apiKey = { id: `user:${user.id}`, label: user.email, scope: userScope, revoked: 0, keyHash: "", createdAt: user.createdAt, restrictionsJson: "{}" };
+      return next();
+    }
     const authHeader = req.headers.authorization;
-    if (!authHeader) return res.status(401).json({ message: "Unauthorized: missing Authorization header. Use 'Authorization: Bearer <api-key>'." });
     const m = authHeader.match(/^Bearer\s+(.+)$/i);
     if (!m) return res.status(401).json({ message: "Authorization must be Bearer <api-key>." });
     const key = findKeyByHash(hashKey(m[1]));
@@ -335,7 +352,15 @@ export function requireMediaAccess(kind: "asset" | "render") {
     if (!verifyMediaToken(st, resourceId)) {
       return res.status(401).json({ message: "Unauthorized: invalid or expired media token for this resource." });
     }
-    const issuingKey = findKeyById(st.split(".")[2])!;
+    const issuingId = st.split(".")[2] ?? "";
+    if (issuingId.startsWith("user:")) {
+      // minted by a signed-in account: valid while the account exists
+      const user = db.select().from(users).where(eq(users.id, issuingId.slice(5))).get();
+      if (!user) return res.status(401).json({ message: "This account no longer exists." });
+      (req as any).apiKey = { id: issuingId, label: user.email, scope: "read" as Scope, revoked: 0, keyHash: "", createdAt: 0 };
+      return next();
+    }
+    const issuingKey = findKeyById(issuingId)!;
     if (!enforcePolicy(issuingKey, req, res)) return;
     (req as any).apiKey = { id: `st:${resourceId}`, label: "media token", scope: "read" as Scope, revoked: 0, keyHash: "", createdAt: 0 };
     return next();
@@ -356,7 +381,14 @@ export function registerKeyRoutes(app: Express) {
     const issuingKeyId = String((req as any).apiKey?.id ?? "");
     res.json({ token: issueMediaToken(resourceId, issuingKeyId), expiresAt: Date.now() + SHORT_TOKEN_TTL_MS });
   });
-  app.get("/api/auth/me", requireScope("read"), (req, res) => res.json(keyMetadata((req as any).apiKey)));
+  app.get("/api/auth/me", requireScope("read"), (req, res) => {
+    const key = (req as any).apiKey;
+    if (String(key.id).startsWith("user:")) {
+      const user = db.select().from(users).where(eq(users.id, String(key.id).slice(5))).get();
+      return res.json({ kind: "account", id: key.id, scope: key.scope, email: user?.email ?? key.label, name: user?.name ?? "", role: user?.role ?? "user" });
+    }
+    res.json(keyMetadata(key));
+  });
   app.get("/api/keys", requireAdmin, (_req, res) => res.json({ keys: listKeys().map(keyMetadata) }));
   app.post("/api/keys", requireAdmin, (req, res) => {
     try {

@@ -93,7 +93,7 @@ async function main() {
   {
     const r = await jsonFetch("/api/projects");
     assert(r.status === 401, `expected 401, got ${r.status}`);
-    assert(String(r.body?.message || "").includes("missing Authorization"), "message mentions Authorization");
+    assert(String(r.body?.message || "").includes("Sign in with your email"), "message mentions signing in");
   }
 
   // --- 3. Get the admin key from the file

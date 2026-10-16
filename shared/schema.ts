@@ -89,6 +89,46 @@ export const apiKeys = sqliteTable("api_keys", {
 });
 
 // ---------------------------------------------------------------------------
+// Accounts — real people signing in with email + password or Google. API keys
+// stay for AI agents and scripts. Sessions live in the DB, so sign-ins survive
+// server restarts; the browser only ever holds an HttpOnly cookie.
+// ---------------------------------------------------------------------------
+
+export const users = sqliteTable("users", {
+  id: text("id").primaryKey(),
+  email: text("email").notNull(),
+  passwordHash: text("password_hash"), // scrypt("salt:hash"); null for Google-only accounts
+  googleSub: text("google_sub"), // Google account id
+  name: text("name").notNull().default(""),
+  role: text("role").notNull().default("user"), // admin | user
+  createdAt: integer("created_at").notNull(),
+});
+
+export const sessions = sqliteTable("sessions", {
+  id: text("id").primaryKey(), // sha256 of the cookie token
+  userId: text("user_id").notNull(),
+  createdAt: integer("created_at").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+});
+
+// ---------------------------------------------------------------------------
+// The tool library: custom tools stored per account (or per API key), synced
+// between browsers.
+// ---------------------------------------------------------------------------
+
+export const customTools = sqliteTable("custom_tools", {
+  id: text("id").primaryKey(),
+  ownerId: text("owner_id").notNull(), // "user:<id>" or "key:<keyId>"
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  mode: text("mode").notNull(), // blocks | code
+  code: text("code"),
+  graphJson: text("graph_json"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+// ---------------------------------------------------------------------------
 // TypeScript timeline model (stored as JSON in projects.timelineJson)
 // ---------------------------------------------------------------------------
 
@@ -98,6 +138,9 @@ export type Asset = typeof mediaAssets.$inferSelect;
 export type Project = typeof projects.$inferSelect;
 export type RenderJob = typeof renderJobs.$inferSelect;
 export type ApiKey = typeof apiKeys.$inferSelect;
+export type User = typeof users.$inferSelect;
+export type SessionRow = typeof sessions.$inferSelect;
+export type CustomToolRow = typeof customTools.$inferSelect;
 
 export const insertMediaAssetSchema = createInsertSchema(mediaAssets).pick({
   id: true,
