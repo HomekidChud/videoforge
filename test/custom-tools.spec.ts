@@ -483,6 +483,15 @@ await check("edit blocks in the palette", async () => {
   assert.ok(OP_PARAMS["align_clips"] && OP_PARAMS["snap_to_grid"], "new ops are in the catalog");
 });
 
+await check("palette categories cover every block", async () => {
+  for (const block of BLOCK_LIBRARY) {
+    assert.ok((BLOCK_GROUPS as readonly string[]).includes(block.group), `${block.id} sits in a known category`);
+  }
+  for (const group of BLOCK_GROUPS) {
+    assert.ok(BLOCK_LIBRARY.some((b) => b.group === group), `${group} has at least one block`);
+  }
+});
+
 await check("edit blocks compile, coerce and convert identically", async () => {
   const graph: ToolGraph = {
     nodes: [

@@ -7,6 +7,7 @@ import BlockStudio, { defaultGraph } from "./forge-block-studio";
 export function ForgeTools({ disabled, onRun, onError, getCtx }: { disabled: boolean; onRun: (ops: TimelineOp[]) => void; onError: (message: string) => void; getCtx: () => ToolContext }) {
   const [userTools, setUserTools] = useState<CustomTool[]>(() => loadUserTools(window.localStorage));
   const [editing, setEditing] = useState<CustomTool | null>(null);
+  const [freshTool, setFreshTool] = useState(false);
   useEffect(() => saveUserTools(userTools, window.localStorage), [userTools]);
 
   const runToolNow = (tool: CustomTool) => {
@@ -25,9 +26,11 @@ export function ForgeTools({ disabled, onRun, onError, getCtx }: { disabled: boo
       ctx={getCtx()}
       readOnly={disabled}
       onChange={(next) => setEditing(next)}
+      fresh={freshTool}
       onClose={() => {
         setUserTools((list) => list.some((t) => t.id === editing.id) ? list.map((t) => (t.id === editing.id ? editing : t)) : [...list, editing]);
         setEditing(null);
+        setFreshTool(false);
       }}
       onRun={onRun}
     />;
@@ -50,7 +53,7 @@ export function ForgeTools({ disabled, onRun, onError, getCtx }: { disabled: boo
     <section className="effect-group"><h4>Examples</h4>{BUILT_IN_TOOLS.map((t) => card(t, true))}</section>
     {userTools.length > 0 && <section className="effect-group"><h4>Your tools</h4>{userTools.map((t) => card(t, false))}</section>}
     <div className="tool-add-row">
-      <button className="primary-btn" disabled={disabled} data-testid="tool-new-blocks" onClick={() => setEditing({ id: `tool-${Date.now().toString(36)}`, name: "My tool", description: "What this tool does", mode: "blocks", graph: defaultGraph() })}>New tool with blocks</button>
+      <button className="primary-btn" disabled={disabled} data-testid="tool-new-blocks" onClick={() => { setFreshTool(true); setEditing({ id: `tool-${Date.now().toString(36)}`, name: "My tool", description: "What this tool does", mode: "blocks", graph: defaultGraph() }); }}>New tool with blocks</button>
       <button className="primary-btn" disabled={disabled} data-testid="tool-new-code" onClick={() => setEditing({ id: `tool-${Date.now().toString(36)}`, name: "My tool", description: "What this tool does", mode: "code", code: "// vf.playhead, vf.selection, vf.clips\nreturn [];" })}>New tool with code</button>
     </div>
     <p className="help-text">Tools are stored in this browser. Open an example in the studio to see how it works.</p>

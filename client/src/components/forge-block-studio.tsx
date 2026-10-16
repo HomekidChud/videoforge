@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow, Background, BackgroundVariant, Controls, MiniMap, Panel,
   Handle, Position, MarkerType, ReactFlowProvider, useReactFlow,
@@ -21,9 +21,56 @@ type StudioProps = {
   onChange: (tool: CustomTool) => void;
   onClose: () => void;
   onRun: (ops: TimelineOp[]) => void;
+  /** True when the tool was just created with "New tool with blocks" — opens the tutorial. */
+  fresh?: boolean;
 };
 
 const uid = () => `n-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+
+/** Palette categories: the shared block groups plus the flow blocks. */
+const CATEGORIES: Array<{ id: string; label: string }> = [
+  ...BLOCK_GROUPS.map((g) => ({ id: g as string, label: g as string })),
+  { id: "Flow", label: "Flow" },
+];
+
+/** The first-tool tutorial: a small guided tour of the studio. */
+const TUTORIAL_KEY = "vf.tutorial.v1";
+const TUTORIAL_STEPS = [
+  {
+    title: "Make your first tool",
+    body: "This short tour shows you how to make a tool that adds a title to your video. Press Next to follow along — or Skip if you already know the studio.",
+    target: '[data-testid="bs-name"]',
+  },
+  {
+    title: "1. Name your tool",
+    body: "Every tool needs a name. Click the name box at the top and type one — try “My first title”.",
+    target: '[data-testid="bs-name"]',
+  },
+  {
+    title: "2. The block menu",
+    body: "The left side is the block menu. The dots pick a category — Create, Animate, Flow and more — and the list next to it shows that category's blocks. Drag any block onto the canvas to use it.",
+    target: '[data-testid="bs-cat-rail"]',
+  },
+  {
+    title: "3. Start runs first",
+    body: "Your tool already has two blocks: the green Start block and an “Add title” block, connected top-to-bottom. Start runs first, then the title. Click the “Add title” block on the canvas and change its text — that is your tool.",
+    target: '[data-testid="bs-canvas"]',
+  },
+  {
+    title: "4. Run it",
+    body: "Press the ▶ Run button to try your tool. It adds the title to the timeline at the playhead — one step you can undo.",
+    target: '[data-testid="bs-run"]',
+  },
+  {
+    title: "5. Find it later",
+    body: "Your tool saves in this browser by itself. Press ✕ to close the studio and you will find it in the Tools list, where you can Run it any time. Curious about code? The Code tab shows the JavaScript your blocks make.",
+    target: '[data-testid="bs-close"]',
+  },
+];
+
+function tutorialSeen(): boolean {
+  try { return window.localStorage.getItem(TUTORIAL_KEY) != null; } catch { return false; }
+}
 
 /** The default graph for a new tool: Start → Add title. */
 export function defaultGraph(): ToolGraph {
@@ -379,7 +426,7 @@ function edgeStyle(edge: Edge) {
   return {};
 }
 
-function Studio({ tool, ctx, readOnly, onChange, onClose, onRun }: StudioProps) {
+function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh }: StudioProps) {
   const graph = tool.graph ?? blocksToGraph(tool.blocks ?? []);
   const rf = useReactFlow();
   const wrapper = useRef<HTMLDivElement>(null);
@@ -389,6 +436,26 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun }: StudioProps) 
   const [showErrors, setShowErrors] = useState(true);
   const [importOpen, setImportOpen] = useState(false);
   const [converted, setConverted] = useState(false);
+  const [category, setCategory] = useState<string>("Create");
+  const [tutorialStep, setTutorialStep] = useState<number | null>(() =>
+    fresh && tool.mode === "blocks" && !tutorialSeen() ? 0 : null);
+
+  // Highlight the element the current tutorial step talks about.
+  useEffect(() => {
+    if (tutorialStep == null) return;
+    const step = TUTORIAL_STEPS[tutorialStep];
+    if (!step) return;
+    const root = wrapper.current?.closest(".bs-studio");
+    const el = (root ?? document).querySelector(step.target);
+    if (!el) return;
+    el.classList.add("bs-tut-target");
+    return () => { el.classList.remove("bs-tut-target"); };
+  }, [tutorialStep, tab]);
+
+  const endTutorial = useCallback((done: boolean) => {
+    try { window.localStorage.setItem(TUTORIAL_KEY, done ? "done" : "skipped"); } catch { /* storage unavailable */ }
+    setTutorialStep(null);
+  }, []);
 
   const setGraph = useCallback((next: ToolGraph) => onChange({ ...tool, graph: next, mode: tab === "code" ? "code" : "blocks" }), [tool, onChange, tab]);
   const updateNode = useCallback((id: string, patch: Partial<ToolGraphNode>) =>
@@ -600,6 +667,9 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun }: StudioProps) 
         {tab === "blocks" && (
           <button className="bs-btn" disabled={readOnly} onClick={() => addNode({ id: uid(), type: "frame", frame: Math.round(ctx.playhead * ctx.fps), position: freeSpot() })} data-testid="bs-add-frame">🖼 Add frame</button>
         )}
+        {tab === "blocks" && (
+          <button className="bs-btn" onClick={() => setTutorialStep(0)} disabled={readOnly} data-testid="bs-tutorial-open" title="Show the first-tool tutorial">🎓 Tutorial</button>
+        )}
         <button className="bs-btn bs-btn-run" onClick={run} disabled={readOnly} data-testid="bs-run">▶ Run</button>
         <button className="bs-btn bs-btn-close" onClick={onClose} aria-label="Close studio" data-testid="bs-close">✕</button>
       </header>
@@ -622,34 +692,43 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun }: StudioProps) 
       )}
       {tab === "blocks" ? (
         <div className="bs-body">
+          <nav className="bs-cat-rail" aria-label="Block categories" data-testid="bs-cat-rail">
+            {CATEGORIES.map((c) => (
+              <button key={c.id} type="button" className={`bs-cat${category === c.id ? " active" : ""}`}
+                aria-pressed={category === c.id} data-testid={`bs-cat-${c.id}`} onClick={() => setCategory(c.id)}
+                title={`${c.label} blocks`}>
+                <i className={`bs-cat-dot bs-dot-cat-${c.id.toLowerCase()}`} />
+                <span className="bs-cat-label">{c.label}</span>
+              </button>
+            ))}
+          </nav>
           <aside className="bs-palette" data-testid="bs-palette">
-            <p className="bs-palette-title">Drag blocks onto the canvas</p>
-            {BLOCK_GROUPS.map((group) => (
-              <div key={group} className="bs-palette-group">
-                <h4>{group}</h4>
-                {BLOCK_LIBRARY.filter((b) => b.group === group).map((b) => (
-                  <div key={b.id} className={`bs-chip bs-group-${group.toLowerCase()}`} draggable={!readOnly}
+            <p className="bs-palette-title" data-testid="bs-palette-heading">{category} blocks</p>
+            {category === "Flow" ? (
+              <div className="bs-palette-group">
+                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "repeat"); }} title="Run blocks a number of times">↻ Repeat</div>
+                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "eachClip"); }} title="Run blocks for every clip">🎞 For each clip</div>
+                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "function"); }} title="A named group of blocks">ƒ Function</div>
+                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "call"); }} title="Run a function">ƒ→ Call</div>
+                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "comment"); }} title="A note that does nothing">💬 Note</div>
+              </div>
+            ) : (
+              <div className="bs-palette-group">
+                {BLOCK_LIBRARY.filter((b) => b.group === category).map((b) => (
+                  <div key={b.id} className={`bs-chip bs-group-${category.toLowerCase()}`} draggable={!readOnly}
                     data-testid={`bs-chip-${b.id}`}
                     onDragStart={(e) => { e.dataTransfer.setData("application/videoforge-block", b.id); e.dataTransfer.effectAllowed = "move"; }}
                     title={b.description}>{b.label}</div>
                 ))}
               </div>
-            ))}
-            <div className="bs-palette-group">
-              <h4>Flow</h4>
-              <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "repeat"); }} title="Run blocks a number of times">↻ Repeat</div>
-              <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "eachClip"); }} title="Run blocks for every clip">🎞 For each clip</div>
-              <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "function"); }} title="A named group of blocks">ƒ Function</div>
-              <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "call"); }} title="Run a function">ƒ→ Call</div>
-              <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "comment"); }} title="A note that does nothing">💬 Note</div>
-            </div>
+            )}
             <div className="bs-palette-group">
               <h4>Connectors</h4>
               <p className="bs-hint">Connect blocks top-to-bottom to run them in order. Bring in clips and frames with the buttons above, then drag from their right side into a block's <b>clip</b> or <b>time</b> dot.</p>
             </div>
           </aside>
           <div className="bs-canvas-col">
-          <div className="bs-canvas" ref={wrapper} onDrop={onDrop} onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}>
+          <div className="bs-canvas" ref={wrapper} data-testid="bs-canvas" onDrop={onDrop} onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}>
             <ReactFlow
               nodes={rfNodes}
               edges={rfEdges}
@@ -685,6 +764,25 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun }: StudioProps) 
           notice={converted} onDismissNotice={() => setConverted(false)} />
       )}
       {tab === "code" && errorsBar}
+      {tab === "blocks" && tutorialStep != null && TUTORIAL_STEPS[tutorialStep] && (
+        <div className="bs-tut-card" data-testid="bs-tutorial-card" role="dialog" aria-label="First tool tutorial">
+          <p className="bs-tut-count">Step {tutorialStep + 1} of {TUTORIAL_STEPS.length}</p>
+          <h3 className="bs-tut-title">{TUTORIAL_STEPS[tutorialStep].title}</h3>
+          <p className="bs-tut-body">{TUTORIAL_STEPS[tutorialStep].body}</p>
+          <div className="bs-tut-nav">
+            <button type="button" className="bs-tut-btn" data-testid="bs-tutorial-skip" onClick={() => endTutorial(false)}>Skip</button>
+            <span className="bs-spacer" />
+            <button type="button" className="bs-tut-btn" data-testid="bs-tutorial-back" disabled={tutorialStep === 0}
+              onClick={() => setTutorialStep((s) => (s == null ? s : Math.max(0, s - 1)))}>Back</button>
+            {tutorialStep === TUTORIAL_STEPS.length - 1 ? (
+              <button type="button" className="bs-tut-btn bs-tut-primary" data-testid="bs-tutorial-finish" onClick={() => endTutorial(true)}>Finish</button>
+            ) : (
+              <button type="button" className="bs-tut-btn bs-tut-primary" data-testid="bs-tutorial-next"
+                onClick={() => setTutorialStep((s) => (s == null ? s : Math.min(TUTORIAL_STEPS.length - 1, s + 1)))}>Next</button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

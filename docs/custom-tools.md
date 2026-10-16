@@ -21,7 +21,9 @@ Duplicate a built-in example to get started; your tools are stored in your brows
 
 ## The block studio
 
-Open any tool (or create one) and the studio takes over the screen. Blocks live in the palette on the left — drag them onto the canvas. Connect a block's bottom dot to the next block's top dot to say "then do this": the line snaps in place and that becomes the run order. A tool starts at the **Start** block and follows the lines.
+Open any tool (or create one) and the studio takes over the screen. Blocks live in the palette on the left. The narrow rail of coloured dots picks a **category** — Create, Edit, Entrances, Exits, Attention, Springy, Camera, Animate, Text, Style, Clips, Timing, Advanced and Flow — and the palette shows that category's blocks. Drag them onto the canvas. Connect a block's bottom dot to the next block's top dot to say "then do this": the line snaps in place and that becomes the run order. A tool starts at the **Start** block and follows the lines.
+
+Creating your first tool with **New tool with blocks** opens a short tutorial: name the tool, meet the block menu, change the text of the Add title block, press Run, and find your tool again in the Tools list. The 🎓 Tutorial button in the header replays it any time.
 
 | Block family | What it does |
 |---|---|

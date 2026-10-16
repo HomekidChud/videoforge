@@ -20,6 +20,8 @@ The block studio, the code editor and the tool engine are in good shape. Each it
 - [x] Spatial crop for media clips: a crop box (fractions of the layer box) applied by the preview's clip-path and the renderer's crop filter (the layer keeps its box, padded back transparent, so preview and export match), driven by the friendly trim-sides Crop block.
 - [x] Motion blocks take an easing pick; audio clips are walkable by for-each (kind "audio") for volume tools.
 - [x] Hosted API server documented: https://videoforge-api-s54w.onrender.com is stated in the introduction, quickstart, self-hosting guide and README, with per-deployment keys.
+- [x] Palette tabs: the studio palette is a Scratch-style rail of coloured categories (Create, Edit, Entrances, Exits, Attention, Springy, Camera, Animate, Text, Style, Clips, Timing, Advanced, Flow) with the palette showing only the selected category.
+- [x] First-tool tutorial: a six-step guided tour opens the first time a new blocks tool is created — name the tool, meet the block menu, edit the Add title block, run it and find it again — replayable from the 🎓 Tutorial button.
 
 ## Bucket list
 
@@ -31,6 +33,6 @@ Big and small ideas, roughly by value. Each one is a candidate for its own commi
 - [ ] Shareable tool links: export a tool as a compact string so kids can pass automations around (they are localStorage-only today).
 - [ ] Server-side tool library per account, synced between browsers.
 - [ ] A "save clip as sticker" block that turns any clip into a reusable asset.
-- [ ] More help: a short guided tour of the studio the first time it opens, and hover tooltips on palette groups.
+- [ ] More help: hover tooltips on palette groups.
 - [ ] Export code tools as standalone snippets that run via the API (same vf helper, server-side).
 - [ ] Localization of the block labels and descriptions for a first second language.
