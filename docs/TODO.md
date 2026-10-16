@@ -19,6 +19,7 @@ The block studio, the code editor and the tool engine are in good shape. Each it
 - [x] True z-order: clips carry a z field (-100..100). Overlay visuals — media, shapes and text alike — stack by z in one order, in both the preview and the renderer; move_layer blocks step past the nearest neighbour even with unequal ranks.
 - [x] Spatial crop for media clips: a crop box (fractions of the layer box) applied by the preview's clip-path and the renderer's crop filter (the layer keeps its box, padded back transparent, so preview and export match), driven by the friendly trim-sides Crop block.
 - [x] Motion blocks take an easing pick; audio clips are walkable by for-each (kind "audio") for volume tools.
+- [x] Hosted API server documented: https://videoforge-api-s54w.onrender.com is stated in the introduction, quickstart, self-hosting guide and README, with per-deployment keys.
 
 ## Bucket list
 

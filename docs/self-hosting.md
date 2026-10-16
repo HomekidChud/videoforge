@@ -9,6 +9,10 @@ description: Run the Studio and rendering API on infrastructure you control.
 
 Use Node 20 or newer with ffmpeg and ffprobe on PATH. SQLite stores project data, data/media holds uploads and data/renders holds exports. These contain private data; back them up and never commit them.
 
+## Hosted instance
+
+A hosted deployment runs at https://videoforge-api-s54w.onrender.com for trying the API without infrastructure. Point BASE at it and use a key issued by that deployment. To control the deployment, its data and its keys, self-host.
+
 ## Development and production
 
 The default port is 5000. Production serves the compiled frontend from dist/public and runs the API from the bundled server.

@@ -5,6 +5,10 @@ an Express + SQLite + FFmpeg server. The same HTTP API that powers the editor
 is exposed for **AI agents** to upload video, edit timelines, and trigger renders,
 gated behind **API keys with permission scopes** (`read`, `write`, `admin`).
 
+A hosted deployment runs at <https://videoforge-api-s54w.onrender.com> — health at
+`GET /api/health`; use an API key issued by that deployment (local keys do not work there).
+To control your own deployment, see [docs/self-hosting.md](docs/self-hosting.md).
+
 ## Stack
 
 - **Frontend:** React + Vite + Tailwind CSS + shadcn/ui + wouter + TanStack Query

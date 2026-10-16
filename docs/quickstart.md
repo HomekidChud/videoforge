@@ -9,6 +9,8 @@ description: Create an animated lower third and export it without uploading a si
 
 Run npm ci and npm run dev in the repository. The default server is http://localhost:5000. On first boot, the server creates an owner key; use it to generate a restricted write key for your agent. Set BASE to your server URL and KEY to that scoped key. Never put the owner key in client code.
 
+To use the hosted deployment instead, set BASE to https://videoforge-api-s54w.onrender.com. Keys are issued per deployment: a key from your local server will not work there. GET /api/health reports status.
+
 ```shell
 export BASE="http://localhost:5000"
 export KEY="<your-scoped-write-key>"
