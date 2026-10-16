@@ -18,7 +18,7 @@ import { loadLang, saveLang, trLabel, trDescription, trGroup, trHeading, trUI, m
 /** The studio's language, so palette chips and node titles can speak it. */
 const LangContext = createContext<BlockLang>("en");
 
-type NodeData = { node: ToolGraphNode; hasError: boolean; hasWarning: boolean; fps: number; functionNames: string[] };
+type NodeData = { node: ToolGraphNode; hasError: boolean; hasWarning: boolean; fps: number; functionNames: string[]; connectedParams: Set<string> };
 type StudioProps = {
   tool: CustomTool;
   ctx: ToolContext;
@@ -56,37 +56,80 @@ const CATEGORIES: Array<{ id: string; label: string; help: string }> = [
   { id: "Flow", label: "Flow", help: CATEGORY_HELP.Flow },
 ];
 
-/** The first-tool tutorial: a small guided tour of the studio. */
+/** The first-tool tutorial: a guided tour in three short parts. */
 const TUTORIAL_KEY = "vf.tutorial.v1";
+const TUTORIAL_SECTIONS = ["Your first tool", "Connecting things", "Power moves"];
 const TUTORIAL_STEPS = [
   {
+    section: 0,
     title: "Make your first tool",
-    body: "This short tour shows you how to make a tool that adds a title to your video. Press Next to follow along — or Skip if you already know the studio.",
+    body: "This tour shows you how to make a tool that adds a title to your video. It has three parts — you are in the first. Press Next to follow along, or Skip if you already know the studio. You can replay this any time with the 🎓 Tutorial button.",
     target: '[data-testid="bs-name"]',
   },
   {
+    section: 0,
     title: "1. Name your tool",
     body: "Every tool needs a name. Click the name box at the top and type one — try “My first title”.",
     target: '[data-testid="bs-name"]',
   },
   {
+    section: 0,
     title: "2. The block menu",
-    body: "The left side is the block menu. The dots pick a category — Create, Animate, Flow and more — and the list next to it shows that category's blocks. Drag any block onto the canvas to use it.",
+    body: "The left side is the block menu. The coloured dots pick a category — Create, Animate, Flow and more — and the list next to it shows that category's blocks. Drag any block from the list onto the canvas to use it.",
     target: '[data-testid="bs-cat-rail"]',
   },
   {
+    section: 0,
     title: "3. Start runs first",
-    body: "Your tool already has two blocks: the green Start block and an “Add title” block, connected top-to-bottom. Start runs first, then the title. Click the “Add title” block on the canvas and change its text — that is your tool.",
+    body: "Your tool already has two blocks: the green Start block and an “Add title” block, joined by a wire from the bottom of one to the top of the next. That wire means “do this, then that”. Blocks run in the order the wires connect them.",
     target: '[data-testid="bs-canvas"]',
   },
   {
-    title: "4. Run it",
-    body: "Press the ▶ Run button to try your tool. It adds the title to the timeline at the playhead — one step you can undo.",
+    section: 0,
+    title: "4. Edit a block",
+    body: "Click the “Add title” block on the canvas and change its text — type anything you like. Each block shows its own fields right on it, and the little line under the title explains what the block does.",
+    target: '[data-testid="bs-canvas"]',
+  },
+  {
+    section: 0,
+    title: "5. Run it",
+    body: "Press the ▶ Run button to try your tool. It adds the title to the timeline at the playhead — one step you can undo. If something is wrong, the bar at the bottom of the canvas explains what and clicks to the block.",
     target: '[data-testid="bs-run"]',
   },
   {
-    title: "5. Find it later",
-    body: "Press ✕ to close the studio — that saves your tool in this browser. You will find it in the Blocks panel, where you can Run it any time. Curious about code? The Code tab shows the JavaScript your blocks make.",
+    section: 1,
+    title: "6. Two kinds of wires",
+    body: "Green-to-top wires are the run order — they say what happens after what. The small coloured dots beside a block's fields are different: they are sockets where clips, frames and value blocks plug in. Hover a block and its dots appear; drag from a dot into a field to fill it.",
+    target: '[data-testid="bs-canvas"]',
+  },
+  {
+    section: 1,
+    title: "7. Bring in your clips",
+    body: "The 🎬 Import clips button lists every clip in your project — click one and it becomes a blue clip block. 🖼 Add frame makes a time block. Drag from a clip block's right-side dot into a Clip field, or a frame block into a Start field, instead of typing IDs.",
+    target: '[data-testid="bs-import"]',
+  },
+  {
+    section: 1,
+    title: "8. Value blocks",
+    body: "The Values category has Text, Number and Yes/No blocks. Drop one next to a block, type your value, then drag from its dot into any field. It is handy when you want the same words or number in several blocks.",
+    target: '[data-testid="bs-cat-rail"]',
+  },
+  {
+    section: 2,
+    title: "9. Undo and tidy up",
+    body: "Made a mistake? Ctrl+Z undoes it (Ctrl+Shift+Z redoes) — the studio keeps its own history. And if the canvas gets messy, the 🧹 Tidy button lines every block up in a neat column — you can undo that too.",
+    target: '[data-testid="bs-undo"]',
+  },
+  {
+    section: 2,
+    title: "10. Ready-made recipes",
+    body: "The ✨ Presets button opens example recipes — connected groups of blocks for titles, zooms and more. Click one and its blocks land on the canvas already wired; take them apart and make them yours. Nothing runs until you press ▶ Run.",
+    target: '[data-testid="bs-presets"]',
+  },
+  {
+    section: 2,
+    title: "11. Save and find it later",
+    body: "Press ✕ to close — that saves your tool to your account. Open it again from the Tools panel (Open in studio), or press the Blocks tab to jump straight back into your latest tool. Curious about code? The Code tab shows the JavaScript your blocks make.",
     target: '[data-testid="bs-close"]',
   },
 ];
@@ -107,7 +150,7 @@ export function defaultGraph(): ToolGraph {
   };
 }
 
-function ParamField({ param, value, onChange, disabled, connect }: { param: ToolParam; value: unknown; onChange: (v: unknown) => void; disabled: boolean; connect?: "clip" | "frame" | "value" }) {
+function ParamField({ param, value, onChange, disabled, connect, connected }: { param: ToolParam; value: unknown; onChange: (v: unknown) => void; disabled: boolean; connect?: "clip" | "frame" | "value"; connected?: boolean }) {
   const str = String(value ?? "");
   const common = { value: str, disabled, "aria-label": param.label, "data-testid": `bs-param-${param.key}` } as Record<string, unknown>;
   const showMap = param.type === "json" && !!value && typeof value === "object" && !Array.isArray(value);
@@ -116,7 +159,7 @@ function ParamField({ param, value, onChange, disabled, connect }: { param: Tool
       <span className="bs-field-row">
         {connect ? (
           <Handle type="target" position={Position.Left} id={`param:${param.key}`}
-            className={`bs-handle bs-handle-param bs-param-${param.key} bs-param-${connect}`}
+            className={`bs-handle bs-handle-param bs-param-${param.key} bs-param-${connect}${connected ? " bs-handle-param-on" : ""}`}
             title={connect === "clip" ? "Drag from a clip block to fill this field" : connect === "frame" ? "Drag from a frame block to fill this field" : "Drag from a value block to fill this field"} />
         ) : null}
         <span className="bs-field-label">{param.label}</span>
@@ -220,12 +263,14 @@ function ActionNode({ data, selected }: NodeProps) {
           {(OP_PARAMS[node.op ?? ""] ?? []).map((p) => (
             <ParamField key={p.key} param={p} value={node.args?.[p.key] ?? p.def} onChange={(v) => update(p.key, v)}
               disabled={(data as any).__readOnly}
+              connected={d.connectedParams.has(p.key)}
               connect={connectable.clip.includes(p.key) ? "clip" : connectable.frame.includes(p.key) ? "frame" : "value"} />
           ))}
         </>
       ) : params.map((p) => (
         <ParamField key={p.key} param={p} value={node.args?.[p.key] ?? p.def} onChange={(v) => update(p.key, v)}
           disabled={(data as any).__readOnly}
+          connected={d.connectedParams.has(p.key)}
           connect={connectable.clip.includes(p.key) ? "clip" : connectable.frame.includes(p.key) ? "frame" : "value"} />
       ))}
     </NodeShell>
@@ -403,14 +448,14 @@ function ValueNode({ data }: NodeProps) {
   );
 }
 
-/** An edge with a little ✕ at its middle — click to remove the connection. */
-function SnapEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, markerEnd, style, data }: EdgeProps) {
+/** An edge with a little ✕ at its middle — click the edge to see it, click ✕ to remove it. */
+function SnapEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, markerEnd, style, data, selected }: EdgeProps) {
   const [path, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, borderRadius: 14 });
   return (
     <>
       <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} />
       <EdgeLabelRenderer>
-        <button className="bs-edge-delete" data-testid={`bs-edge-delete-${id}`} aria-label="Remove this connection"
+        <button className={`bs-edge-delete${selected ? " selected" : ""}`} data-testid={`bs-edge-delete-${id}`} aria-label="Remove this connection"
           style={{ position: "absolute", transform: `translate(${labelX - 10}px, ${labelY - 10}px)` }}
           onClick={() => (data as any)?.onDelete?.(id)}>✕</button>
       </EdgeLabelRenderer>
@@ -541,6 +586,10 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
   const [shared, setShared] = useState("");
   const [histTick, bumpHist] = useState(0);
   const [lang, setLang] = useState<BlockLang>(() => loadLang(window.localStorage));
+  /** Always-on field dots (clip/frame/value sockets) vs hover-revealed ones. */
+  const [showHandles, setShowHandles] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [selectedEdgeIds, setSelectedEdgeIds] = useState<Set<string>>(new Set());
   const historyRef = useRef<{ past: ToolGraph[]; future: ToolGraph[]; tag: string | null; at: number }>({ past: [], future: [], tag: null, at: 0 });
   const [tutorialStep, setTutorialStep] = useState<number | null>(() =>
     fresh && tool.mode === "blocks" && !tutorialSeen() ? 0 : null);
@@ -623,6 +672,17 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
   const errorIds = useMemo(() => new Set(issues.filter((i) => i.level === "error" && i.nodeId).map((i) => i.nodeId)), [issues]);
   const warnIds = useMemo(() => new Set(issues.filter((i) => i.level === "warning" && i.nodeId).map((i) => i.nodeId)), [issues]);
   const functionNames = useMemo(() => graph.nodes.filter((n) => n.type === "function" && n.name).map((n) => n.name!), [graph]);
+  /** Which param sockets already have something plugged in — those dots stay visible. */
+  const connectedParams = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const e of graph.edges) {
+      if (!e.targetHandle?.startsWith("param:")) continue;
+      const set = map.get(e.target) ?? new Set<string>();
+      set.add(e.targetHandle.slice(6));
+      map.set(e.target, set);
+    }
+    return map;
+  }, [graph]);
 
   const rfNodes: Node[] = useMemo(() => graph.nodes.map((n) => ({
     id: n.id,
@@ -632,18 +692,19 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
     position: n.position ?? { x: 60, y: 60 },
     data: {
       node: n, hasError: errorIds.has(n.id), hasWarning: warnIds.has(n.id), fps: ctx.fps,
-      functionNames, __update: updateNode, __delete: deleteNode, __readOnly: readOnly, __ctx: ctx,
+      functionNames, connectedParams: connectedParams.get(n.id) ?? new Set<string>(), __update: updateNode, __delete: deleteNode, __readOnly: readOnly, __ctx: ctx,
     },
-  })), [graph, errorIds, warnIds, ctx, functionNames, updateNode, deleteNode, readOnly, selectedIds]);
-  const deleteEdge = useCallback((id: string) => setGraphCommitted({ ...graph, edges: graph.edges.filter((e) => e.id !== id) }), [graph, setGraphCommitted]);
+  })), [graph, errorIds, warnIds, ctx, functionNames, connectedParams, updateNode, deleteNode, readOnly, selectedIds]);
+  const deleteEdge = useCallback((id: string) => { setSelectedEdgeIds((prev) => { const next = new Set(prev); next.delete(id); return next; }); setGraphCommitted({ ...graph, edges: graph.edges.filter((e) => e.id !== id) }); }, [graph, setGraphCommitted]);
   const rfEdges: Edge[] = useMemo(() => graph.edges.map((e) => ({
     id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle,
     type: "snap",
+    selected: selectedEdgeIds.has(e.id),
     animated: e.sourceHandle === "clip" || e.sourceHandle === "time",
     markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
     style: edgeStyle(e as Edge),
     data: { onDelete: deleteEdge },
-  })), [graph, deleteEdge, histTick]);
+  })), [graph, deleteEdge, histTick, selectedEdgeIds]);
 
   const canUndo = historyRef.current.past.length > 0;
   const canRedo = historyRef.current.future.length > 0;
@@ -689,7 +750,18 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
 
   const onEdgesChange = useCallback((changes: any[]) => {
     const removed = new Set(changes.filter((c) => c.type === "remove").map((c) => c.id));
-    if (removed.size) setGraphCommitted({ ...graph, edges: graph.edges.filter((e) => !removed.has(e.id)) });
+    const selected = changes.filter((c): c is NodeChange & { type: "select"; selected: boolean } => c.type === "select");
+    if (selected.length) {
+      setSelectedEdgeIds((prev) => {
+        const next = new Set(prev);
+        for (const c of selected) c.selected ? next.add(c.id) : next.delete(c.id);
+        return next;
+      });
+    }
+    if (removed.size) {
+      setSelectedEdgeIds((prev) => { const next = new Set(prev); removed.forEach((id) => next.delete(id)); return next; });
+      setGraphCommitted({ ...graph, edges: graph.edges.filter((e) => !removed.has(e.id)) });
+    }
   }, [graph, setGraphCommitted]);
 
   const onConnect = useCallback((c: Connection) => {
@@ -744,8 +816,80 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
   /** A free spot to the right of the flow: below the lowest node there. */
   const freeSpot = useCallback(() => {
     const rights = graph.nodes.filter((n) => (n.position?.x ?? 0) >= 360).map((n) => n.position?.y ?? 0);
-    return { x: 440, y: rights.length ? Math.max(...rights) + 150 : 80 };
+    return { x: 440, y: rights.length ? Math.max(...rights) + 190 : 80 };
   }, [graph]);
+
+  /** Rough on-canvas height of a node, so tidy leaves room for its fields. */
+  const estHeight = useCallback((n: ToolGraphNode) => {
+    if (n.type === "comment") return 50;
+    if (n.type === "value" || n.type === "clipRef" || n.type === "frame") return 150;
+    const block = n.block ? BLOCK_MAP.get(n.block) : undefined;
+    const params = block && n.block !== "advanced" ? block.params : OP_PARAMS[n.op ?? ""] ?? [];
+    return 66 + params.length * 48 + (block ? 28 : 0);
+  }, []);
+
+  /** Line the blocks up: the run chain down a column on the left, repeat bodies
+   *  to its right, helper blocks (values, clips, frames) beside their targets,
+   *  and anything else in a far-right column. One undo entry, like a drag. */
+  const tidy = useCallback(() => {
+    const nodesById = new Map(graph.nodes.map((n) => [n.id, n]));
+    const nextOf = (id: string) => graph.edges.find((e) => e.source === id && e.sourceHandle === "next")?.target;
+    const pos = new Map<string, { x: number; y: number }>();
+    const placed = new Set<string>();
+    const layChain = (head: string, x: number, y: number) => {
+      let cur: string | null = head;
+      while (cur && !placed.has(cur)) {
+        placed.add(cur);
+        pos.set(cur, { x, y });
+        y += Math.max(180, estHeight(nodesById.get(cur)!) + 48);
+        cur = nextOf(cur) ?? null;
+      }
+      return y;
+    };
+    // the main run chain from Start, top to bottom
+    let y = 40;
+    const start = graph.nodes.find((n) => n.type === "start");
+    if (start) y = layChain(start.id, 380, y);
+    // detached chains (no Start above them) continue below
+    for (const n of graph.nodes) {
+      if (placed.has(n.id) || !["action", "repeat", "eachClip", "function", "call"].includes(n.type)) continue;
+      if (graph.edges.some((e) => e.target === n.id && e.targetHandle === "in")) continue;
+      y = layChain(n.id, 380, y);
+    }
+    // repeat / for-each / function bodies, to the right of their control block
+    for (let pass = 0; pass < 4; pass++) {
+      let moved = false;
+      for (const n of graph.nodes) {
+        if (!placed.has(n.id) || !["repeat", "eachClip", "function"].includes(n.type)) continue;
+        const base = pos.get(n.id);
+        if (!base) continue;
+        const body = graph.edges.find((e) => e.source === n.id && e.sourceHandle === "body")?.target;
+        if (body && !placed.has(body)) { layChain(body, base.x + 340, base.y); moved = true; }
+      }
+      if (!moved) break;
+    }
+    // helper blocks: values, clip refs and frames, left of the block they feed
+    const helpers = graph.nodes
+      .filter((n) => !placed.has(n.id) && ["value", "clipRef", "frame"].includes(n.type))
+      .map((n) => ({ n, target: graph.edges.find((e) => e.source === n.id)?.target }))
+      .sort((a, b) => (pos.get(a.target ?? "")?.y ?? 0) - (pos.get(b.target ?? "")?.y ?? 0));
+    let hy = 40;
+    for (const h of helpers) {
+      const ty = pos.get(h.target ?? "")?.y;
+      hy = Math.max(hy + 170, ty ?? 40);
+      placed.add(h.n.id);
+      pos.set(h.n.id, { x: 60, y: hy });
+    }
+    // anything left (notes, strays): a far-right column
+    let ry = 40;
+    for (const n of graph.nodes) {
+      if (placed.has(n.id)) continue;
+      pos.set(n.id, { x: 380 + 680, y: ry });
+      ry += 160;
+    }
+    setGraphCommitted({ ...graph, nodes: graph.nodes.map((n) => ({ ...n, position: pos.get(n.id) ?? n.position })) });
+    requestAnimationFrame(() => rf.fitView({ padding: 0.25, maxZoom: 1.1 }));
+  }, [graph, setGraphCommitted, estHeight, rf]);
 
   const run = useCallback(() => {
     setRunError(null);
@@ -796,7 +940,34 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
   const applyPreset = useCallback((preset: ToolPreset) => {
     const frag = preset.build();
     const maxX = graph.nodes.reduce((m, n) => Math.max(m, n.position?.x ?? 0), 60);
-    const nodes = frag.nodes.map((n) => ({ ...n, position: { x: maxX + 160 + (n.position?.x ?? 0), y: 40 + (n.position?.y ?? 0) } }));
+    // Lay the fragment out with height-aware spacing so its blocks never stack on
+    // each other — the same rule the Tidy button uses for the whole canvas.
+    const fragById = new Map(frag.nodes.map((n) => [n.id, n]));
+    const fragNext = (id: string) => frag.edges.find((e) => e.source === id && e.sourceHandle === "next")?.target;
+    const placed = new Set<string>();
+    let y = 40;
+    const placeChain = (head: string, x: number) => {
+      let cur: string | null = head;
+      while (cur && !placed.has(cur)) {
+        placed.add(cur);
+        const n = fragById.get(cur)!;
+        n.position = { x, y };
+        y += Math.max(180, estHeight(n) + 48);
+        cur = fragNext(cur) ?? null;
+      }
+    };
+    for (const n of frag.nodes) {
+      if (placed.has(n.id)) continue;
+      if (frag.edges.some((e) => e.target === n.id && e.targetHandle === "in")) continue;
+      placeChain(n.id, maxX + 300);
+    }
+    for (const n of frag.nodes) {
+      if (placed.has(n.id)) continue;
+      n.position = { x: maxX + 640, y };
+      y += 160;
+      placed.add(n.id);
+    }
+    const nodes = frag.nodes.map((n) => ({ ...n }));
     const edges = frag.edges.map((e) => ({ ...e }));
     // the head of the preset chain: its first connectable node (notes have no in)
     const head = frag.nodes.find((n) => n.type !== "comment");
@@ -859,7 +1030,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
 
   return (
     <LangContext.Provider value={lang}>
-    <div className="bs-studio" data-testid="block-studio">
+    <div className={`bs-studio${showHandles ? " bs-show-handles" : ""}${connecting ? " bs-connecting" : ""}`} data-testid="block-studio">
       <header className="bs-header">
         <input className="bs-title" aria-label="Tool name" value={tool.name} onChange={(e) => onChange({ ...tool, name: e.target.value })} disabled={readOnly} data-testid="bs-name" />
         <div className="bs-tabs" role="tablist" aria-label="Tool mode">
@@ -874,7 +1045,14 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
           <button className="bs-btn" disabled={readOnly} onClick={() => addNode({ id: uid(), type: "frame", frame: Math.round(ctx.playhead * ctx.fps), position: freeSpot() })} data-testid="bs-add-frame">🖼 Add frame</button>
         )}
         {tab === "blocks" && (
-          <button className="bs-btn" onClick={() => setTutorialStep(0)} disabled={readOnly} data-testid="bs-tutorial-open" title="Show the first-tool tutorial">🎓 Tutorial</button>
+          <button className={`bs-btn${showHandles ? " bs-btn-on" : ""}`} onClick={() => setShowHandles((s) => !s)} disabled={readOnly}
+            aria-pressed={showHandles} data-testid="bs-handles" title="Show every field dot (they also appear on hover)">🔌 Connectors</button>
+        )}
+        {tab === "blocks" && (
+          <button className="bs-btn" onClick={tidy} disabled={readOnly} data-testid="bs-tidy" title="Line the blocks up neatly — undoable">🧹 Tidy</button>
+        )}
+        {tab === "blocks" && (
+          <button className="bs-btn" onClick={() => setTutorialStep(0)} disabled={readOnly} data-testid="bs-tutorial-open" title="Show the studio tutorial">🎓 Tutorial</button>
         )}
         {tab === "blocks" && (
           <button className="bs-btn" onClick={() => { const next: BlockLang = lang === "es" ? "en" : "es"; setLang(next); saveLang(next, window.localStorage); }} data-testid="bs-lang" title="Switch language / Cambiar idioma">🌐 {lang === "es" ? "ES" : "EN"}</button>
@@ -993,7 +1171,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
             )}
             <div className="bs-palette-group">
               <h4 title={CATEGORY_HELP[category] ?? ""}>{CATEGORY_HELP[category] ?? `${category} blocks`}</h4>
-              <p className="bs-hint">Connect blocks top-to-bottom to run them in order. Bring in clips and frames with the buttons above, then drag from their right side into a block's <b>clip</b> or <b>time</b> dot.</p>
+              <p className="bs-hint">Connect blocks top-to-bottom to run them in order — the green wires. A block's coloured field dots appear when you hover it: drag from a clip, frame or value block into one to fill that field. Bring clips and frames in with the buttons above.</p>
             </div>
           </aside>
           <div className="bs-canvas-col">
@@ -1006,6 +1184,8 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
+              onConnectStart={() => setConnecting(true)}
+              onConnectEnd={() => setConnecting(false)}
               onNodeDragStart={onNodeDragStart}
               isValidConnection={isValidConnection}
               edgesReconnectable={false}
@@ -1022,6 +1202,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
                   <span><i className="bs-dot bs-dot-run" /> run order</span>
                   <span><i className="bs-dot bs-dot-body" /> repeat body</span>
                   <span><i className="bs-dot bs-dot-link" /> clip / frame link</span>
+                  <span><i className="bs-dot bs-dot-param" /> field dot — hover a block</span>
                 </div>
               </Panel>
             </ReactFlow>
@@ -1035,8 +1216,14 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
       )}
       {tab === "code" && errorsBar}
       {tab === "blocks" && tutorialStep != null && TUTORIAL_STEPS[tutorialStep] && (
-        <div className="bs-tut-card" data-testid="bs-tutorial-card" role="dialog" aria-label="First tool tutorial">
-          <p className="bs-tut-count">Step {tutorialStep + 1} of {TUTORIAL_STEPS.length}</p>
+        <div className="bs-tut-card" data-testid="bs-tutorial-card" role="dialog" aria-label="Studio tutorial">
+          <p className="bs-tut-count">{TUTORIAL_SECTIONS[TUTORIAL_STEPS[tutorialStep].section]} · Step {tutorialStep + 1} of {TUTORIAL_STEPS.length}</p>
+          <div className="bs-tut-sections" role="tablist" aria-label="Tutorial parts">
+            {TUTORIAL_SECTIONS.map((s, i) => (
+              <button key={s} type="button" className={`bs-tut-section${TUTORIAL_STEPS[tutorialStep].section === i ? " active" : ""}`}
+                onClick={() => setTutorialStep(TUTORIAL_STEPS.findIndex((st) => st.section === i))}>{s}</button>
+            ))}
+          </div>
           <h3 className="bs-tut-title">{TUTORIAL_STEPS[tutorialStep].title}</h3>
           <p className="bs-tut-body">{TUTORIAL_STEPS[tutorialStep].body}</p>
           <div className="bs-tut-nav">
