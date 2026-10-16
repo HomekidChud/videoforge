@@ -1,0 +1,17 @@
+Fix sign-in bouncing back to the sign-in page after redirect
+
+Two ways the session cookie could be silently dropped right after login,
+which made the editor look like it signed you out:
+
+- The cookie was marked Secure purely because NODE_ENV=production, so any
+  production build served over plain HTTP (local npm start, LAN IP, a
+  proxy without TLS) had its cookie rejected by the browser. Secure now
+  follows the actual request: req.secure or x-forwarded-proto=https.
+- Cross-origin setups (frontend and API on different origins) never
+  stored the cookie: fetches didn't send credentials and CORS answered
+  with Allow-Origin: *, which credentialed responses reject. All client
+  fetches now send credentials: include, and CORS reflects the request
+  origin (CORS_ORIGIN still wins when set).
+
+Regression tests: the session cookie must not be Secure on plain HTTP
+and must be Secure behind an HTTPS proxy.

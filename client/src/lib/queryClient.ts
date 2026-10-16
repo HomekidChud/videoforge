@@ -25,6 +25,7 @@ export async function apiRequest(
 ): Promise<Response> {
   const res = await fetch(`${API_BASE}${url}`, {
     method,
+    credentials: "include", // cookies ride along when the API is on another origin
     headers: {
       ...(data ? { "Content-Type": "application/json" } : {}),
       ...authHeaders(),
@@ -45,6 +46,7 @@ export const getQueryFn: <T>(options: {
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
     const res = await fetch(`${API_BASE}${queryKey.join("/")}`, {
+      credentials: "include", // cookies ride along when the API is on another origin
       headers: authHeaders(),
     });
 

@@ -42,10 +42,12 @@ export function log(message: string, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
-// CORS — allow the Pages origin (or any origin if CORS_ORIGIN unset in dev)
-const corsOrigin = process.env.CORS_ORIGIN ?? "*";
+// CORS — a specific origin when CORS_ORIGIN is set; otherwise reflect the
+// request's Origin (needed for cookie sign-in: credentialed responses may not
+// use "*"). Same-origin requests have no Origin header and don't need CORS.
 app.use((req, res, next) => {
-  res.setHeader("Access-Control-Allow-Origin", corsOrigin);
+  const origin = process.env.CORS_ORIGIN ?? (typeof req.headers.origin === "string" ? req.headers.origin : "*");
+  res.setHeader("Access-Control-Allow-Origin", origin);
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization,X-Requested-With,Range");
   res.setHeader("Access-Control-Allow-Credentials", "true");

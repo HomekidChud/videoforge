@@ -92,8 +92,17 @@ function readCookie(header: unknown, name: string): string | null {
   return null;
 }
 
-function setSessionCookie(res: Response, token: string): void {
-  res.setHeader("Set-Cookie", `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}${process.env.NODE_ENV === "production" ? "; Secure" : ""}`);
+function requestIsSecure(req: Request): boolean {
+  // Behind a proxy (Render, nginx…), the socket is plain HTTP but the client
+  // came in over TLS. Trust the standard forwarded header; req.secure covers direct TLS.
+  const proto = req.headers["x-forwarded-proto"];
+  return req.secure || (typeof proto === "string" && proto.split(",")[0].trim() === "https");
+}
+
+function setSessionCookie(res: Response, token: string, req: Request): void {
+  // Secure only when this request actually arrived over HTTPS — otherwise the
+  // browser silently drops the cookie and every reload looks like a sign-out.
+  res.setHeader("Set-Cookie", `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}${requestIsSecure(req) ? "; Secure" : ""}`);
 }
 
 function clearSessionCookie(res: Response): void {
@@ -215,7 +224,7 @@ export function registerAccountRoutes(app: Express) {
   app.post("/api/auth/register", (req, res) => {
     try {
       const user = registerUser(req.body?.email, req.body?.password, req.body?.name, req.body?.ownerKey);
-      setSessionCookie(res, createSession(user.id));
+      setSessionCookie(res, createSession(user.id), req);
       res.json({ kind: "account", id: user.id, email: user.email, name: user.name, role: user.role, scope: user.role === "admin" ? "admin" : "write" });
     } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
@@ -223,7 +232,7 @@ export function registerAccountRoutes(app: Express) {
   app.post("/api/auth/login", (req, res) => {
     try {
       const user = authenticate(req.body?.email, req.body?.password);
-      setSessionCookie(res, createSession(user.id));
+      setSessionCookie(res, createSession(user.id), req);
       res.json({ kind: "account", id: user.id, email: user.email, name: user.name, role: user.role, scope: user.role === "admin" ? "admin" : "write" });
     } catch (e: any) { res.status(401).json({ message: e.message }); }
   });
@@ -273,7 +282,7 @@ export function registerAccountRoutes(app: Express) {
         if ((payload.exp ?? 0) * 1000 < Date.now()) return fail("token expired");
         const user = upsertGoogleUser(payload.sub, payload.email.toLowerCase(), payload.name ?? "");
         res.setHeader("Set-Cookie", `vf_oauth_state=; Path=/; HttpOnly; Max-Age=0`);
-        setSessionCookie(res, createSession(user.id));
+        setSessionCookie(res, createSession(user.id), req);
         res.redirect(302, "/#/editor");
       } catch (e: any) { fail(e.message ?? "something went wrong"); }
     });

@@ -23,7 +23,7 @@ export default function ApiKeyPage() {
   const meQ = useQuery<{ email?: string; label?: string }>({ queryKey: ["/api/auth/me"], retry: false });
 
   const signOut = async () => {
-    try { await fetch(`${API_BASE}/api/auth/logout`, { method: "POST" }); } catch { /* already gone */ }
+    try { await fetch(`${API_BASE}/api/auth/logout`, { method: "POST", credentials: "include" }); } catch { /* already gone */ }
     clearApiKey();
     window.location.hash = "#/editor";
     window.location.reload();
@@ -43,6 +43,7 @@ export default function ApiKeyPage() {
         : { email: form.email, password: form.password };
       const res = await fetch(`${API_BASE}${url}`, {
         method: "POST",
+        credentials: "include", // keep the session cookie when the API is on another origin
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
@@ -62,7 +63,7 @@ export default function ApiKeyPage() {
     if (!trimmed) return;
     setBusy(true); setError("");
     try {
-      const res = await fetch(`${API_BASE}/api/auth/me`, { headers: { Authorization: `Bearer ${trimmed}` } });
+      const res = await fetch(`${API_BASE}/api/auth/me`, { credentials: "include", headers: { Authorization: `Bearer ${trimmed}` } });
       if (!res.ok) {
         let message = res.statusText;
         try { message = (await res.json()).message || message; } catch { /* ignore */ }

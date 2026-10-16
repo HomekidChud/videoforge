@@ -52,7 +52,7 @@ export async function fetchMediaToken(resourceId: string): Promise<TokenEntry | 
   const myGeneration = credentialGeneration;
   const p = fetch(
     `${API_BASE}/api/auth/media-token/${encodeURIComponent(resourceId)}`,
-    { headers: authHeaders() },
+    { credentials: "include", headers: authHeaders() },
   )
     .then(async (res) => {
       if (!res.ok) return null;

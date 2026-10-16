@@ -87,6 +87,16 @@ const cookieOf = (r: { setCookie: string | null }) => (r.setCookie ?? "").split(
     const cookie = cookieOf(ok);
     if (!cookie.startsWith("vf_session=")) throw new Error("the session is a vf_session cookie");
     if (!/HttpOnly/i.test(ok.setCookie ?? "")) throw new Error("the session cookie must be HttpOnly");
+    // Plain-HTTP requests must not mark the cookie Secure — the browser would
+    // drop it and every reload would look like a sign-out.
+    if (/Secure/i.test(ok.setCookie ?? "")) throw new Error("Secure flag must only be set on HTTPS requests");
+    // But behind an HTTPS proxy it must be.
+    const proxied = await fetch(`${BASE}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-forwarded-proto": "https" },
+      body: JSON.stringify({ email: "owner@example.com", password: "password123" }),
+    });
+    if (!/Secure/i.test(proxied.headers.get("set-cookie") ?? "")) throw new Error("HTTPS-proxied requests should set Secure");
     // the cookie opens the workspace without any API key
     const me = await j("GET", "/api/auth/me", undefined, cookie);
     if (me.status !== 200 || me.data.email !== "owner@example.com") throw new Error("the session should work like a key");

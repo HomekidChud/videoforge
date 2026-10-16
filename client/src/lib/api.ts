@@ -6,6 +6,8 @@ export async function api<T>(method: string, url: string, body?: unknown): Promi
   const key = loadStoredKey();
   const res = await fetch(`${API_BASE}${url}`, {
     method,
+    // cookies ride along when the API is on another origin (they always do same-origin)
+    credentials: "include",
     headers: { ...(body !== undefined ? { "Content-Type": "application/json" } : {}), ...(key ? { Authorization: `Bearer ${key}` } : {}) },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
