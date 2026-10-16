@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
-import { compileBlocks, runCodeTool, runTool, normalizeOps, loadUserTools, saveUserTools, toolContext, BUILT_IN_TOOLS, OP_PARAMS, validateGraph, compileGraph, blocksToGraph, graphToCode, codeErrorLine, VF_HELPERS, TEMPLATE_DOCS, BLOCK_LIBRARY, BLOCK_GROUPS, convertOpArgs, selectCtxClips } from "../shared/custom-tools";
+import { compileBlocks, runCodeTool, runTool, normalizeOps, loadUserTools, saveUserTools, toolContext, BUILT_IN_TOOLS, OP_PARAMS, validateGraph, compileGraph, blocksToGraph, graphToCode, codeErrorLine, VF_HELPERS, TEMPLATE_DOCS, BLOCK_LIBRARY, BLOCK_GROUPS, convertOpArgs, selectCtxClips, valueNodeValue } from "../shared/custom-tools";
 import { MOTION_PRESETS } from "../shared/presets";
 import { normalizeTimeline } from "../shared/timeline";
 import { applyTimelineOp } from "../shared/editing";
@@ -490,6 +490,50 @@ await check("palette categories cover every block", async () => {
   for (const group of BLOCK_GROUPS) {
     assert.ok(BLOCK_LIBRARY.some((b) => b.group === group), `${group} has at least one block`);
   }
+});
+
+await check("value blocks fill arguments", async () => {
+  const graph: ToolGraph = {
+    nodes: [
+      { id: "start", type: "start" },
+      { id: "t", type: "action", block: "add-title", args: {} },
+      { id: "v", type: "value", valueType: "text", value: "Hello world" },
+      { id: "n", type: "value", valueType: "number", value: "4" },
+    ],
+    edges: [
+      { id: "e1", source: "start", sourceHandle: "next", target: "t", targetHandle: "in" },
+      { id: "e2", source: "v", sourceHandle: "value", target: "t", targetHandle: "param:text" },
+      { id: "e3", source: "n", sourceHandle: "value", target: "t", targetHandle: "param:duration" },
+    ],
+  };
+  const ops = compileGraph(graph, ctx);
+  assert.equal(ops[0].op, "add_text_clip");
+  assert.equal(ops[0].args.text, "Hello world");
+  assert.equal(ops[0].args.duration, 4, "number values arrive as numbers");
+  // Converted code produces identical ops.
+  const code = graphToCode(graph);
+  assert.deepEqual(runCodeTool(code, ctx), ops, "converted code matches the blocks");
+  // Typed values: yes/no becomes a boolean, text stays a string.
+  assert.equal(valueNodeValue({ id: "x", type: "value", valueType: "yesno", value: "yes" }), true);
+  assert.equal(valueNodeValue({ id: "x", type: "value", valueType: "yesno", value: "no" }), false);
+  assert.equal(valueNodeValue({ id: "x", type: "value", valueType: "text", value: "hi" }), "hi");
+  assert.equal(valueNodeValue({ id: "x", type: "value", valueType: "number", value: "2.5" }), 2.5);
+  assert.throws(() => valueNodeValue({ id: "x", type: "value", valueType: "number", value: "oops" }), /number block/);
+  // Validation: an unplugged value warns; a bad number errors.
+  const issues = validateGraph({
+    nodes: [
+      { id: "start", type: "start" },
+      { id: "t", type: "action", block: "add-title", args: {} },
+      { id: "bad", type: "value", valueType: "number", value: "oops" },
+      { id: "lonely", type: "value", valueType: "text", value: "hi" },
+    ],
+    edges: [
+      { id: "e1", source: "start", sourceHandle: "next", target: "t", targetHandle: "in" },
+      { id: "e2", source: "bad", sourceHandle: "value", target: "t", targetHandle: "param:duration" },
+    ],
+  }, ctx);
+  assert.ok(issues.some((i) => i.level === "error" && /number block/i.test(i.message)), "a bad number is an error");
+  assert.ok(issues.some((i) => i.level === "warning" && /not plugged/i.test(i.message)), "an unplugged value warns");
 });
 
 await check("edit blocks compile, coerce and convert identically", async () => {

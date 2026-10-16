@@ -21,9 +21,11 @@ Duplicate a built-in example to get started; your tools are stored in your brows
 
 ## The block studio
 
-Open any tool (or create one) and the studio takes over the screen. Blocks live in the palette on the left. The narrow rail of coloured dots picks a **category** — Create, Edit, Entrances, Exits, Attention, Springy, Camera, Animate, Text, Style, Clips, Timing, Advanced and Flow — and the palette shows that category's blocks. Drag them onto the canvas. Connect a block's bottom dot to the next block's top dot to say "then do this": the line snaps in place and that becomes the run order. A tool starts at the **Start** block and follows the lines.
+Open any tool (or create one) and the studio takes over the screen. Blocks live in the palette on the left. The narrow rail of coloured dots picks a **category** — Create, Edit, Entrances, Exits, Attention, Springy, Camera, Animate, Text, Style, Clips, Timing, Advanced, Values and Flow — and the palette shows that category's blocks. Drag them onto the canvas. Connect a block's bottom dot to the next block's top dot to say "then do this": the line snaps in place and that becomes the run order. A tool starts at the **Start** block and follows the lines.
 
 Creating your first tool with **New tool with blocks** opens a short tutorial: name the tool, meet the block menu, change the text of the Add title block, press Run, and find your tool again in the Tools list. The 🎓 Tutorial button in the header replays it any time.
+
+Every field on a block has a small dot on its left. Clip and frame blocks plug into clip and time fields; **Values** blocks plug into any field. Drag a 📝 Text, 🔢 Number or 🔘 Yes / No block next to a block, type the value, and drag from its dot into the field — the connected value wins over whatever is typed in the field itself. Number blocks that don't hold a number turn red, and an unplugged value block gets a nudge to connect it.
 
 | Block family | What it does |
 |---|---|
@@ -39,6 +41,7 @@ Creating your first tool with **New tool with blocks** opens a short tutorial: n
 | Style | bold or colour the text of a clip |
 | Clips | delete or duplicate clips, stagger a selection, beat markers |
 | Timing | stagger to beats, speed changes, reverse and stretch motion, Repeat and For each clip |
+| Values | little typed blocks — Text, Number, Yes / No — that plug into any block's field, so arguments can be wired instead of typed |
 | Flow | Function defines a named group; Call runs it by name |
 
 ### Editing clips you already have

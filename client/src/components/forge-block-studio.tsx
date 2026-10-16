@@ -30,6 +30,7 @@ const uid = () => `n-${Date.now().toString(36)}-${Math.random().toString(36).sli
 /** Palette categories: the shared block groups plus the flow blocks. */
 const CATEGORIES: Array<{ id: string; label: string }> = [
   ...BLOCK_GROUPS.map((g) => ({ id: g as string, label: g as string })),
+  { id: "Values", label: "Values" },
   { id: "Flow", label: "Flow" },
 ];
 
@@ -100,7 +101,7 @@ function JsonField({ label, value, onCommit, testId }: { label: string; value: o
   );
 }
 
-function ParamField({ param, value, onChange, disabled, connect }: { param: ToolParam; value: unknown; onChange: (v: unknown) => void; disabled: boolean; connect?: "clip" | "frame" }) {
+function ParamField({ param, value, onChange, disabled, connect }: { param: ToolParam; value: unknown; onChange: (v: unknown) => void; disabled: boolean; connect?: "clip" | "frame" | "value" }) {
   const str = String(value ?? "");
   const common = { value: str, disabled, "aria-label": param.label, "data-testid": `bs-param-${param.key}` } as Record<string, unknown>;
   return (
@@ -109,7 +110,7 @@ function ParamField({ param, value, onChange, disabled, connect }: { param: Tool
         {connect ? (
           <Handle type="target" position={Position.Left} id={`param:${param.key}`}
             className={`bs-handle bs-handle-param bs-param-${param.key} bs-param-${connect}`}
-            title={connect === "clip" ? "Drag from a clip block to fill this field" : "Drag from a frame block to fill this field"} />
+            title={connect === "clip" ? "Drag from a clip block to fill this field" : connect === "frame" ? "Drag from a frame block to fill this field" : "Drag from a value block to fill this field"} />
         ) : null}
         <span className="bs-field-label">{param.label}</span>
       </span>
@@ -170,7 +171,7 @@ function ActionNode({ data, selected }: NodeProps) {
       ) : params.map((p) => (
         <ParamField key={p.key} param={p} value={node.args?.[p.key] ?? p.def} onChange={(v) => update(p.key, v)}
           disabled={(data as any).__readOnly}
-          connect={connectable.clip.includes(p.key) ? "clip" : connectable.frame.includes(p.key) ? "frame" : undefined} />
+          connect={connectable.clip.includes(p.key) ? "clip" : connectable.frame.includes(p.key) ? "frame" : "value"} />
       ))}
     </NodeShell>
   );
@@ -316,6 +317,36 @@ function FrameNode({ data }: NodeProps) {
   );
 }
 
+/** A value block: a little typed box that plugs into a block's field. */
+function ValueNode({ data }: NodeProps) {
+  const d = data as unknown as NodeData;
+  const node = d.node;
+  const ro = (data as any).__readOnly;
+  const upd = (patch: Partial<ToolGraphNode>) => (data as any).__update(node.id, patch);
+  return (
+    <div className={`bs-node bs-node-value${d.hasError ? " bs-node-error" : ""}`} data-testid={`bs-value-node-${node.id}`}>
+      <div className="bs-node-head">
+        <span className="bs-node-icon">{node.valueType === "number" ? "🔢" : node.valueType === "yesno" ? "🔘" : "📝"}</span>
+        <b>{node.valueType === "number" ? "Number" : node.valueType === "yesno" ? "Yes / No" : "Text"}</b>
+        <button className="bs-node-delete" aria-label="Delete block" onClick={() => (data as any).__delete(node.id)}>✕</button>
+      </div>
+      {node.valueType === "yesno" ? (
+        <div className="bs-value-row">
+          <button type="button" className={`bs-mini${node.value === "yes" ? " bs-value-on" : ""}`} disabled={ro} onClick={() => upd({ value: "yes" })}>Yes</button>
+          <button type="button" className={`bs-mini${node.value === "no" ? " bs-value-on" : ""}`} disabled={ro} onClick={() => upd({ value: "no" })}>No</button>
+        </div>
+      ) : (
+        <input className="bs-value-input" data-testid={`bs-value-input-${node.id}`} type={node.valueType === "number" ? "number" : "text"}
+          aria-label={node.valueType === "number" ? "Number value" : "Text value"}
+          placeholder={node.valueType === "number" ? "0" : "Type here…"}
+          value={String(node.value ?? "")} onChange={(e) => upd({ value: e.target.value })} disabled={ro} />
+      )}
+      <p className="bs-hint">Drag the dot into a block's field</p>
+      <Handle type="source" position={Position.Right} id="value" className="bs-handle bs-handle-value" />
+    </div>
+  );
+}
+
 /** An edge with a little ✕ at its middle — click to remove the connection. */
 function SnapEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, markerEnd, style, data }: EdgeProps) {
   const [path, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, borderRadius: 14 });
@@ -333,7 +364,7 @@ function SnapEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targ
 
 const nodeTypes = {
   start: StartNode, action: ActionNode, repeat: RepeatNode, eachClip: EachClipNode,
-  function: FunctionNode, call: CallNode, comment: CommentNode, clipRef: ClipNode, frame: FrameNode,
+  function: FunctionNode, call: CallNode, comment: CommentNode, clipRef: ClipNode, frame: FrameNode, value: ValueNode,
 };
 
 const edgeTypes = { snap: SnapEdge };
@@ -518,6 +549,15 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh }: Studio
       if (c.sourceHandle === "clip") return allowed.clip.includes(key);
       return allowed.frame.includes(key);
     }
+    if (c.sourceHandle === "value") {
+      // A value block plugs into any field that block's operation has.
+      if (!c.targetHandle?.startsWith("param:")) return false;
+      const key = c.targetHandle.slice(6);
+      const target = graph.nodes.find((n) => n.id === c.target);
+      const op = (target?.block ? (BLOCK_MAP.get(target.block!)?.op ?? target.op) : target?.op) ?? "";
+      const params = OP_PARAMS[op] ?? [];
+      return params.some((p) => p.key === key) || !params.length;
+    }
     return false;
   }, [graph, readOnly, reaches]);
 
@@ -589,7 +629,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh }: Studio
 
   const onDrop = useCallback((event: React.DragEvent) => {
     event.preventDefault();
-    const type = event.dataTransfer.getData("application/videoforge") as ToolGraphNode["type"];
+    const type = event.dataTransfer.getData("application/videoforge") as string;
     const blockId = event.dataTransfer.getData("application/videoforge-block");
     if (!type && !blockId) return;
     const position = rf.screenToFlowPosition({ x: event.clientX, y: event.clientY });
@@ -605,6 +645,9 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh }: Studio
     else if (type === "call") addNode({ ...base, type: "call", name: "" });
     else if (type === "comment") addNode({ ...base, type: "comment", text: "" });
     else if (type === "frame") addNode({ ...base, type: "frame", frame: Math.round(ctx.playhead * ctx.fps) });
+    else if (type === "value-text") addNode({ ...base, type: "value", valueType: "text", value: "" });
+    else if (type === "value-number") addNode({ ...base, type: "value", valueType: "number", value: "0" });
+    else if (type === "value-yesno") addNode({ ...base, type: "value", valueType: "yesno", value: "yes" });
   }, [addNode, rf, ctx]);
 
   /** Switching Blocks → Code converts the graph into readable code the tool now runs. */
@@ -711,6 +754,13 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh }: Studio
                 <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "function"); }} title="A named group of blocks">ƒ Function</div>
                 <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "call"); }} title="Run a function">ƒ→ Call</div>
                 <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "comment"); }} title="A note that does nothing">💬 Note</div>
+              </div>
+            ) : category === "Values" ? (
+              <div className="bs-palette-group">
+                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "value-text"); }} title="A piece of text to plug into a field">📝 Text</div>
+                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "value-number"); }} title="A number to plug into a field">🔢 Number</div>
+                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "value-yesno"); }} title="A yes or no to plug into a field">🔘 Yes / No</div>
+                <p className="bs-hint">Drag one next to a block, type your value, then drag from its dot into the block's field.</p>
               </div>
             ) : (
               <div className="bs-palette-group">

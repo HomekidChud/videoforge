@@ -42,7 +42,7 @@ export type CustomTool = {
  */
 export type ToolGraphNode = {
   id: string;
-  type: "start" | "action" | "repeat" | "eachClip" | "comment" | "clipRef" | "frame" | "function" | "call";
+  type: "start" | "action" | "repeat" | "eachClip" | "comment" | "clipRef" | "frame" | "function" | "call" | "value";
   /** Friendly block id for action nodes, e.g. "add-title". */
   block?: string;
   /** Raw operation name for advanced action nodes. */
@@ -55,6 +55,9 @@ export type ToolGraphNode = {
   clipId?: string;
   /** Frame number at the project fps. */
   frame?: number;
+  /** What a value block holds: text, a number, or yes/no. */
+  valueType?: "text" | "number" | "yesno";
+  value?: string;
   position?: { x: number; y: number };
 };
 export type ToolGraphEdge = { id: string; source: string; sourceHandle: string; target: string; targetHandle: string };
@@ -825,6 +828,17 @@ export const BLOCK_LIBRARY: FriendlyBlock[] = [
 export const BLOCK_MAP = new Map(BLOCK_LIBRARY.map((b) => [b.id, b]));
 export const BLOCK_GROUPS = ["Create", "Edit", "Entrances", "Exits", "Attention", "Springy", "Camera", "Animate", "Text", "Style", "Clips", "Timing", "Advanced"] as const;
 
+/** The typed value a value block holds: text, a number, or yes/no. */
+export function valueNodeValue(node: ToolGraphNode): unknown {
+  if (node.valueType === "number") {
+    const n = Number(node.value);
+    if (Number.isNaN(n)) throw new Error("a number block does not hold a number yet");
+    return n;
+  }
+  if (node.valueType === "yesno") return node.value === "yes";
+  return String(node.value ?? "");
+}
+
 /** Params of a friendly block that a clip can connect to. */
 export function clipConnectableKeys(block: FriendlyBlock): string[] {
   return block.params.filter((p) => p.key === "clipId" || p.key === "clipIds").map((p) => p.key);
@@ -894,8 +908,17 @@ export function validateGraph(graph: ToolGraph, ctx: ToolContext): GraphIssue[] 
     if (c) issues.push({ nodeId: c, level: "error", message: "These blocks form a loop — remove the connection that closes it." });
   }
   for (const n of graph.nodes) {
-    if (n.type === "start" || n.type === "clipRef" || n.type === "frame" || n.type === "function" || n.type === "comment") continue;
+    if (n.type === "start" || n.type === "clipRef" || n.type === "frame" || n.type === "function" || n.type === "comment" || n.type === "value") continue;
     if (!reachable.has(n.id)) issues.push({ nodeId: n.id, level: "warning", message: `"${label(n.id)}" is not connected to Start, so it will not run.` });
+  }
+  // Value blocks: numbers must parse, and every value should feed something.
+  const paramTargets = new Set(graph.edges.filter((e) => e.targetHandle?.startsWith("param:")).map((e) => e.source));
+  for (const n of graph.nodes) {
+    if (n.type !== "value") continue;
+    if (n.valueType === "number" && n.value != null && String(n.value).trim() !== "" && Number.isNaN(Number(n.value))) {
+      issues.push({ nodeId: n.id, level: "error", message: "This number block does not hold a number yet." });
+    }
+    if (!paramTargets.has(n.id)) issues.push({ nodeId: n.id, level: "warning", message: "This value block is not plugged into a field, so it does nothing." });
   }
   // Action nodes: op known, JSON valid, friendly fields sane.
   const ANIMATABLE_KEYS = Object.keys(ANIMATABLE);
@@ -1020,9 +1043,10 @@ export function compileGraph(graph: ToolGraph, ctx: ToolContext): TimelineOp[] {
     if (ops.length >= 100) throw new Error("the tool expands to more than 100 operations; the batch limit");
     ops.push({ op, args });
   };
-  const connectable = (op: string, key: string, kind: "clipRef" | "frame"): boolean => {
+  const connectable = (op: string, key: string, kind: "clipRef" | "frame" | "value"): boolean => {
     if (kind === "clipRef") return ["clipId", "clipIds"].includes(key);
-    return ["start", "delay"].includes(key);
+    if (kind === "frame") return ["start", "delay"].includes(key);
+    return (OP_PARAMS[op] ?? []).some((p) => p.key === key) || !(OP_PARAMS[op] ?? []).length;
   };
   const runChain = (id: string | undefined, vars: ToolVars, visited: Set<string>) => {
     while (id) {
@@ -1039,9 +1063,10 @@ export function compileGraph(graph: ToolGraph, ctx: ToolContext): TimelineOp[] {
           if (!slot.startsWith(`${node.id}:`)) continue;
           const key = slot.split(":")[1];
           const src = nodes.get(e.source);
-          if (!src || !connectable(op, key, src.type === "clipRef" ? "clipRef" : "frame")) continue;
+          if (!src || !connectable(op, key, src.type === "clipRef" ? "clipRef" : src.type === "frame" ? "frame" : "value")) continue;
           if (src.type === "clipRef") args[key] = src.clipId ?? "";
           else if (src.type === "frame") args[key] = (src.frame ?? 0) / Math.max(1, ctx.fps);
+          else if (src.type === "value") args[key] = valueNodeValue(src);
         }
         push(op, convertOpArgs(op, args));
       } else if (node.type === "repeat") {
@@ -1250,8 +1275,8 @@ export function graphToCode(graph: ToolGraph): string {
   const lines: string[] = [];
   const emit = (depth: number, line: string) => lines.push("  ".repeat(depth) + line);
 
-  /** The args of an action node with clip/frame connections applied (as at run time). */
-  const nodeArgs = (node: ToolGraphNode): Record<string, unknown> => {
+  /** The args of an action node with clip/frame/value connections applied (as at run time). */
+  const nodeArgs = (node: ToolGraphNode, op: string): Record<string, unknown> => {
     const args: Record<string, unknown> = { ...(node.args ?? {}) };
     for (const [slot, e] of Array.from(paramIn)) {
       if (!slot.startsWith(`${node.id}:`)) continue;
@@ -1260,6 +1285,7 @@ export function graphToCode(graph: ToolGraph): string {
       if (!src) continue;
       if (src.type === "clipRef" && ["clipId", "clipIds"].includes(key)) args[key] = src.clipId ?? "";
       else if (src.type === "frame" && ["start", "delay"].includes(key)) args[key] = { __frame: src.frame ?? 0 };
+      else if (src.type === "value" && ((OP_PARAMS[op] ?? []).some((p) => p.key === key) || !(OP_PARAMS[op] ?? []).length)) args[key] = valueNodeValue(src);
     }
     return args;
   };
@@ -1270,7 +1296,7 @@ export function graphToCode(graph: ToolGraph): string {
     const block = node.block ? BLOCK_MAP.get(node.block) : undefined;
     const label = block?.label ?? op ?? "Advanced op";
     emit(depth, `// ${label}${block?.description ? " — " + block.description.toLowerCase() : ""}`);
-    const args = nodeArgs(node);
+    const args = nodeArgs(node, op);
     const rendered = renderArgs(op, args, vars);
     const entries = (skip: string[] = []) => rendered.exprs.filter((e) => !skip.some((k) => e.startsWith(JSON.stringify(k) + ":")));
     const obj = (list: string[]) => `{ ${list.join(", ")} }`;

@@ -253,6 +253,7 @@
 .bs-dot-cat-timing { background: #9bb55c; }
 .bs-dot-cat-advanced { background: #8a919c; }
 .bs-dot-cat-flow { background: #e8963c; }
+.bs-dot-cat-values { background: #b0568f; }
 .bs-palette { width: 235px; overflow-y: auto; background: #14161a; border-right: 1px solid #26292f; padding: 12px; }
 .bs-palette-title { color: #c8cdd4; font-size: 12px; margin: 2px 0 10px; }
 .bs-palette-group { margin-bottom: 14px; }
@@ -289,6 +290,10 @@
 .bs-node-comment { background: #1b1e17; border-color: #4a4d33; color: #b9bdc4; display: flex; gap: 8px; align-items: center; padding: 8px 10px; }
 .bs-node-clip { border-color: #4a8fd6; background: #16202b; }
 .bs-node-frame { border-color: #d08a2e; background: #251d12; }
+.bs-node-value { border-color: #b0568f; background: #251621; min-width: 170px; max-width: 220px; }
+.bs-value-input { width: 100%; box-sizing: border-box; background: #14161a; border: 1px solid #37455e; border-radius: 8px; color: #dbe4f0; padding: 6px 8px; font-size: 13px; }
+.bs-value-row { display: flex; gap: 6px; }
+.bs-value-on { background: #3d9a63 !important; border-color: #3d9a63 !important; color: #fff !important; }
 .bs-node-head { display: flex; align-items: center; gap: 7px; padding: 8px 10px 2px; }
 .bs-node-head b { font-size: 13px; }
 .bs-node-icon { font-size: 14px; }
@@ -313,6 +318,7 @@
 .bs-handle-clip { right: -7px; background: #4a8fd6; }
 .bs-handle-frame { right: -7px; background: #d08a2e; }
 .bs-handle-param { left: -8px; background: #7d5bb5; }
+.bs-handle-value { right: -7px; background: #b0568f; }
 .bs-node:hover .bs-handle { box-shadow: 0 0 0 4px rgba(255,255,255,.12); }
 /* error panel */
 .bs-errors { background: #17191d; border-top: 1px solid #26292f; padding: 8px 14px; }
