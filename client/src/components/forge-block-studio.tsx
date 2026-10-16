@@ -9,7 +9,8 @@ import "@xyflow/react/dist/style.css";
 import {
   BLOCK_GROUPS, BLOCK_LIBRARY, BLOCK_MAP, OP_IDS, OP_PARAMS, blocksToGraph, connectableParamKeys, nodeParamKeys, HIDDEN_BLOCKS,
   codeErrorLine, compileGraph, graphToCode, validateGraph, runTool, TEMPLATE_DOCS, VF_HELPERS,
-  type CustomTool, type ToolContext, type ToolGraph, type ToolGraphNode, type ToolParam,
+  TOOL_PRESETS, encodeTool, decodeTool, listStickers, stickerArgs,
+  type CustomTool, type ToolContext, type ToolGraph, type ToolGraphNode, type ToolParam, type ToolPreset,
 } from "@shared/custom-tools";
 import type { TimelineOp } from "@shared/editing";
 
@@ -29,11 +30,26 @@ type StudioProps = {
 
 const uid = () => `n-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 
-/** Palette categories: the shared block groups plus the flow blocks. */
-const CATEGORIES: Array<{ id: string; label: string }> = [
-  ...BLOCK_GROUPS.map((g) => ({ id: g as string, label: g as string })),
-  { id: "Values", label: "Values" },
-  { id: "Flow", label: "Flow" },
+/** One line of help per category, shown as a tooltip on the rail and under the palette title. */
+const CATEGORY_HELP: Record<string, string> = {
+  Create: "Add new things to your video: titles, shapes, music notes",
+  Edit: "Change clips you already have: move, resize, colour, layer",
+  Animate: "Make clips move: zoom, slide, spin, pop, glow",
+  Text: "Type-on effects, word reveals and colour changes",
+  Style: "Looks: filters, brightness, blur, borders",
+  Clips: "Copy, delete and reorder clips",
+  Timing: "Speed, pauses, fades and start times",
+  Stickers: "Clips you saved as reusable building blocks",
+  Values: "Text, number and yes/no boxes that plug into any field",
+  Flow: "Repeat, loops, functions and notes",
+};
+
+/** Palette categories: the shared block groups plus stickers, values and flow. */
+const CATEGORIES: Array<{ id: string; label: string; help: string }> = [
+  ...BLOCK_GROUPS.map((g) => ({ id: g as string, label: g as string, help: CATEGORY_HELP[g as string] ?? `${g} blocks` })),
+  { id: "Stickers", label: "Stickers", help: CATEGORY_HELP.Stickers },
+  { id: "Values", label: "Values", help: CATEGORY_HELP.Values },
+  { id: "Flow", label: "Flow", help: CATEGORY_HELP.Flow },
 ];
 
 /** The first-tool tutorial: a small guided tour of the studio. */
@@ -502,6 +518,11 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
   const [importOpen, setImportOpen] = useState(false);
   const [converted, setConverted] = useState(false);
   const [category, setCategory] = useState<string>("Create");
+  const [search, setSearch] = useState("");
+  const [presetsOpen, setPresetsOpen] = useState(false);
+  const [shared, setShared] = useState("");
+  const [histTick, bumpHist] = useState(0);
+  const historyRef = useRef<{ past: ToolGraph[]; future: ToolGraph[]; tag: string | null; at: number }>({ past: [], future: [], tag: null, at: 0 });
   const [tutorialStep, setTutorialStep] = useState<number | null>(() =>
     fresh && tool.mode === "blocks" && !tutorialSeen() ? 0 : null);
 
@@ -523,12 +544,61 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
   }, []);
 
   const setGraph = useCallback((next: ToolGraph) => onChange({ ...tool, graph: next, mode: tab === "code" ? "code" : "blocks" }), [tool, onChange, tab]);
+  const graphRef = useRef(graph);
+  graphRef.current = graph;
+  /** Push the current graph onto the undo stack. `tag` coalesces quick edits (typing). */
+  const commitHistory = useCallback((tag?: string) => {
+    const h = historyRef.current;
+    const now = Date.now();
+    if (tag && h.tag === tag && now - h.at < 900) { h.at = now; h.future = []; bumpHist((n) => n + 1); return; }
+    h.past.push(graphRef.current);
+    if (h.past.length > 100) h.past.shift();
+    h.future = [];
+    h.tag = tag ?? null;
+    h.at = now;
+    bumpHist((n) => n + 1);
+  }, []);
+  /** A graph change that can be undone: one history entry per drop, delete or edit. */
+  const setGraphCommitted = useCallback((next: ToolGraph, tag?: string) => {
+    commitHistory(tag);
+    setGraph(next);
+  }, [commitHistory, setGraph]);
+  const undo = useCallback(() => {
+    const h = historyRef.current;
+    const prev = h.past.pop();
+    if (!prev) return;
+    h.future.push(graphRef.current);
+    h.tag = null;
+    bumpHist((n) => n + 1);
+    setGraph(prev);
+  }, [setGraph]);
+  const redo = useCallback(() => {
+    const h = historyRef.current;
+    const next = h.future.pop();
+    if (!next) return;
+    h.past.push(graphRef.current);
+    h.tag = null;
+    bumpHist((n) => n + 1);
+    setGraph(next);
+  }, [setGraph]);
+  // Undo/redo keys run in the capture phase and swallow the event, so the editor
+  // behind the studio never also undoes the timeline.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      const k = e.key.toLowerCase();
+      if (k === "z" && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); undo(); }
+      else if ((k === "z" && e.shiftKey) || k === "y") { e.preventDefault(); e.stopPropagation(); redo(); }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [undo, redo]);
   const updateNode = useCallback((id: string, patch: Partial<ToolGraphNode>) =>
-    setGraph({ ...graph, nodes: graph.nodes.map((n) => (n.id === id ? { ...n, ...patch } : n)) }), [graph, setGraph]);
-  const deleteNode = useCallback((id: string) => setGraph({
+    setGraphCommitted({ ...graph, nodes: graph.nodes.map((n) => (n.id === id ? { ...n, ...patch } : n)) }, `edit:${id}`), [graph, setGraphCommitted]);
+  const deleteNode = useCallback((id: string) => setGraphCommitted({
     nodes: graph.nodes.filter((n) => n.id !== id),
     edges: graph.edges.filter((e) => e.source !== id && e.target !== id),
-  }), [graph, setGraph]);
+  }), [graph, setGraphCommitted]);
 
   const issues = useMemo(() => (tab === "blocks" ? validateGraph(graph, ctx) : []), [graph, ctx, tab]);
   const errorIds = useMemo(() => new Set(issues.filter((i) => i.level === "error" && i.nodeId).map((i) => i.nodeId)), [issues]);
@@ -546,7 +616,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
       functionNames, __update: updateNode, __delete: deleteNode, __readOnly: readOnly, __ctx: ctx,
     },
   })), [graph, errorIds, warnIds, ctx, functionNames, updateNode, deleteNode, readOnly, selectedIds]);
-  const deleteEdge = useCallback((id: string) => setGraph({ ...graph, edges: graph.edges.filter((e) => e.id !== id) }), [graph, setGraph]);
+  const deleteEdge = useCallback((id: string) => setGraphCommitted({ ...graph, edges: graph.edges.filter((e) => e.id !== id) }), [graph, setGraphCommitted]);
   const rfEdges: Edge[] = useMemo(() => graph.edges.map((e) => ({
     id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle,
     type: "snap",
@@ -554,7 +624,10 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
     markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
     style: edgeStyle(e as Edge),
     data: { onDelete: deleteEdge },
-  })), [graph, deleteEdge]);
+  })), [graph, deleteEdge, histTick]);
+
+  const canUndo = historyRef.current.past.length > 0;
+  const canRedo = historyRef.current.future.length > 0;
 
   /** Can the target reach the source by following next/body edges? (cycle guard) */
   const reaches = useCallback((from: string, to: string) => {
@@ -597,8 +670,8 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
 
   const onEdgesChange = useCallback((changes: any[]) => {
     const removed = new Set(changes.filter((c) => c.type === "remove").map((c) => c.id));
-    if (removed.size) setGraph({ ...graph, edges: graph.edges.filter((e) => !removed.has(e.id)) });
-  }, [graph, setGraph]);
+    if (removed.size) setGraphCommitted({ ...graph, edges: graph.edges.filter((e) => !removed.has(e.id)) });
+  }, [graph, setGraphCommitted]);
 
   const onConnect = useCallback((c: Connection) => {
     const edge = { id: uid(), source: c.source, sourceHandle: c.sourceHandle ?? "", target: c.target, targetHandle: c.targetHandle ?? "" };
@@ -607,8 +680,8 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
       // one connection per field: the new one replaces the old
       edges = edges.filter((e) => !(e.target === c.target && e.targetHandle === c.targetHandle));
     }
-    setGraph({ ...graph, edges: [...edges, edge] });
-  }, [graph, setGraph]);
+    setGraphCommitted({ ...graph, edges: [...edges, edge] });
+  }, [graph, setGraphCommitted]);
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     const selectionChanges = changes.filter((c): c is NodeChange & { type: "select"; selected: boolean } => c.type === "select");
@@ -628,17 +701,27 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
     }
     const protectedIds = new Set(graph.nodes.filter((n) => n.type === "start").map((n) => n.id));
     for (const id of Array.from(removed)) if (protectedIds.has(id)) removed.delete(id); // Start always stays
-    if (moved.size || removed.size) {
-      setGraph({
+    if (removed.size) {
+      setGraphCommitted({
         nodes: graph.nodes
           .filter((n) => !removed.has(n.id))
           .map((n) => (moved.has(n.id) ? { ...n, position: moved.get(n.id)! } : n)),
         edges: graph.edges.filter((e) => !removed.has(e.source) && !removed.has(e.target)),
       });
+    } else if (moved.size) {
+      // A drag in progress: the drag-start snapshot is the undo entry, so the
+      // per-frame position updates go straight in without new history.
+      setGraph({
+        nodes: graph.nodes.map((n) => (moved.has(n.id) ? { ...n, position: moved.get(n.id)! } : n)),
+        edges: graph.edges,
+      });
     }
-  }, [graph, setGraph]);
+  }, [graph, setGraph, setGraphCommitted]);
 
-  const addNode = useCallback((node: ToolGraphNode) => setGraph({ ...graph, nodes: [...graph.nodes, node] }), [graph, setGraph]);
+  /** A drag starts: one undo entry covers the whole drag. */
+  const onNodeDragStart = useCallback(() => commitHistory("drag"), [commitHistory]);
+
+  const addNode = useCallback((node: ToolGraphNode) => setGraphCommitted({ ...graph, nodes: [...graph.nodes, node] }), [graph, setGraphCommitted]);
   /** A free spot to the right of the flow: below the lowest node there. */
   const freeSpot = useCallback(() => {
     const rights = graph.nodes.filter((n) => (n.position?.x ?? 0) >= 360).map((n) => n.position?.y ?? 0);
@@ -665,10 +748,15 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
     event.preventDefault();
     const type = event.dataTransfer.getData("application/videoforge") as string;
     const blockId = event.dataTransfer.getData("application/videoforge-block");
-    if (!type && !blockId) return;
+    const stickerId = event.dataTransfer.getData("application/videoforge-sticker");
+    if (!type && !blockId && !stickerId) return;
     const position = rf.screenToFlowPosition({ x: event.clientX, y: event.clientY });
     const base = { id: uid(), position: { x: position.x - 90, y: position.y - 20 } };
-    if (blockId) {
+    if (stickerId) {
+      const sticker = listStickers(window.localStorage).find((s) => s.id === stickerId);
+      if (!sticker) return;
+      addNode({ ...base, type: "action", op: "add_clip", args: stickerArgs(sticker) });
+    } else if (blockId) {
       const block = BLOCK_MAP.get(blockId)!;
       const args: Record<string, unknown> = { ...(block.args ?? {}) };
       for (const p of block.params) if (args[p.key] === undefined) args[p.key] = p.def;
@@ -683,6 +771,26 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
     else if (type === "value-number") addNode({ ...base, type: "value", valueType: "number", value: "0" });
     else if (type === "value-yesno") addNode({ ...base, type: "value", valueType: "yesno", value: "yes" });
   }, [addNode, rf, ctx]);
+
+  /** Drop a preset's blocks on the canvas, wired to each other and joined onto the
+   *  end of the existing chain. Nothing runs until the user presses Run. */
+  const applyPreset = useCallback((preset: ToolPreset) => {
+    const frag = preset.build();
+    const maxX = graph.nodes.reduce((m, n) => Math.max(m, n.position?.x ?? 0), 60);
+    const nodes = frag.nodes.map((n) => ({ ...n, position: { x: maxX + 160 + (n.position?.x ?? 0), y: 40 + (n.position?.y ?? 0) } }));
+    const edges = frag.edges.map((e) => ({ ...e }));
+    // the head of the preset chain: its first connectable node (notes have no in)
+    const head = frag.nodes.find((n) => n.type !== "comment");
+    // join onto the tail of the start chain so the preset runs after what's there
+    const nextOf = (id: string) => graph.edges.find((e) => e.source === id && e.sourceHandle === "next")?.target;
+    let tail = graph.nodes.find((n) => n.type === "start")?.id ?? null;
+    if (tail) { let guard = 0; while (nextOf(tail) && guard++ < 500) tail = nextOf(tail)!; }
+    if (tail && head) edges.push({ id: uid(), source: tail, sourceHandle: "next", target: head.id, targetHandle: "in" });
+    setGraphCommitted({ nodes: [...graph.nodes, ...nodes], edges: [...graph.edges, ...edges] });
+    setPresetsOpen(false);
+    // bring the new blocks into view
+    requestAnimationFrame(() => rf.fitView({ padding: 0.25, maxZoom: 1.1 }));
+  }, [graph, setGraphCommitted, rf]);
 
   /** Switching Blocks → Code converts the graph into readable code the tool now runs. */
   const switchToCode = useCallback(() => {
@@ -746,11 +854,42 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
           <button className="bs-btn" disabled={readOnly} onClick={() => addNode({ id: uid(), type: "frame", frame: Math.round(ctx.playhead * ctx.fps), position: freeSpot() })} data-testid="bs-add-frame">🖼 Add frame</button>
         )}
         {tab === "blocks" && (
-          <button className="bs-btn" onClick={() => setTutorialStep(0)} disabled={readOnly} data-testid="bs-tutorial-open" title="Show the first-tool tutorial">🎓 Tutorial</button>
+          <button className="bs-btn" disabled={readOnly} onClick={() => setTutorialStep(0)} data-testid="bs-tutorial-open" title="Show the first-tool tutorial">🎓 Tutorial</button>
         )}
+        {tab === "blocks" && (
+          <button className="bs-btn bs-btn-presets" onClick={() => setPresetsOpen((o) => !o)} disabled={readOnly} data-testid="bs-presets" title="Ready-made recipes of connected blocks">✨ Presets</button>
+        )}
+        <button className="bs-btn" onClick={async () => {
+          try { await navigator.clipboard.writeText(encodeTool({ ...tool, graph })); setShared("Tool code copied — paste it into anyone's studio with Import"); }
+          catch { setShared("Couldn't reach the clipboard — try again"); }
+          setTimeout(() => setShared(""), 3500);
+        }} disabled={readOnly} data-testid="bs-share" title="Copy this tool as a code you can share">🔗 Share</button>
+        {tab === "blocks" && <>
+          <button className="bs-btn" onClick={undo} disabled={readOnly || !canUndo} data-testid="bs-undo" title="Undo (Ctrl+Z)">↶</button>
+          <button className="bs-btn" onClick={redo} disabled={readOnly || !canRedo} data-testid="bs-redo" title="Redo (Ctrl+Shift+Z)">↷</button>
+        </>}
         <button className="bs-btn bs-btn-run" onClick={run} disabled={readOnly} data-testid="bs-run">▶ Run</button>
         <button className="bs-btn bs-btn-close" onClick={onClose} aria-label="Close studio" data-testid="bs-close">✕</button>
       </header>
+      {shared && <div className="bs-notice" data-testid="bs-share-notice"><span>🔗 {shared}</span><button className="bs-notice-close" aria-label="Dismiss" onClick={() => setShared("")}>✕</button></div>}
+      {presetsOpen && tab === "blocks" && (
+        <div className="bs-presets" data-testid="bs-presets-panel" role="dialog" aria-label="Presets">
+          <div className="bs-presets-head">
+            <h3>✨ Presets</h3>
+            <p>Example recipes, ready to take apart. Click one and its blocks appear on the canvas, connected to the right blocks — you set them up with your own words, colours and clips. Nothing runs until you press ▶ Run.</p>
+            <button className="bs-notice-close" aria-label="Close presets" onClick={() => setPresetsOpen(false)}>✕</button>
+          </div>
+          <div className="bs-presets-list">
+            {TOOL_PRESETS.map((p) => (
+              <button key={p.id} className="bs-preset-card" data-testid={`bs-preset-${p.id}`} onClick={() => applyPreset(p)} disabled={readOnly}>
+                <span className="bs-preset-emoji">{p.emoji}</span>
+                <b>{p.name}</b>
+                <span className="bs-preset-desc">{p.description}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {importOpen && (
         <div className="bs-import" data-testid="bs-import-panel">
           <p>Clips in this project — add one, then connect it to a block.</p>
@@ -773,16 +912,38 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
           <nav className="bs-cat-rail" aria-label="Block categories" data-testid="bs-cat-rail">
             {CATEGORIES.map((c) => (
               <button key={c.id} type="button" className={`bs-cat${category === c.id ? " active" : ""}`}
-                aria-pressed={category === c.id} data-testid={`bs-cat-${c.id}`} onClick={() => setCategory(c.id)}
-                title={`${c.label} blocks`}>
+                aria-pressed={category === c.id} data-testid={`bs-cat-${c.id}`} onClick={() => { setCategory(c.id); setSearch(""); }}
+                title={c.help}>
                 <i className={`bs-cat-dot bs-dot-cat-${c.id.toLowerCase().replace(/\s+/g, "-")}`} />
                 <span className="bs-cat-label">{c.label}</span>
               </button>
             ))}
           </nav>
           <aside className="bs-palette" data-testid="bs-palette">
-            <p className="bs-palette-title" data-testid="bs-palette-heading">{category} blocks</p>
-            {category === "Flow" ? (
+            <input className="bs-search" type="search" placeholder="Search blocks…" aria-label="Search blocks"
+              data-testid="bs-search" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <p className="bs-palette-title" data-testid="bs-palette-heading">{search ? `Matches for “${search}”` : `${category} blocks`}</p>
+            {search ? (
+              <div className="bs-palette-group">
+                {BLOCK_LIBRARY.filter((b) => !(HIDDEN_BLOCKS as readonly string[]).includes(b.id) && (b.label + " " + b.description).toLowerCase().includes(search.toLowerCase())).map((b) => (
+                  <div key={b.id} className={`bs-chip bs-group-${(b.group ?? "create").toLowerCase().replace(/\s+/g, "-")}`} draggable={!readOnly}
+                    data-testid={`bs-chip-${b.id}`}
+                    onDragStart={(e) => { e.dataTransfer.setData("application/videoforge-block", b.id); e.dataTransfer.effectAllowed = "move"; }}
+                    title={`${b.group ?? ""} — ${b.description}`}><span className="bs-chip-group">{b.group}</span>{b.label}</div>
+                ))}
+                {!BLOCK_LIBRARY.some((b) => !(HIDDEN_BLOCKS as readonly string[]).includes(b.id) && (b.label + " " + b.description).toLowerCase().includes(search.toLowerCase())) && <p className="bs-hint">No blocks match that. Try “title”, “zoom” or “speed”.</p>}
+              </div>
+            ) : category === "Stickers" ? (
+              <div className="bs-palette-group">
+                {listStickers(window.localStorage).length === 0 && <p className="bs-hint">No stickers yet. Add a “Save as sticker” block to turn any clip into one.</p>}
+                {listStickers(window.localStorage).map((s) => (
+                  <div key={s.id} className="bs-chip bs-chip-sticker" draggable={!readOnly}
+                    data-testid={`bs-sticker-${s.id}`}
+                    onDragStart={(e) => { e.dataTransfer.setData("application/videoforge-sticker", s.id); e.dataTransfer.effectAllowed = "move"; }}
+                    title={`Reuse “${s.name}”`}>{s.name}</div>
+                ))}
+              </div>
+            ) : category === "Flow" ? (
               <div className="bs-palette-group">
                 <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "repeat"); }} title="Run blocks a number of times">↻ Repeat</div>
                 <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "eachClip"); }} title="Run blocks for every clip">🎞 For each clip</div>
@@ -808,7 +969,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
               </div>
             )}
             <div className="bs-palette-group">
-              <h4>Connectors</h4>
+              <h4 title={CATEGORY_HELP[category] ?? ""}>{CATEGORY_HELP[category] ?? `${category} blocks`}</h4>
               <p className="bs-hint">Connect blocks top-to-bottom to run them in order. Bring in clips and frames with the buttons above, then drag from their right side into a block's <b>clip</b> or <b>time</b> dot.</p>
             </div>
           </aside>
@@ -822,6 +983,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
+              onNodeDragStart={onNodeDragStart}
               isValidConnection={isValidConnection}
               edgesReconnectable={false}
               deleteKeyCode={["Backspace", "Delete"]}

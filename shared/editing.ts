@@ -1,13 +1,14 @@
 import { setTransition } from "./transitions";
-import { normalizeClip, normalizeTimeline, clipDuration, clipEnd, clipX, clipY, TRACKS, type Clip, type Timeline, type TrackName } from "./timeline";
+import { normalizeClip, normalizeTimeline, clipDuration, clipEnd, clipX, clipY, clipSpeed, rampSource, rampSourceAt, sliceRamp, normalizeSpeedRamp, TRACKS, type Clip, type Timeline, type TrackName } from "./timeline";
 import { normalizeKeyframes, isProperty, sliceKeyframes, type AnimationProperty, type Keyframe } from "./animation";
 import { motionPreset } from "./presets";
 import { templateClips } from "./graphics";
 import { beatTimes, retimeAnimation, reverseAnimation } from "./motion";
 import { codeRecipe } from "./expr";
-import { fitClip, type FitMode } from "./layout";
+import { fitClip, clipBounds, type FitMode } from "./layout";
 import { normalizeExpressions, valueAt, ANIMATABLE } from "./animation";
 const uid = () => Math.random().toString(36).slice(2,14);
+const round = (n: number) => Math.round(n * 1000) / 1000;
 export type TimelineOp = { op: string; args?: any };
 export function splitKeyframes(c:Clip, at:number) { return [sliceKeyframes(c,0,at),sliceKeyframes(c,at,clipDuration(c))]; }
 /** A preset that animates a property takes over from any code expression on it. */
@@ -112,6 +113,7 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
         case "trim_clip": {
           const { clipId, inPoint, outPoint } = args || {};
           const c = find(clipId);
+          if (c.speedRamp?.length) throw new Error("this clip has speed steps — change its length with the Speed steps block");
           const patch: Partial<Clip> = {};
           if (typeof inPoint === "number") patch.inPoint = Math.max(0, inPoint);
           if (typeof outPoint === "number") patch.outPoint = Math.max((patch.inPoint ?? c.inPoint) + 0.1, outPoint);
@@ -161,6 +163,21 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
           const dur = clipDuration(c);
           const rel = at - c.start;
           if (rel < 0.1 || rel > dur - 0.1) throw new Error("split point must be inside the clip (at least 0.1s from either edge)");
+          if (c.speedRamp?.length) {
+            // Speed steps split with the clip: the left keeps the steps before the
+            // split, the right plays the rest from the matching source position.
+            const [left, right] = sliceRamp(c.speedRamp, rel);
+            const srcSplit = c.inPoint + rampSourceAt(c.speedRamp, rel);
+            const rightClip: Clip = { ...c, id: uid(), start: at, inPoint: srcSplit, outPoint: c.outPoint, speedRamp: right.length ? right : undefined };
+            delete rightClip.fadeIn;
+            delete c.fadeOut;
+            const parts = splitKeyframes(c, rel);
+            c.keyframes = parts[0]; rightClip.keyframes = parts[1];
+            c.speedRamp = left.length ? left : undefined;
+            c.outPoint = srcSplit;
+            clips.push(rightClip);
+            break;
+          }
           const speed = c.speed ?? 1;
           const srcSplit = c.assetId ? c.inPoint + rel * speed : c.inPoint + rel;
           const right: Clip = { ...c, id: uid(), start: at, inPoint: srcSplit };
@@ -274,24 +291,63 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
           if (args.dy!==undefined) { const n=Number(args.dy); if(!Number.isFinite(n)) throw new Error("dy must be a number"); copy.y=Math.round((clipY(c)+n)*1000)/1000; }
           clips.push(copy); break;
         }
+        case "set_speed_ramp": {
+          // Real speed changes over time: steps of speed (0 = freeze) over displayed time.
+          const c = find(args?.clipId);
+          if (!c.assetId) throw new Error("speed steps apply to media clips");
+          const steps = normalizeSpeedRamp(args.segments);
+          const next: Partial<Clip> = { speedRamp: steps, outPoint: round(c.inPoint + Math.max(0.04, rampSource(steps))) };
+          // Keyframes stay pinned to displayed time, so they carry over untouched.
+          clips[clips.indexOf(c)] = normalizeClip({ ...c, ...next });
+          break;
+        }
+        case "freeze_frame": {
+          // Pause a clip on one frame and hold it: a zero-speed step at `at`.
+          const c = find(args?.clipId);
+          if (!c.assetId) throw new Error("freeze frames apply to media clips");
+          const hold = args.duration ?? 2;
+          if (!Number.isFinite(hold) || hold < 0.1 || hold > 60) throw new Error("hold must be 0.1..60 seconds");
+          const at = Math.max(0, Math.min(clipDuration(c) - 0.05, Number(args.at) || 0));
+          const base = c.speedRamp?.length ? c.speedRamp : [{ speed: clipSpeed(c), duration: clipDuration(c) }];
+          const [left, right] = sliceRamp(base, at);
+          const steps = [...left, { speed: 0, duration: round(hold) }, ...right];
+          clips[clips.indexOf(c)] = normalizeClip({ ...c, speedRamp: steps, outPoint: round(c.inPoint + Math.max(0.04, rampSource(steps))) });
+          break;
+        }
+        case "save_sticker": {
+          // The timeline does not change — the studio saves the clip as a sticker
+          // when the tool runs. Kept as a valid op so saved tools keep working.
+          break;
+        }
         case "align_clips": {
-          // Line clips up or spread them evenly across the frame. Align modes use
-          // fixed frame positions (0.25 / 0.5 / 0.75) so the result is predictable
-          // whatever the clips' sizes; distribute spreads centres evenly.
+          // Line clips up by their REAL edges — measured bounds, wrapped text
+          // included — against each other or flush with the frame.
           if (!Array.isArray(args.clipIds) || !args.clipIds.length) throw new Error("clipIds required");
-          const modes=["left","center","right","top","middle","bottom","distribute-h","distribute-v"];
-          const mode=modes.includes(args.mode)?args.mode:"center";
-          const targets=args.clipIds.map((id: string)=>find(id)).filter((c: Clip)=>c.track!=="audio");
-          if(!targets.length) throw new Error("no visual clips to line up");
-          const round3=(n:number)=>Math.round(n*1000)/1000;
-          if (mode==="distribute-h") targets.forEach((c: Clip,i: number)=>{ c.x=round3(targets.length===1?0.5:(i+1)/(targets.length+1)); });
-          else if (mode==="distribute-v") targets.forEach((c: Clip,i: number)=>{ c.y=round3(targets.length===1?0.5:(i+1)/(targets.length+1)); });
-          else if (mode==="left") targets.forEach((c: Clip)=>{ c.x=0.25; });
-          else if (mode==="right") targets.forEach((c: Clip)=>{ c.x=0.75; });
-          else if (mode==="center") targets.forEach((c: Clip)=>{ c.x=0.5; });
-          else if (mode==="top") targets.forEach((c: Clip)=>{ c.y=0.25; });
-          else if (mode==="bottom") targets.forEach((c: Clip)=>{ c.y=0.75; });
-          else targets.forEach((c: Clip)=>{ c.y=0.5; }); // middle
+          const modes = ["left", "center", "right", "top", "middle", "bottom", "frame-left", "frame-right", "frame-top", "frame-bottom", "distribute-h", "distribute-v"];
+          const mode = modes.includes(args.mode) ? args.mode : "left";
+          const targets = args.clipIds.map((id: string) => find(id)).filter((c: Clip) => c.track !== "audio");
+          if (!targets.length) throw new Error("no visual clips to line up");
+          const round3 = (n: number) => Math.round(n * 1000) / 1000;
+          const boxes: Array<{ c: Clip; b: ReturnType<typeof clipBounds> }> = targets.map((c: Clip) => ({ c, b: clipBounds(c, timeline.resolution, c.assetId ? getAsset(c.assetId) : undefined) }));
+          const measured = boxes.filter((x) => x.b);
+          if (mode === "distribute-h") targets.forEach((c: Clip, i: number) => { c.x = round3(targets.length === 1 ? 0.5 : (i + 1) / (targets.length + 1)); });
+          else if (mode === "distribute-v") targets.forEach((c: Clip, i: number) => { c.y = round3(targets.length === 1 ? 0.5 : (i + 1) / (targets.length + 1)); });
+          else if (mode === "center") { const cx = measured.length ? measured.reduce((s, x) => s + x.b!.x, 0) / measured.length : 0.5; targets.forEach((c: Clip) => { c.x = round3(cx); }); }
+          else if (mode === "middle") { const cy = measured.length ? measured.reduce((s, x) => s + x.b!.y, 0) / measured.length : 0.5; targets.forEach((c: Clip) => { c.y = round3(cy); }); }
+          else if (mode === "frame-left") { const m = args.margin ?? 0.02; for (const { c, b } of measured) c.x = round3(Math.min(1, m + b!.w / 2)); }
+          else if (mode === "frame-right") { const m = args.margin ?? 0.02; for (const { c, b } of measured) c.x = round3(Math.max(0, 1 - m - b!.w / 2)); }
+          else if (mode === "frame-top") { const m = args.margin ?? 0.02; for (const { c, b } of measured) c.y = round3(m + b!.h / 2); }
+          else if (mode === "frame-bottom") { const m = args.margin ?? 0.02; for (const { c, b } of measured) c.y = round3(1 - m - b!.h / 2); }
+          else if (mode === "left" || mode === "right") {
+            if (!measured.length) throw new Error("these clips have no measurable size");
+            const edge = mode === "left" ? Math.min(...measured.map((x) => x.b!.x - x.b!.w / 2)) : Math.max(...measured.map((x) => x.b!.x + x.b!.w / 2));
+            for (const { c, b } of measured) c.x = round3(mode === "left" ? edge + b!.w / 2 : edge - b!.w / 2);
+          }
+          else if (mode === "top" || mode === "bottom") {
+            if (!measured.length) throw new Error("these clips have no measurable size");
+            const edge = mode === "top" ? Math.min(...measured.map((x) => x.b!.y - x.b!.h / 2)) : Math.max(...measured.map((x) => x.b!.y + x.b!.h / 2));
+            for (const { c, b } of measured) c.y = round3(mode === "top" ? edge + b!.h / 2 : edge - b!.h / 2);
+          }
           break;
         }
         case "move_layer": {

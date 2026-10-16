@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
-import { compileBlocks, runCodeTool, runTool, normalizeOps, loadUserTools, saveUserTools, toolContext, BUILT_IN_TOOLS, OP_PARAMS, validateGraph, compileGraph, blocksToGraph, graphToCode, codeErrorLine, VF_HELPERS, TEMPLATE_DOCS, BLOCK_LIBRARY, BLOCK_GROUPS, BLOCK_MAP, HIDDEN_BLOCKS, convertOpArgs, selectCtxClips, valueNodeValue } from "../shared/custom-tools";
+import { compileBlocks, runCodeTool, runTool, normalizeOps, loadUserTools, saveUserTools, toolContext, BUILT_IN_TOOLS, OP_PARAMS, validateGraph, compileGraph, blocksToGraph, graphToCode, codeErrorLine, VF_HELPERS, TEMPLATE_DOCS, BLOCK_LIBRARY, BLOCK_GROUPS, BLOCK_MAP, HIDDEN_BLOCKS, convertOpArgs, selectCtxClips, valueNodeValue, TOOL_PRESETS, encodeTool, decodeTool, saveSticker, listStickers, deleteSticker, stickerArgs } from "../shared/custom-tools";
 import { MOTION_PRESETS } from "../shared/presets";
-import { normalizeTimeline } from "../shared/timeline";
+import { normalizeTimeline, clipDuration, rampSourceAt, rampDuration } from "../shared/timeline";
 import { applyTimelineOp } from "../shared/editing";
+import { clipBounds } from "../shared/layout";
 import { buildRenderPlan } from "../server/render";
 
 let checks = 0;
@@ -657,9 +658,20 @@ await check("edit ops apply to a timeline", async () => {
   // Distribute spreads the clips evenly across the frame.
   const spread = apply({ op: "align_clips", args: { clipIds: ["t1", "t2", "t3"], mode: "distribute-h" } });
   assert.deepEqual(spread.clips.map((c) => c.x ?? 0.5), [0.25, 0.5, 0.75]); // 0.5 is the default position
-  // Align left lines them up on the leftmost clip.
+  // Align left lines the clips' REAL left edges up with the leftmost one.
   const left = apply({ op: "align_clips", args: { clipIds: ["t1", "t2", "t3"], mode: "left" } });
-  assert.deepEqual(left.clips.map((c) => c.x ?? 0.5), [0.25, 0.25, 0.25]); // fixed frame position
+  const leftEdges = left.clips.map((c) => {
+    const b = clipBounds(c, left.resolution);
+    return Math.round((b!.x - b!.w / 2) * 100);
+  });
+  assert.ok(new Set(leftEdges).size === 1, `left edges are flush: ${leftEdges.join(", ")}`);
+  // Flush against the frame edges.
+  const frameLeft = apply({ op: "align_clips", args: { clipIds: ["t1", "t2", "t3"], mode: "frame-left", margin: 0.02 } });
+  const frameEdges = frameLeft.clips.map((c) => {
+    const b = clipBounds(c, frameLeft.resolution);
+    return Math.round((b!.x - b!.w / 2) * 1000);
+  });
+  assert.ok(frameEdges.every((n) => Math.abs(n - 20) <= 3), `frame-left is flush at the margin: ${frameEdges.join(", ")}`);
   // Snap to grid rounds positions.
   const snapped = apply({ op: "snap_to_grid", args: { clipIds: ["t1", "t2", "t3"], grid: 0.25 } });
   assert.deepEqual(snapped.clips.map((c) => c.x ?? 0.5), [0, 0.75, 0.5]);
@@ -820,5 +832,100 @@ await check("renderer stacks overlay visuals by z across types", async () => {
   assert.deepEqual(order, ["cv", "ct", "cv", "cg"], "overlay visuals stack by z across media, shapes and text");
   // The crop keeps the layer box: cut, then padded back at its original offset.
   assert.match(plan.filter, /crop=\d+:\d+:\d+:\d+,pad=1280:720:\d+:\d+:color=black@0/, "crop is padded back into the layer box");
+});
+
+await check("presets build connected graphs that compile", async () => {
+  const ectx = { ...ctx, clips: ctx.clips.map((c) => ({ ...c, raw: undefined })) };
+  for (const preset of TOOL_PRESETS) {
+    const frag = preset.build();
+    assert.ok(frag.nodes.length >= 2, `${preset.id} has blocks`);
+    assert.ok(frag.edges.length >= frag.nodes.filter((n) => n.type !== "comment").length - 1, `${preset.id} connects its blocks`);
+    const graph = { nodes: [{ id: "start", type: "start", position: { x: 0, y: 0 } }, ...frag.nodes], edges: [{ id: "e0", source: "start", sourceHandle: "next", target: frag.nodes[0].id, targetHandle: "in" }, ...frag.edges] };
+    const tool = { id: "t", name: preset.name, description: "", mode: "blocks" as const, graph };
+    const issues = validateGraph(graph, ectx);
+    assert.ok(!issues.some((i) => i.level === "error"), `${preset.id} compiles clean: ${issues.filter((i) => i.level === "error").map((i) => i.message).join("; ")}`);
+    // Running it must not throw.
+    runTool(tool, ectx);
+    // Two builds produce different node ids (so a preset can be added twice).
+    const again = preset.build();
+    assert.ok(again.nodes.every((n) => !frag.nodes.some((f) => f.id === n.id)), `${preset.id} builds fresh ids`);
+  }
+});
+
+await check("speed steps and freeze frames work end to end", async () => {
+  const base = normalizeTimeline({ fps: 30, resolution: { width: 1280, height: 720 }, clips: [
+    { id: "v1", assetId: "vid", track: "video", start: 0, inPoint: 0, outPoint: 10, volume: 1, muted: false },
+  ] });
+  const getAsset = () => ({ kind: "video", duration: 60 });
+  const ramped = applyTimelineOp(base, { op: "set_speed_ramp", args: { clipId: "v1", segments: [{ speed: 1, duration: 2 }, { speed: 2, duration: 2 }] } }, getAsset);
+  const v1 = ramped.clips.find((c: any) => c.id === "v1")!;
+  assert.equal(clipDuration(v1), 4, "the ramp defines the displayed duration");
+  assert.equal(v1.outPoint - v1.inPoint, 6, "the source window covers what the steps play");
+  assert.equal(rampSourceAt(v1.speedRamp!, 3), 4, "the fast step consumes source at its speed");
+  assert.equal(rampDuration(v1.speedRamp!), 4);
+  // The render plan expands the steps into per-step chains.
+  const asset = { id: "vid", kind: "video", filename: "v.mp4", mime: "video/mp4", duration: 60, hasAudio: 0, width: 1280, height: 720, sizeBytes: 0, storagePath: "", createdAt: 0 };
+  const plan = buildRenderPlan(ramped, new Map([["vid", asset]]), ".", ".", "j", "x.mp4");
+  assert.match(plan.filter, /split=2/, "the steps split the input");
+  assert.match(plan.filter, /concat=n=2:v=1:a=0\[segv\]/, "the steps are concatenated");
+  assert.match(plan.filter, /setpts=\(PTS-STARTPTS\)\/2/, "the fast step retimes to its speed");
+  // A freeze frame is a zero-speed step: displayed time grows, source does not.
+  const frozen = applyTimelineOp(ramped, { op: "freeze_frame", args: { clipId: "v1", at: 1, duration: 2 } }, getAsset);
+  const f1 = frozen.clips.find((c: any) => c.id === "v1")!;
+  assert.equal(clipDuration(f1), 6, "the freeze adds its hold to the clip");
+  assert.equal(rampSourceAt(f1.speedRamp!, 2.5), 1, "during the hold the source stands still");
+  const freezePlan = buildRenderPlan(frozen, new Map([["vid", asset]]), ".", ".", "j", "x.mp4");
+  assert.match(freezePlan.filter, /tpad=stop_mode=clone:stop_duration=2/, "the freeze holds the frame");
+  // Splitting a stepped clip cuts the steps with it.
+  const split = applyTimelineOp(ramped, { op: "split_clip", args: { clipId: "v1", at: 2 } }, getAsset);
+  const parts = split.clips.filter((c: any) => c.assetId === "vid").sort((a: any, b: any) => a.start - b.start);
+  assert.equal(parts.length, 2, "the clip split into two");
+  assert.equal(clipDuration(parts[0]), 2, "the left half keeps its steps");
+  assert.deepEqual(parts[0].speedRamp!.map((s: any) => s.speed), [1], "left steps are the ones before the split");
+  assert.deepEqual(parts[1].speedRamp!.map((s: any) => s.speed), [2], "right steps are the rest");
+  // Trimming a stepped clip says to use the block instead.
+  assert.throws(() => applyTimelineOp(ramped, { op: "trim_clip", args: { clipId: "v1", outPoint: 4 } }, getAsset), /speed steps/);
+  // Bad steps throw readably.
+  assert.throws(() => applyTimelineOp(base, { op: "set_speed_ramp", args: { clipId: "v1", segments: [{ speed: 0, duration: 1 }] } }, getAsset), /faster than a freeze/);
+  assert.throws(() => applyTimelineOp(base, { op: "set_speed_ramp", args: { clipId: "v1", segments: "nope" } }, getAsset), /speed steps/);
+});
+
+await check("tool codes round-trip and validate", async () => {
+  const tool = { id: "t1", name: "My tool", description: "desc", mode: "blocks" as const, graph: { nodes: [{ id: "start", type: "start" as const, position: { x: 0, y: 0 } }], edges: [] } };
+  const code = encodeTool(tool);
+  assert.ok(code.startsWith("VFT1:"), "codes are prefixed");
+  const back = decodeTool(code);
+  assert.equal(back.name, "My tool");
+  assert.equal(back.mode, "blocks");
+  assert.notEqual(back.id, "t1", "import gives the tool a fresh id");
+  const codeTool = { id: "t2", name: "C", description: "", mode: "code" as const, code: "return [];" };
+  assert.equal(decodeTool(encodeTool(codeTool)).code, "return [];");
+  assert.throws(() => decodeTool("VFT1:not-base64!!"), /tool code/);
+  assert.throws(() => decodeTool("hello"), /VFT1/);
+  const broken = "VFT1:" + Buffer.from(JSON.stringify({ name: "x", mode: "blocks", graph: null })).toString("base64");
+  assert.throws(() => decodeTool(broken), /no blocks/);
+});
+
+await check("stickers save, list and drop as add_clip args", async () => {
+  const storage = new Map<string, string>();
+  const s = { getItem: (k: string) => storage.get(k) ?? null, setItem: (k: string, v: string) => storage.set(k, v) };
+  const saved = saveSticker(s, "My title", { id: "old", start: 5, inPoint: 0, outPoint: 3, text: "Hello", textSize: 8, track: "overlay" });
+  const list = listStickers(s);
+  assert.equal(list.length, 1);
+  assert.equal(list[0].name, "My title");
+  assert.equal(list[0].clip.text, "Hello");
+  assert.ok(!("id" in list[0].clip) && !("start" in list[0].clip), "the sticker drops the id and the timing");
+  // A sticker dropped as a block is an add_clip op that makes a fresh clip each run.
+  const args = stickerArgs(list[0]);
+  const tl = normalizeTimeline({ fps: 30, resolution: { width: 1280, height: 720 }, clips: [] });
+  const one = applyTimelineOp(tl, { op: "add_clip", args }, () => undefined);
+  const two = applyTimelineOp(one, { op: "add_clip", args }, () => undefined);
+  assert.equal(one.clips.length + 1, two.clips.length, "each drop adds a new clip");
+  assert.notEqual(one.clips[0].id, two.clips.find((c) => c.id !== one.clips[0].id)!.id, "ids are fresh");
+  deleteSticker(s, saved.id);
+  assert.equal(listStickers(s).length, 0);
+  // The save_sticker timeline op is a valid no-op so tools keep working.
+  const same = applyTimelineOp(tl, { op: "save_sticker", args: { clipId: "x", name: "y" } }, () => undefined);
+  assert.equal(same.clips.length, tl.clips.length);
 });
 console.log(`custom-tools.spec: ${checks} checks passed`);

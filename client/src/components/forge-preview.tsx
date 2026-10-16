@@ -3,7 +3,7 @@ import { incomingTransition, transitionProgress, transitionAudio, transitionClip
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Film } from "lucide-react";
 import { evaluateClip, valueAt } from "@shared/animation";
-import { clipDuration, clipEnd, type Clip, type Timeline } from "@shared/timeline";
+import { clipDuration, clipEnd, rampSourceAt, rampSpeedAt, type Clip, type Timeline } from "@shared/timeline";
 import { textLayout } from "@shared/layout";
 import { getFont } from "@shared/fonts";
 import type { AssetDTO } from "@/lib/editor-model";
@@ -37,10 +37,13 @@ function MediaLayer({clip,asset,time,playing,source,hidden,muted,onError,timelin
   const active=time>=clip.start && time<clipEnd(clip);
   const [failed,setFailed]=useState(false);
   const ev=evaluateClip(clip,time);
-  const desired=clip.inPoint+Math.max(0,time-clip.start)*(clip.speed??1);
+  // Speed steps: the source position follows the steps (a freeze step holds the frame).
+  const rel=Math.max(0,time-clip.start);
+  const desired=clip.speedRamp?.length ? clip.inPoint+rampSourceAt(clip.speedRamp,rel) : clip.inPoint+rel*(clip.speed??1);
+  const rate=clip.speedRamp?.length ? Math.max(0.0625, rampSpeedAt(clip.speedRamp,rel)) : (clip.speed??1);
   const sync=()=>{
     const el=media.current;if(!el)return;
-    el.playbackRate=clip.speed??1;
+    el.playbackRate=rate;
     el.muted=clip.muted||muted;
     el.volume=Math.min(1,Math.max(0,ev.volume*envelope(clip,time)*transitionAudio(timeline,clip,time)));
     if(active && (!playing || Math.abs(el.currentTime-desired)>.2) && Number.isFinite(desired)) {

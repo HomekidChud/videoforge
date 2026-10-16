@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { BUILT_IN_TOOLS, loadUserTools, saveUserTools, runTool, type CustomTool } from "@shared/custom-tools";
+import { BUILT_IN_TOOLS, loadUserTools, saveUserTools, runTool, saveSticker, decodeTool, type CustomTool } from "@shared/custom-tools";
 import type { ToolContext } from "@shared/custom-tools";
 import type { TimelineOp } from "@shared/editing";
 import BlockStudio, { defaultGraph } from "./forge-block-studio";
 
-export function ForgeTools({ disabled, onRun, onError, getCtx, studio = true, autoOpen = false, onExitStudio }: { disabled: boolean; onRun: (ops: TimelineOp[]) => void; onError: (message: string) => void; getCtx: () => ToolContext; studio?: boolean; autoOpen?: boolean; onExitStudio?: () => void }) {
+export function ForgeTools({ disabled, onRun, onError, onNote, getCtx, studio = true, autoOpen = false, onExitStudio }: { disabled: boolean; onRun: (ops: TimelineOp[]) => void; onError: (message: string) => void; onNote?: (message: string) => void; getCtx: () => ToolContext; studio?: boolean; autoOpen?: boolean; onExitStudio?: () => void }) {
   const [userTools, setUserTools] = useState<CustomTool[]>(() => loadUserTools(window.localStorage));
   const [editing, setEditing] = useState<CustomTool | null>(null);
   const [freshTool, setFreshTool] = useState(false);
+  const [importCode, setImportCode] = useState("");
   /** The untouched state of a brand-new draft, so closing it without changes doesn't save a junk tool. */
   const draftRef = useRef<string | null>(null);
   useEffect(() => saveUserTools(userTools, window.localStorage), [userTools]);
@@ -31,8 +32,19 @@ export function ForgeTools({ disabled, onRun, onError, getCtx, studio = true, au
     if (disabled) return;
     try {
       const ops = runTool(tool, getCtx());
+      // Save-as-sticker blocks act here: their timeline op is a no-op, the
+      // sticker itself is saved to this browser when the tool runs.
+      const stickers = ops.filter((o) => o.op === "save_sticker");
+      const rest = ops.filter((o) => o.op !== "save_sticker");
+      for (const op of stickers) {
+        const id = String((op.args as any)?.clipId ?? "");
+        const raw = getCtx().clips.find((c) => c.id === id)?.raw;
+        if (!raw) return onError("Save as sticker needs a clip — connect a clip block to its Clip field");
+        saveSticker(window.localStorage, String((op.args as any)?.name ?? "Sticker"), JSON.parse(JSON.stringify(raw)));
+        onNote?.(`Saved sticker “${String((op.args as any)?.name ?? "Sticker")}”`);
+      }
       if (!ops.length) return;
-      onRun(ops);
+      if (rest.length) onRun(rest);
     } catch (e: any) { onError(e.message || "The tool failed"); }
   };
 
@@ -80,7 +92,20 @@ export function ForgeTools({ disabled, onRun, onError, getCtx, studio = true, au
       <button className="primary-btn" disabled={disabled} data-testid="tool-new-code" onClick={() => setEditing({ id: `tool-${Date.now().toString(36)}`, name: "My tool", description: "What this tool does", mode: "code", code: "// vf.playhead, vf.selection, vf.clips\nreturn [];" })}>New tool with code</button>
       {studio && <button className="primary-btn" disabled={disabled} data-testid="tool-new-blocks" onClick={() => { setFreshTool(true); setEditing(freshDraft()); }}>New tool with blocks</button>}
     </div>
-    <p className="help-text">Tools are stored in this browser. Open an example in the studio to see how it works.</p>
+    <div className="tool-import-row">
+      <input className="tool-import-input" placeholder="Paste a tool code (VFT1:…)" aria-label="Paste a tool code"
+        data-testid="tool-import-code" value={importCode} onChange={(e) => setImportCode(e.target.value)} disabled={disabled} />
+      <button className="chip" disabled={disabled || !importCode.trim()} data-testid="tool-import-btn"
+        onClick={() => {
+          try {
+            const tool = decodeTool(importCode);
+            setUserTools((list) => [...list, tool]);
+            setImportCode("");
+            onNote?.(`Added tool “${tool.name}”`);
+          } catch (e: any) { onError(e.message || "That tool code didn't work"); }
+        }}>Add tool</button>
+    </div>
+    <p className="help-text">Tools are stored in this browser. Share one with the 🔗 Share button in the studio, and add it here from its code.</p>
     <a href="#/docs/custom-tools" className="ghost-link">Custom tools guide</a>
   </div>;
 }

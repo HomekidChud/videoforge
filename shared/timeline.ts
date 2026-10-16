@@ -9,6 +9,9 @@ export const TRANSITION_TYPES = ["dissolve", "wipe-left", "wipe-right", "wipe-up
 export type TrackName = "video" | "overlay" | "audio";
 export type ClipFilter = "none" | "mono" | "sepia" | "vivid" | "cool" | "warm" | "faded";
 
+/** One step of a speed ramp: play at `speed` (0 = freeze) for `duration` seconds. */
+export type SpeedStep = { speed: number; duration: number };
+
 export type Clip = {
   shape?: Shape;
   transitionIn?: import("./transitions").Transition;
@@ -22,6 +25,8 @@ export type Clip = {
   muted: boolean;
   text?: string;
   speed?: number; // 0.25..4
+  /** Speed steps over displayed time (0 = freeze). Replaces `speed` when set. */
+  speedRamp?: SpeedStep[];
   fadeIn?: number; // seconds
   fadeOut?: number; // seconds
   filter?: ClipFilter;
@@ -90,8 +95,53 @@ const num = (v: unknown, lo: number, hi: number, fallback: number) => {
 const round = (n: number) => Math.round(n * 1000) / 1000;
 
 export function clipSpeed(c: Pick<Clip, "speed">): number { return c.speed && c.speed > 0 ? c.speed : 1; }
+/** Total displayed time of speed steps. */
+export function rampDuration(r: SpeedStep[]): number { return r.reduce((s, x) => s + x.duration, 0); }
+/** Total source time the speed steps consume. */
+export function rampSource(r: SpeedStep[]): number { return r.reduce((s, x) => s + x.speed * x.duration, 0); }
+/** Source-time position for a displayed offset into ramp steps. */
+export function rampSourceAt(r: SpeedStep[], t: number): number {
+  let acc = 0;
+  for (const s of r) {
+    if (t <= s.duration) return acc + s.speed * t;
+    acc += s.speed * s.duration; t -= s.duration;
+  }
+  return acc;
+}
+/** The speed a clip plays at for a displayed offset into ramp steps. */
+export function rampSpeedAt(r: SpeedStep[], t: number): number {
+  for (const s of r) {
+    if (t < s.duration) return s.speed;
+    t -= s.duration;
+  }
+  return r[r.length - 1]?.speed ?? 1;
+}
+/** Split ramp steps at a displayed offset: the steps before it and from it on. */
+export function sliceRamp(r: SpeedStep[], at: number): [SpeedStep[], SpeedStep[]] {
+  const left: SpeedStep[] = [], right: SpeedStep[] = [];
+  let t = 0;
+  for (const s of r) {
+    if (at >= t + s.duration - 1e-6) left.push({ ...s });
+    else if (at <= t + 1e-6) right.push({ ...s });
+    else { const rel = round(at - t); left.push({ speed: s.speed, duration: rel }); right.push({ speed: s.speed, duration: round(s.duration - rel) }); }
+    t += s.duration;
+  }
+  return [left, right];
+}
+/** Normalise raw speed steps: 1..20 steps, each 0.1..3600s at 0..4x. */
+export function normalizeSpeedRamp(raw: unknown): SpeedStep[] {
+  if (!Array.isArray(raw)) throw new Error("speed steps must be a list of { speed, duration }");
+  const steps = raw.slice(0, 20).map((s: any) => ({
+    speed: Math.min(4, Math.max(0, num(s?.speed, 0, 4, 1))),
+    duration: round(Math.max(0.1, num(s?.duration, 0.1, 3600, 1))),
+  }));
+  if (!steps.length) throw new Error("speed steps need at least one step");
+  if (rampSource(steps) < 0.04) throw new Error("speed steps need at least one step faster than a freeze");
+  return steps;
+}
 /** Duration the clip occupies on the timeline (after speed is applied). */
-export function clipDuration(c: Pick<Clip, "inPoint" | "outPoint" | "speed" | "track" | "assetId">): number {
+export function clipDuration(c: Pick<Clip, "inPoint" | "outPoint" | "speed" | "track" | "assetId" | "speedRamp">): number {
+  if (c.speedRamp?.length) return round(rampDuration(c.speedRamp));
   const src = Math.max(MIN_CLIP, c.outPoint - c.inPoint);
   return round(c.assetId ? src / clipSpeed(c) : src);
 }
@@ -111,14 +161,22 @@ export function normalizeClip(raw: any): Clip {
   if (!assetId && !shape && ((typeof raw.reveal === "number" && raw.reveal < 1) || raw.keyframes?.reveal?.length || raw.expressions?.reveal)) throw new Error("reveal applies to media and shape clips; use opacity or position keyframes for text");
   const inPoint = round(num(raw.inPoint, 0, 86400, 0));
   const outPoint = round(Math.max(inPoint + MIN_CLIP, num(raw.outPoint, 0, 86400, inPoint + 5)));
+  // Speed steps: they define the whole timeline of the clip — the source window
+  // must cover exactly what the steps play. Media clips only.
+  let speedRamp: SpeedStep[] | undefined;
+  if (raw.speedRamp !== undefined && raw.speedRamp !== null) {
+    if (!assetId) throw new Error("speed steps apply to media clips");
+    speedRamp = normalizeSpeedRamp(raw.speedRamp);
+  }
   const clip: Clip = {
     id: typeof raw.id === "string" && raw.id ? raw.id.slice(0, 64) : Math.random().toString(36).slice(2, 10),
     assetId, track,
     start: round(num(raw.start, 0, 86400, 0)),
-    inPoint, outPoint,
+    inPoint, outPoint: speedRamp ? round(Math.max(inPoint + 0.04, inPoint + rampSource(speedRamp))) : outPoint,
     volume: round(num(raw.volume, 0, 1, 1)),
     muted: !!raw.muted,
   };
+  if (speedRamp) clip.speedRamp = speedRamp;
   if (text) clip.text = text;
   if (shape) clip.shape = shape;
   if(raw.transitionIn && (TRANSITION_TYPES as readonly string[]).includes(raw.transitionIn.type) && typeof raw.transitionIn.fromClipId === "string") clip.transitionIn = { fromClipId: raw.transitionIn.fromClipId.slice(0,64), type: raw.transitionIn.type, duration: round(num(raw.transitionIn.duration,.05,3,.6)) };

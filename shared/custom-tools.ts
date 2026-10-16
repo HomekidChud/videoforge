@@ -71,8 +71,9 @@ export type ToolContext = {
   duration: number;
   /** Ids of the selected clips. */
   selection: string[];
-  /** Every clip with its kind and timing — audio clips included, so tools can change volume. */
-  clips: { id: string; kind: "text" | "shape" | "media" | "audio"; start: number; duration: number; label?: string; color?: string; text?: string }[];
+  /** Every clip with its kind and timing — audio clips included, so tools can change volume.
+   *  `raw` carries the full clip, so the studio can save a clip as a sticker. */
+  clips: { id: string; kind: "text" | "shape" | "media" | "audio"; start: number; duration: number; label?: string; color?: string; text?: string; raw?: Clip }[];
   /** Canvas size. */
   resolution: { width: number; height: number };
   /** Project fps, so frame blocks resolve to seconds. */
@@ -86,6 +87,24 @@ export const TOOL_PARAM_TYPES: ToolParamType[] = ["text", "number", "color", "se
  * template strings: $playhead, $duration, $index, $count, $clipId, $selection.
  */
 export const OP_PARAMS: Record<string, ToolParam[]> = {
+  add_clip: [
+    { key: "start", label: "Start", type: "number", def: "$playhead", min: 0, max: 86400, step: 0.1 },
+    { key: "duration", label: "Duration", type: "number", def: 3, min: 0.1, max: 3600, step: 0.1 },
+    { key: "id", label: "Clip id", type: "text", def: "", placeholder: "auto" },
+  ],
+  save_sticker: [
+    { key: "clipId", label: "Clip", type: "text", def: "$clipId", placeholder: "$clipId or connect a clip" },
+    { key: "name", label: "Sticker name", type: "text", def: "My sticker" },
+  ],
+  set_speed_ramp: [
+    { key: "clipId", label: "Clip", type: "text", def: "$clipId", placeholder: "$clipId or connect a clip" },
+    { key: "segments", label: "Speed steps (JSON)", type: "json", def: "[{ \"speed\": 1, \"duration\": 2 }, { \"speed\": 2, \"duration\": 2 }]" },
+  ],
+  freeze_frame: [
+    { key: "clipId", label: "Clip", type: "text", def: "$clipId", placeholder: "$clipId or connect a clip" },
+    { key: "at", label: "Freeze at (s)", type: "number", def: "$playhead", min: 0, max: 86400, step: 0.1 },
+    { key: "duration", label: "Hold for (s)", type: "number", def: 2, min: 0.1, max: 60, step: 0.1 },
+  ],
   add_text_clip: [
     { key: "text", label: "Text", type: "text", def: "New title" },
     { key: "start", label: "Start", type: "number", def: "$playhead", min: 0, max: 86400, step: 0.1 },
@@ -634,6 +653,9 @@ export const BLOCK_LIBRARY: FriendlyBlock[] = [
   { id: "add-shape", label: "Add shape", group: "Create", op: "add_shape_clip", description: "Adds a rectangle, ellipse or line.",
     args: { duration: 3, shapeType: "rectangle", width: 0.3, height: 0.2, fill: "#f6a447" },
     params: [{ key: "shapeType", label: "Shape", type: "select", def: "rectangle", options: ["rectangle", "ellipse", "line"] }, { key: "width", label: "Width", type: "number", def: 0.3, min: 0.01, max: 1, step: 0.01 }, { key: "height", label: "Height", type: "number", def: 0.2, min: 0.01, max: 1, step: 0.01 }, { key: "fill", label: "Colour", type: "color", def: "#f6a447" }, P.start, P.duration] },
+  { id: "save-sticker", label: "Save as sticker", group: "Create", op: "save_sticker", description: "Turns a clip into a sticker you can reuse in any project.",
+    args: { name: "My sticker" },
+    params: [P.clipId, { key: "name", label: "Sticker name", type: "text", def: "My sticker" }] },
   { id: "move", label: "Move", group: "Animate", op: "update_clip", description: "Moves a clip to a position.",
     args: { x: 0.3, y: 0.5 },
     params: [P.clipId, { key: "x", label: "X (0..1)", type: "number", def: 0.3, min: 0, max: 1, step: 0.01 }, { key: "y", label: "Y (0..1)", type: "number", def: 0.5, min: 0, max: 1, step: 0.01 }] },
@@ -687,9 +709,9 @@ export const BLOCK_LIBRARY: FriendlyBlock[] = [
   { id: "edit-mirror", label: "Mirror", group: "Edit", op: "update_clip", description: "Flips a clip side to side, like a mirror.",
     args: { flipX: true },
     params: [P.clipId, { key: "flipX", label: "Mirror", type: "select", def: "true", options: ["true", "false"] }] },
-  { id: "edit-align", label: "Line up", group: "Edit", op: "align_clips", description: "Places clips in a tidy row or column at fixed frame spots, or spreads them evenly across the frame.",
-    args: { mode: "center" },
-    params: [{ key: "clipIds", label: "Clips", type: "text", def: "$selection", placeholder: "$selection" }, { key: "mode", label: "How", type: "select", def: "center", options: ["left", "center", "right", "top", "middle", "bottom", "distribute-h", "distribute-v"] }] },
+  { id: "edit-align", label: "Line up", group: "Edit", op: "align_clips", description: "Lines clips up by their real edges — against each other or flush with the frame.",
+    args: { mode: "left" },
+    params: [{ key: "clipIds", label: "Clips", type: "text", def: "$selection", placeholder: "$selection" }, { key: "mode", label: "How", type: "select", def: "left", options: ["left", "center", "right", "top", "middle", "bottom", "frame-left", "frame-right", "frame-top", "frame-bottom", "distribute-h", "distribute-v"] }] },
   { id: "edit-snap", label: "Snap to grid", group: "Edit", op: "snap_to_grid", description: "Rounds clip positions to a grid so they line up neatly.",
     args: { grid: 0.1 },
     params: [{ key: "clipIds", label: "Clips", type: "text", def: "$selection", placeholder: "$selection" }, { key: "grid", label: "Grid size", type: "number", def: 0.1, min: 0.02, max: 0.5, step: 0.01 }] },
@@ -813,6 +835,12 @@ export const BLOCK_LIBRARY: FriendlyBlock[] = [
     args: { patch: "{ \"textReveal\": null, \"textColorCycle\": null }" },
     params: [P.clipId, { key: "patch", label: "Patch (JSON)", type: "json", def: "{ \"textReveal\": null, \"textColorCycle\": null }" }] },
   // Timing.
+  { id: "speed-ramp", label: "Speed steps", group: "Timing", op: "set_speed_ramp", description: "Changes a clip's speed over time: steps of fast, slow and normal in one clip.",
+    args: { segments: "[{ \"speed\": 1, \"duration\": 2 }, { \"speed\": 2, \"duration\": 2 }]" },
+    params: [P.clipId, { key: "segments", label: "Speed steps (JSON)", type: "json", def: "[{ \"speed\": 1, \"duration\": 2 }, { \"speed\": 2, \"duration\": 2 }]" }] },
+  { id: "freeze-frame", label: "Freeze frame", group: "Timing", op: "freeze_frame", description: "Pauses a clip on one frame and holds it — like hitting pause.",
+    args: { duration: 2 },
+    params: [P.clipId, { key: "at", label: "Freeze at (s)", type: "number", def: "$playhead", min: 0, max: 86400, step: 0.1 }, { key: "duration", label: "Hold for (s)", type: "number", def: 2, min: 0.1, max: 60, step: 0.1 }] },
   { id: "speed-up", label: "Speed up", group: "Timing", op: "update_clip", description: "Plays a clip faster (2 = double speed).",
     args: { patch: "{ \"speed\": 1.5 }" },
     params: [P.clipId, { key: "patch", label: "Patch (JSON)", type: "json", def: "{ \"speed\": 1.5 }" }] },
@@ -1489,10 +1517,197 @@ export function saveUserTools(tools: CustomTool[], storage: { getItem: (k: strin
   storage.setItem(STORAGE_KEY, JSON.stringify(tools));
 }
 
+/* ────────────────────────────────────────────────────────────────────────────
+ * Presets: ready-made recipes of connected blocks — like example videos you
+ * can take apart. Clicking one drops its blocks on the canvas, already wired
+ * to each other; you then set them up (your words, your colours, your clips).
+ * Nothing runs until you press Run.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+export type ToolPresetFragment = { nodes: ToolGraphNode[]; edges: ToolGraphEdge[] };
+export type ToolPreset = { id: string; name: string; emoji: string; description: string; build: () => ToolPresetFragment };
+
+/** Fresh unique ids for preset nodes and the clips they create. */
+const uid = () => `n-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+const presetUid = () => `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+
+/** One action node for a preset, placed at a relative position. */
+function presetAction(block: string, args: Record<string, unknown>, x: number, y: number): ToolGraphNode {
+  const b = BLOCK_MAP.get(block)!;
+  const merged: Record<string, unknown> = { ...(b.args ?? {}), ...args };
+  for (const p of b.params) if (merged[p.key] === undefined) merged[p.key] = p.def;
+  return { id: uid(), type: "action", block, args: merged, position: { x, y } };
+}
+
+/** Wire a list of node ids into a run chain (each one's "next" to the next one's "in"). */
+function presetChain(ids: string[]): ToolGraphEdge[] {
+  return ids.slice(1).map((id, i) => ({ id: uid(), source: ids[i], sourceHandle: "next", target: id, targetHandle: "in" }));
+}
+
+export const TOOL_PRESETS: ToolPreset[] = [
+  {
+    id: "title-card",
+    name: "Title card",
+    emoji: "🎬",
+    description: "A big title that floats up into place and fades in — the classic opener.",
+    build: () => {
+      const clip = `title-${presetUid()}`;
+      const a = presetAction("add-title", { id: clip, text: "Your title", duration: 4, textSize: 12, y: 0.5, fontWeight: 800 }, 0, 0);
+      const b = presetAction("rise-up", { clipId: clip }, 0, 150);
+      const c = presetAction("fade-in-soft", { clipId: clip, duration: 1.2 }, 0, 300);
+      return { nodes: [a, b, c], edges: presetChain([a.id, b.id, c.id]) };
+    },
+  },
+  {
+    id: "lower-third",
+    name: "Lower third",
+    emoji: "📺",
+    description: "A name bar with a title over it, like on the news. Both fade in together.",
+    build: () => {
+      const bar = `bar-${presetUid()}`, name = `name-${presetUid()}`;
+      const a = presetAction("add-shape", { id: bar, shapeType: "rectangle", width: 0.5, height: 0.12, fill: "#1a1a2e", x: 0.5, y: 0.85, duration: 5 }, 0, 0);
+      const b = presetAction("add-title", { id: name, text: "Your name", textSize: 5, x: 0.5, y: 0.85, duration: 5 }, 0, 150);
+      const c = presetAction("fade-in-soft", { clipId: bar, duration: 0.8 }, 0, 300);
+      const d = presetAction("fade-in-soft", { clipId: name, duration: 0.8 }, 0, 450);
+      return { nodes: [a, b, c, d], edges: presetChain([a.id, b.id, c.id, d.id]) };
+    },
+  },
+  {
+    id: "kinetic-word",
+    name: "Kinetic word",
+    emoji: "💥",
+    description: "A word that spins in and then cycles through colours — great for punch-ins.",
+    build: () => {
+      const clip = `word-${presetUid()}`;
+      const a = presetAction("add-title", { id: clip, text: "POW!", duration: 3, textSize: 14, fontWeight: 800 }, 0, 0);
+      const b = presetAction("spin-in", { clipId: clip }, 0, 150);
+      const c = presetAction("color-cycle-text", { clipId: clip }, 0, 300);
+      return { nodes: [a, b, c], edges: presetChain([a.id, b.id, c.id]) };
+    },
+  },
+  {
+    id: "zoom-highlight",
+    name: "Zoom highlight",
+    emoji: "🔍",
+    description: "Zooms a clip up to full size and makes it glow. Connect your clip to the Clip fields first.",
+    build: () => {
+      const note: ToolGraphNode = { id: uid(), type: "comment", text: "Connect a clip block to the two Clip fields", position: { x: 0, y: 0 } };
+      const a = presetAction("zoom-in", { clipId: "$clipId", duration: 1.2 }, 0, 130);
+      const b = presetAction("pulse-glow", { clipId: "$clipId" }, 0, 280);
+      return { nodes: [note, a, b], edges: presetChain([a.id, b.id]) };
+    },
+  },
+  {
+    id: "staggered-captions",
+    name: "Typing captions",
+    emoji: "💬",
+    description: "Three captions that type on one after another, half a second apart.",
+    build: () => {
+      const nodes: ToolGraphNode[] = [], edges: ToolGraphEdge[] = [];
+      let prev: string | null = null;
+      for (let i = 0; i < 3; i++) {
+        const clip = `cap-${presetUid()}`;
+        const t = presetAction("add-title", { id: clip, text: `Caption ${i + 1}`, textSize: 5, x: 0.5, y: 0.8, start: `$playhead + ${i} * 0.8`, duration: 3 }, 0, i * 300);
+        const w = presetAction("typewriter", { clipId: clip, duration: 1 }, 260, i * 300);
+        nodes.push(t, w);
+        if (prev) edges.push({ id: uid(), source: prev, sourceHandle: "next", target: t.id, targetHandle: "in" });
+        edges.push({ id: uid(), source: t.id, sourceHandle: "next", target: w.id, targetHandle: "in" });
+        prev = w.id;
+      }
+      return { nodes, edges };
+    },
+  },
+  {
+    id: "end-card",
+    name: "End card",
+    emoji: "👋",
+    description: "A thanks-for-watching title that fades in gently and back out at the end.",
+    build: () => {
+      const clip = `end-${presetUid()}`;
+      const a = presetAction("add-title", { id: clip, text: "Thanks for watching", duration: 4, textSize: 8, y: 0.5 }, 0, 0);
+      const b = presetAction("fade-in-soft", { clipId: clip, duration: 1 }, 0, 150);
+      const c = presetAction("fade-out-soft", { clipId: clip, duration: 1.5 }, 0, 300);
+      return { nodes: [a, b, c], edges: presetChain([a.id, b.id, c.id]) };
+    },
+  },
+];
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Shareable tools: a tool as a compact string kids can pass around. The string
+ * is validated on import and never runs by itself.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+const TOOL_LINK_PREFIX = "VFT1:";
+
+export function encodeTool(tool: CustomTool): string {
+  const slim = { name: tool.name, description: tool.description, mode: tool.mode, graph: tool.graph, code: tool.code };
+  const json = JSON.stringify(slim);
+  const b64 = typeof btoa === "function"
+    ? btoa(unescape(encodeURIComponent(json)))
+    : Buffer.from(json, "utf8").toString("base64");
+  return TOOL_LINK_PREFIX + b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+export function decodeTool(text: string): CustomTool {
+  const raw = text.trim();
+  if (!raw.startsWith(TOOL_LINK_PREFIX)) throw new Error("this is not a VideoForge tool code (they start with VFT1:)");
+  const b64 = raw.slice(TOOL_LINK_PREFIX.length).replace(/-/g, "+").replace(/_/g, "/");
+  let parsed: Partial<CustomTool>;
+  try {
+    const json = typeof atob === "function"
+      ? decodeURIComponent(escape(atob(b64)))
+      : Buffer.from(b64, "base64").toString("utf8");
+    parsed = JSON.parse(json) as Partial<CustomTool>;
+  } catch { throw new Error("this tool code is damaged — copy it again from the Share button"); }
+  if (typeof parsed.name !== "string" || !parsed.name.trim()) throw new Error("the tool code is missing a name");
+  if (parsed.mode !== "blocks" && parsed.mode !== "code") throw new Error("the tool code must be a blocks or code tool");
+  if (parsed.mode === "blocks" && !parsed.graph) throw new Error("the tool code has no blocks");
+  if (parsed.mode === "code" && typeof parsed.code !== "string") throw new Error("the tool code has no code");
+  if (JSON.stringify(parsed).length > 200_000) throw new Error("the tool code is too large");
+  return { id: `tool-${Date.now().toString(36)}`, name: parsed.name.slice(0, 80), description: (parsed.description ?? "").slice(0, 300), mode: parsed.mode, graph: parsed.graph, code: parsed.code };
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Stickers: any clip saved as a reusable building block. A sticker is the clip's
+ * style without its id, so every drop gets a fresh clip.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+export type Sticker = { id: string; name: string; clip: Record<string, unknown> };
+const STICKER_KEY = "vf.stickers.v1";
+
+export function listStickers(storage: { getItem: (k: string) => string | null }): Sticker[] {
+  try {
+    const parsed = JSON.parse(storage.getItem(STICKER_KEY) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((s): s is Sticker => !!s && typeof s === "object" && typeof s.name === "string" && !!s.clip && typeof s.clip === "object") : [];
+  } catch { return []; }
+}
+
+export function saveSticker(storage: { getItem: (k: string) => string | null; setItem: (k: string, v: string) => void }, name: string, clip: Record<string, unknown>): Sticker {
+  const next = listStickers(storage);
+  // A sticker is the clip's look, not its place in time: drop the id and the trim window.
+  const slim = { ...clip };
+  delete slim.id; delete slim.start; delete slim.inPoint; delete slim.outPoint; delete slim.keyframes; delete slim.expressions; delete slim.z;
+  const sticker: Sticker = { id: `st-${Date.now().toString(36)}`, name: name.slice(0, 40) || "Sticker", clip: slim };
+  next.push(sticker);
+  storage.setItem(STICKER_KEY, JSON.stringify(next));
+  return sticker;
+}
+
+export function deleteSticker(storage: { getItem: (k: string) => string | null; setItem: (k: string, v: string) => void }, id: string): void {
+  storage.setItem(STICKER_KEY, JSON.stringify(listStickers(storage).filter((s) => s.id !== id)));
+}
+
+/** A sticker's saved clip as add_clip arguments (the studio drops this as a block). */
+export function stickerArgs(sticker: Sticker): Record<string, unknown> {
+  const duration = typeof sticker.clip.duration === "number" ? sticker.clip.duration : 3;
+  const { duration: _d, ...rest } = sticker.clip;
+  return { ...rest, inPoint: 0, outPoint: duration };
+}
+
 /** Build a context from a live timeline. */
 export function toolContext(timeline: { clips: Clip[]; resolution: { width: number; height: number }; fps?: number }, playhead: number, selection: string[], duration: number): ToolContext {
   const clips = timeline.clips
-    .map((c) => ({ id: c.id, kind: (c.track === "audio" ? "audio" : c.shape ? "shape" : c.assetId ? "media" : "text") as "text" | "shape" | "media" | "audio", start: c.start, duration: (c.outPoint - c.inPoint) / (c.speed ?? 1), label: c.label ?? c.text?.slice(0, 40), color: c.shape ? c.shape.fill : c.assetId ? undefined : (c.textColor ?? "#ffffff").toLowerCase(), text: c.text }));
+    .map((c) => ({ id: c.id, kind: (c.track === "audio" ? "audio" : c.shape ? "shape" : c.assetId ? "media" : "text") as "text" | "shape" | "media" | "audio", start: c.start, duration: (c.outPoint - c.inPoint) / (c.speed ?? 1), label: c.label ?? c.text?.slice(0, 40), color: c.shape ? c.shape.fill : c.assetId ? undefined : (c.textColor ?? "#ffffff").toLowerCase(), text: c.text, raw: c }));
   return { playhead, duration, selection: [...selection], clips, resolution: { ...timeline.resolution }, fps: timeline.fps ?? 30 };
 }
 

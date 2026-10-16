@@ -197,6 +197,9 @@
 .tool-card-actions .primary-btn { padding:4px 10px; font-size:12px; }
 .tool-add-row { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; }
 .tool-add-row .primary-btn { flex:1; min-width:150px; }
+.tool-import-row { display:flex; gap:8px; margin:4px 0 8px; }
+.tool-import-input { flex:1; min-width:0; background: rgba(255,255,255,.05); border:1px solid var(--border, #37455e); border-radius:8px; padding:7px 10px; color:var(--text, #dbe4f0); font-size:12px; }
+.tool-import-row .chip { white-space:nowrap; }
 .tool-block { border:1px solid var(--border,#2a2d33); border-radius:8px; padding:8px; margin:6px 0; }
 .tool-block-head { display:flex; align-items:center; gap:6px; justify-content:space-between; }
 .tool-block-head select { flex:1; min-width:0; }
@@ -254,6 +257,25 @@
 .bs-dot-cat-values { background: #b0568f; }
 .bs-palette { width: 235px; overflow-y: auto; background: #14161a; border-right: 1px solid #26292f; padding: 12px; }
 .bs-palette-title { color: #c8cdd4; font-size: 12px; margin: 2px 0 10px; }
+.bs-search { width: 100%; background: #141a24; border: 1px solid #37455e; border-radius: 8px; padding: 6px 10px; color: #dbe4f0; font-size: 12px; margin-bottom: 10px; outline: none; }
+.bs-search:focus { border-color: #4a8fd6; }
+.bs-chip-group { display: inline-block; font-size: 9px; text-transform: uppercase; letter-spacing: .06em; color: #7f8896; margin-right: 6px; }
+.bs-chip-sticker { border-style: dashed; }
+
+/* Presets: example recipes of connected blocks. */
+.bs-presets { position: absolute; top: 58px; right: 16px; width: 320px; max-height: min(480px, calc(100% - 80px)); overflow: auto; background: #141a24; border: 1px solid #37455e; border-radius: 14px; padding: 14px; z-index: 40; box-shadow: 0 18px 50px rgba(0,0,0,.45); }
+.bs-presets-head { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; margin-bottom: 10px; }
+.bs-presets-head h3 { margin: 0; font-size: 15px; color: #eef2f7; }
+.bs-presets-head p { flex-basis: 100%; margin: 0; color: #9aa0a8; font-size: 11.5px; line-height: 1.45; }
+.bs-presets-head .bs-notice-close { margin-left: auto; }
+.bs-presets-list { display: flex; flex-direction: column; gap: 8px; }
+.bs-preset-card { display: grid; grid-template-columns: 30px 1fr; grid-template-rows: auto auto; column-gap: 10px; text-align: left; background: #1b2433; border: 1px solid #37455e; border-radius: 10px; padding: 10px 12px; cursor: pointer; color: #dbe4f0; }
+.bs-preset-card:hover { border-color: #4a8fd6; }
+.bs-preset-card:disabled { opacity: .5; cursor: default; }
+.bs-preset-emoji { grid-row: span 2; font-size: 20px; }
+.bs-preset-card b { font-size: 13px; }
+.bs-preset-desc { grid-column: 2; color: #9aa0a8; font-size: 11.5px; line-height: 1.45; }
+.bs-btn-presets { border-color: #7d5bb5; }
 .bs-palette-group { margin-bottom: 14px; }
 .bs-palette-group h4 { color: #9aa0a8; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; margin: 0 0 6px; }
 .bs-chip { background: #263043; color: #dbe4f0; border: 1px solid #37455e; border-radius: 8px; padding: 7px 10px; margin-bottom: 5px; cursor: grab; font-size: 13px; user-select: none; }

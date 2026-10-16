@@ -13,6 +13,81 @@ import { animationExpression, baseValue, isAnimated, valueAt, type AnimationProp
 
 const f = (n: number) => Number(n.toFixed(3));
 
+// Speed steps as play/hold segments: consecutive same-speed steps merge, and
+// freezes (speed 0) become holds of the frame before them.
+type PlaySeg = { kind: "play"; speed: number; duration: number; srcFrom: number };
+type HoldSeg = { kind: "hold"; duration: number };
+function rampSegs(c: Clip): Array<PlaySeg | HoldSeg> {
+  const steps = c.speedRamp ?? [];
+  const segs: Array<PlaySeg | HoldSeg> = [];
+  let src = c.inPoint, i = 0;
+  while (i < steps.length) {
+    if (steps[i].speed === 0) {
+      let d = 0;
+      while (i < steps.length && steps[i].speed === 0) d += steps[i++].duration;
+      segs.push({ kind: "hold", duration: d });
+      continue;
+    }
+    const v = steps[i].speed; let d = 0;
+    while (i < steps.length && steps[i].speed === v) d += steps[i++].duration;
+    segs.push({ kind: "play", speed: v, duration: d, srcFrom: src });
+    src += v * d;
+  }
+  return segs;
+}
+
+/** Video: each play segment trims its source window and retimes it; a hold pads
+ *  the segment before it with its last frame (or pre-pads the first). Returns
+ *  filter lines ending in [segv], ready for the clip's normal chain. */
+function rampVideoEntry(c: Clip, idx: number): string {
+  const segs = rampSegs(c);
+  const plays = segs.filter((s): s is PlaySeg => s.kind === "play");
+  const lines: string[] = [];
+  if (plays.length > 1) lines.push(`[${idx}:v]split=${plays.length}${plays.map((_, k) => `[r${k}]`).join("")}`);
+  else lines.push(`[${idx}:v]null[r0]`);
+  let si = 0, pre = 0;
+  while (si < segs.length && segs[si].kind === "hold") { pre += segs[si].duration; si++; }
+  for (let k = 0; k < plays.length; k++) {
+    const p = plays[k];
+    si++; // past this play
+    let post = 0;
+    while (si < segs.length && segs[si].kind === "hold") { post += segs[si].duration; si++; }
+    let line = `trim=start=${f(p.srcFrom)}:end=${f(p.srcFrom + p.speed * p.duration)},setpts=(PTS-STARTPTS)/${f(p.speed)}`;
+    if (pre > 0) { line = `tpad=start_mode=clone:start_duration=${f(pre)},${line}`; pre = 0; }
+    if (post > 0) line += `,tpad=stop_mode=clone:stop_duration=${f(post)}`;
+    lines.push(`[r${k}]${line}[s${k}]`);
+  }
+  if (plays.length > 1) lines.push(`${plays.map((_, k) => `[s${k}]`).join("")}concat=n=${plays.length}:v=1:a=0[segv]`);
+  else lines.push(`[s0]null[segv]`);
+  return `${lines.join(";")};[segv]`;
+}
+
+/** Audio: play segments trim and tempo-shift; a hold is silence of the same length. */
+function rampAudioEntry(c: Clip, idx: number): string {
+  const segs = rampSegs(c);
+  const plays = segs.filter((s): s is PlaySeg => s.kind === "play");
+  const fmt = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo";
+  const lines: string[] = [];
+  const parts: string[] = [];
+  if (plays.length > 1) lines.push(`[${idx}:a]asplit=${plays.length}${plays.map((_, k) => `[ar${k}]`).join("")}`);
+  else lines.push(`[${idx}:a]anull[ar0]`);
+  let si = 0, pre = 0;
+  while (si < segs.length && segs[si].kind === "hold") { pre += segs[si].duration; si++; }
+  for (let k = 0; k < plays.length; k++) {
+    const p = plays[k];
+    if (pre > 0) { lines.push(`anullsrc=r=48000:cl=stereo:d=${f(pre)}[pre${k}]`); parts.push(`[pre${k}]`); pre = 0; }
+    si++;
+    let post = 0;
+    while (si < segs.length && segs[si].kind === "hold") { post += segs[si].duration; si++; }
+    lines.push(`[ar${k}]atrim=start=${f(p.srcFrom)}:end=${f(p.srcFrom + p.speed * p.duration)},asetpts=PTS-STARTPTS,${atempoChain(p.speed)},${fmt}[as${k}]`);
+    parts.push(`[as${k}]`);
+    if (post > 0) { lines.push(`anullsrc=r=48000:cl=stereo:d=${f(post)}[post${k}]`); parts.push(`[post${k}]`); }
+  }
+  if (parts.length > 1) lines.push(`${parts.join("")}concat=n=${parts.length}:v=0:a=1[sega]`);
+  else lines.push(`${parts[0]}anull[sega]`);
+  return `${lines.join(";")};[sega]`;
+}
+
 function atempoChain(speed: number): string {
   // atempo accepts 0.5..2 per instance
   const parts: string[] = [];
@@ -122,11 +197,13 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     if (a.kind === "image") inputs.push("-loop", "1", "-framerate", String(fps), "-t", String(f(dur)), "-i", path.join(mediaDir, a.id));
     else inputs.push("-i", path.join(mediaDir, a.id));
     const chain: string[] = [];
-    if (a.kind === "video") {
-      chain.push(`trim=start=${f(c.inPoint)}:end=${f(c.outPoint)}`);
-      chain.push(`setpts=(PTS-STARTPTS)/${f(clipSpeed(c))}`);
+    let entry: string;
+    if (a.kind === "video" && c.speedRamp?.length) {
+      entry = rampVideoEntry(c, idx);
+    } else if (a.kind === "video") {
+      entry = `[${idx}:v]trim=start=${f(c.inPoint)}:end=${f(c.outPoint)},setpts=(PTS-STARTPTS)/${f(clipSpeed(c))}`;
     } else {
-      chain.push(`trim=duration=${f(dur)}`, "setpts=PTS-STARTPTS");
+      entry = `[${idx}:v]trim=duration=${f(dur)},setpts=PTS-STARTPTS`;
     }
     chain.push(`fps=${fps}`);
     chain.push(...colorFilters(c));
@@ -138,7 +215,7 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
       chain.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*(${alpha})'`); }
 
     chain.push(`setpts=PTS+${f(c.start)}/TB`);
-    filters.push(`[${idx}:v]${chain.join(",")}[cv${layer}]`);
+    filters.push(`${entry}${chain.length ? "," + chain.join(",") : ""}[cv${layer}]`);
     const next = `base${layer + 1}`;
     const x = `main_w*(${animationExpression(c,"x",`(t-${f(c.start)})`)})-overlay_w/2`;
     const y = `main_h*(${animationExpression(c,"y",`(t-${f(c.start)})`)})-overlay_h/2`;
@@ -160,11 +237,13 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     if (a.kind === "image") inputs.push("-loop", "1", "-framerate", String(fps), "-t", String(f(dur)), "-i", path.join(mediaDir, a.id));
     else inputs.push("-i", path.join(mediaDir, a.id));
     const chain: string[] = [];
-    if (a.kind === "video") {
-      chain.push(`trim=start=${f(c.inPoint)}:end=${f(c.outPoint)}`);
-      chain.push(`setpts=(PTS-STARTPTS)/${f(clipSpeed(c))}`);
+    let entry: string;
+    if (a.kind === "video" && c.speedRamp?.length) {
+      entry = rampVideoEntry(c, idx);
+    } else if (a.kind === "video") {
+      entry = `[${idx}:v]trim=start=${f(c.inPoint)}:end=${f(c.outPoint)},setpts=(PTS-STARTPTS)/${f(clipSpeed(c))}`;
     } else {
-      chain.push(`trim=duration=${f(dur)}`, "setpts=PTS-STARTPTS");
+      entry = `[${idx}:v]trim=duration=${f(dur)},setpts=PTS-STARTPTS`;
     }
     chain.push(`fps=${fps}`);
     chain.push(...colorFilters(c));
@@ -176,7 +255,7 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
       chain.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*(${alpha})'`); }
 
     chain.push(`setpts=PTS+${f(c.start)}/TB`);
-    filters.push(`[${idx}:v]${chain.join(",")}[cv${layer}]`);
+    filters.push(`${entry}${chain.length ? "," + chain.join(",") : ""}[cv${layer}]`);
     const next = `base${layer + 1}`;
     const x = `main_w*(${animationExpression(c,"x",`(t-${f(c.start)})`)})-overlay_w/2`;
     const y = `main_h*(${animationExpression(c,"y",`(t-${f(c.start)})`)})-overlay_h/2`;
@@ -364,9 +443,15 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
   audioSources.forEach(({ c, a }, i) => {
     let idx = videoInputIndex.get(c);
     if (idx === undefined) { idx = inputCount++; inputs.push("-i", path.join(mediaDir, a.id)); }
-    const chain = [`atrim=start=${f(c.inPoint)}:end=${f(c.outPoint)}`, "asetpts=PTS-STARTPTS"];
-    const tempo = atempoChain(clipSpeed(c));
-    if (tempo) chain.push(tempo);
+    const chain: string[] = [];
+    let entry: string;
+    if (c.speedRamp?.length) {
+      entry = rampAudioEntry(c, idx);
+    } else {
+      entry = `[${idx}:a]atrim=start=${f(c.inPoint)}:end=${f(c.outPoint)},asetpts=PTS-STARTPTS`;
+      const tempo = atempoChain(clipSpeed(c));
+      if (tempo) chain.push(tempo);
+    }
     chain.push("aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo");
     chain.push(`volume='${animationExpression(c,"volume")}':eval=frame`);
     const dur = clipDuration(c);
@@ -377,7 +462,7 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     if ((c.fadeOut ?? 0) > 0) chain.push(`afade=t=out:st=${f(Math.max(0, dur - c.fadeOut!))}:d=${f(Math.min(c.fadeOut!, dur))}`);
     const ms = Math.round(c.start * 1000);
     if (ms > 0) chain.push(`adelay=${ms}|${ms}`);
-    filters.push(`[${idx}:a]${chain.join(",")}[ca${i}]`);
+    filters.push(`${entry}${chain.length ? "," + chain.join(",") : ""}[ca${i}]`);
     audioLabels.push(`[ca${i}]`);
   });
   const maps = ["-map", "[vout]"];
