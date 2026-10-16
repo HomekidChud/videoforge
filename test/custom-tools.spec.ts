@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
-import { compileBlocks, runCodeTool, runTool, normalizeOps, loadUserTools, saveUserTools, toolContext, BUILT_IN_TOOLS, OP_PARAMS, validateGraph, compileGraph, blocksToGraph, graphToCode, codeErrorLine, VF_HELPERS, TEMPLATE_DOCS, BLOCK_LIBRARY, BLOCK_GROUPS, convertOpArgs } from "../shared/custom-tools";
+import { tmpdir } from "node:os";
+import { compileBlocks, runCodeTool, runTool, normalizeOps, loadUserTools, saveUserTools, toolContext, BUILT_IN_TOOLS, OP_PARAMS, validateGraph, compileGraph, blocksToGraph, graphToCode, codeErrorLine, VF_HELPERS, TEMPLATE_DOCS, BLOCK_LIBRARY, BLOCK_GROUPS, convertOpArgs, selectCtxClips } from "../shared/custom-tools";
 import { MOTION_PRESETS } from "../shared/presets";
 import { normalizeTimeline } from "../shared/timeline";
 import { applyTimelineOp } from "../shared/editing";
+import { buildRenderPlan } from "../server/render";
 
 let checks = 0;
 async function check(label: string, fn: () => void | Promise<void>) { await fn(); checks++; }
@@ -301,7 +303,7 @@ await check("block limit", async () => {
   assert.equal(ok.length, 50);
 });
 
-console.log(`custom-tools.spec: ${checks} checks passed`);
+
 
 // ── Graph studio engine ──────────────────────────────────────────
 const G = (nodes: any[], edges: any[]) => ({ nodes, edges });
@@ -469,7 +471,7 @@ const ectx = {
 };
 
 await check("edit blocks in the palette", async () => {
-  const ids = ["edit-move", "edit-scale", "edit-rotate", "edit-flip", "edit-mirror", "edit-align", "edit-snap", "edit-crop", "edit-opacity", "edit-filter", "edit-brightness", "edit-contrast", "edit-saturation", "edit-blur", "edit-speed", "edit-duration", "edit-volume", "edit-mute", "edit-fade-in-sound", "edit-fade-out-sound", "edit-track", "edit-front", "edit-back", "edit-copy-offset", "edit-replace-text"];
+  const ids = ["edit-move", "edit-scale", "edit-rotate", "edit-flip", "edit-mirror", "edit-align", "edit-snap", "edit-crop", "edit-opacity", "edit-filter", "edit-brightness", "edit-contrast", "edit-saturation", "edit-blur", "edit-speed", "edit-duration", "edit-volume", "edit-mute", "edit-fade-in-sound", "edit-fade-out-sound", "edit-track", "edit-front", "edit-back", "edit-layer-up", "edit-layer-down", "edit-copy-offset", "edit-replace-text"];
   for (const id of ids) {
     const block = BLOCK_LIBRARY.find((b) => b.id === id);
     assert.ok(block, `${id} is in the library`);
@@ -490,7 +492,7 @@ await check("edit blocks compile, coerce and convert identically", async () => {
       { id: "align", type: "action", block: "edit-align", args: { clipIds: "a,b", mode: "distribute-h" } },
       { id: "snap", type: "action", block: "edit-snap", args: { clipIds: "$selection", grid: "0.25" } },
       { id: "copy", type: "action", block: "edit-copy-offset", args: { clipId: "a", dx: "0.05", dy: "0" } },
-      { id: "track", type: "action", block: "edit-back", args: { clipId: "a", track: "video" } },
+      { id: "track", type: "action", block: "edit-back", args: { clipId: "a", direction: "back" } },
     ],
     edges: [
       { id: "e1", source: "start", sourceHandle: "next", target: "bright", targetHandle: "in" },
@@ -507,7 +509,7 @@ await check("edit blocks compile, coerce and convert identically", async () => {
   assert.deepEqual(ops[2].args, { clipIds: ["a", "b"], mode: "distribute-h" }, "clip id lists become arrays");
   assert.deepEqual(ops[3].args, { clipIds: ["a", "b"], grid: 0.25 });
   assert.deepEqual(ops[4].args, { clipId: "a", dx: 0.05, dy: 0 });
-  assert.deepEqual(ops[5].args, { clipId: "a", track: "video" });
+  assert.deepEqual(ops[5].args, { clipId: "a", direction: "back" });
   // The converted code produces the exact same operations.
   const code = graphToCode(graph);
   assert.ok(code.includes("vf.update"), "direct fields use vf.update");
@@ -550,7 +552,7 @@ await check("edit ops apply to a timeline", async () => {
   assert.deepEqual(spread.clips.map((c) => c.x ?? 0.5), [0.25, 0.5, 0.75]); // 0.5 is the default position
   // Align left lines them up on the leftmost clip.
   const left = apply({ op: "align_clips", args: { clipIds: ["t1", "t2", "t3"], mode: "left" } });
-  assert.deepEqual(left.clips.map((c) => c.x ?? 0.5), [0.11, 0.11, 0.11]);
+  assert.deepEqual(left.clips.map((c) => c.x ?? 0.5), [0.25, 0.25, 0.25]); // fixed frame position
   // Snap to grid rounds positions.
   const snapped = apply({ op: "snap_to_grid", args: { clipIds: ["t1", "t2", "t3"], grid: 0.25 } });
   assert.deepEqual(snapped.clips.map((c) => c.x ?? 0.5), [0, 0.75, 0.5]);
@@ -570,4 +572,146 @@ await check("edit ops apply to a timeline", async () => {
   assert.throws(() => apply({ op: "snap_to_grid", args: { clipIds: ["t1"], grid: 9 } }), /grid must be/);
 });
 
+await check("layering, crop and motion easing", async () => {
+  // True stacking order: z decides who draws on top within a track.
+  const tl = normalizeTimeline({ fps: 30, resolution: { width: 1280, height: 720 }, clips: [
+    { id: "t1", assetId: "", track: "overlay", text: "One", start: 0, outPoint: 3, volume: 1, muted: false },
+    { id: "t2", assetId: "", track: "overlay", text: "Two", start: 0, outPoint: 3, volume: 1, muted: false },
+  ] });
+  const paintOrder = (t: any) => t.clips.filter((c: any) => c.track === "overlay").sort((a: any, b: any) => ((a.z ?? 0) - (b.z ?? 0)) || (a.start - b.start)).map((c: any) => c.id);
+  const front = applyTimelineOp(tl, { op: "move_layer", args: { clipId: "t1", direction: "front" } }, () => undefined);
+  assert.deepEqual(paintOrder(front), ["t2", "t1"], "front puts the clip on top of its track");
+  const down = applyTimelineOp(tl, { op: "move_layer", args: { clipId: "t2", direction: "back" } }, () => undefined);
+  assert.deepEqual(paintOrder(down), ["t2", "t1"], "back puts the clip at the bottom of its track");
+  assert.throws(() => applyTimelineOp(tl, { op: "move_layer", args: { clipId: "nope", direction: "front" } }, () => undefined), /not found/);
+
+  // One step swaps with exactly the next clip in paint order — even when ranks
+  // are far apart, or when ties would make numeric steps ambiguous.
+  const gap = normalizeTimeline({ fps: 30, resolution: { width: 1280, height: 720 }, clips: [
+    { id: "a", assetId: "", track: "overlay", text: "A", start: 0, outPoint: 3, volume: 1, muted: false, z: 0 },
+    { id: "b", assetId: "", track: "overlay", text: "B", start: 0, outPoint: 3, volume: 1, muted: false, z: 3 },
+  ] });
+  const fwd = applyTimelineOp(gap, { op: "move_layer", args: { clipId: "a", direction: "forward" } }, () => undefined);
+  assert.deepEqual(paintOrder(fwd), ["b", "a"], "forward swaps past the next clip up, whatever the ranks");
+  const back = applyTimelineOp(fwd, { op: "move_layer", args: { clipId: "a", direction: "backward" } }, () => undefined);
+  assert.deepEqual(paintOrder(back), ["a", "b"], "backward swaps past the next clip down");
+
+  // Tied ranks: three clips at z=0 — one step forward moves past exactly one.
+  const tie = normalizeTimeline({ fps: 30, resolution: { width: 1280, height: 720 }, clips: [
+    { id: "x", assetId: "", track: "overlay", text: "X", start: 0, outPoint: 3, volume: 1, muted: false },
+    { id: "y", assetId: "", track: "overlay", text: "Y", start: 0, outPoint: 3, volume: 1, muted: false },
+    { id: "z", assetId: "", track: "overlay", text: "Z", start: 0, outPoint: 3, volume: 1, muted: false },
+  ] });
+  const tied = applyTimelineOp(tie, { op: "move_layer", args: { clipId: "x", direction: "forward" } }, () => undefined);
+  assert.deepEqual(paintOrder(tied), ["y", "x", "z"], "one step forward passes exactly one tied clip");
+  const topEdge = applyTimelineOp(tie, { op: "move_layer", args: { clipId: "z", direction: "forward" } }, () => undefined);
+  assert.deepEqual(paintOrder(topEdge), ["x", "y", "z"], "forward at the top changes nothing");
+  // Text and shapes cannot hide on the video track, below the footage.
+  assert.throws(() => applyTimelineOp(tl, { op: "move_clip", args: { clipId: "t1", track: "video" } }, () => undefined), /overlay track/);
+
+  // The crop block expands its four trims into the crop box.
+  const cropOps = compileGraph(G([
+    { id: "s", type: "start", position: pos },
+    { id: "c", type: "action", block: "edit-crop", args: { clipId: "m", __crop: true, trimLeft: "0.1", trimRight: 0, trimTop: 0, trimBottom: "0.2" }, position: pos },
+  ], [e("s", "next", "c", "in")]), ectx);
+  assert.deepEqual(cropOps[0].args.crop, { x: 0.1, y: 0, w: 0.9, h: 0.8 });
+  const cropCode = graphToCode(G([
+    { id: "s", type: "start", position: pos },
+    { id: "c", type: "action", block: "edit-crop", args: { clipId: "m", __crop: true, trimLeft: "0.1", trimRight: 0, trimTop: 0, trimBottom: "0.2" }, position: pos },
+  ], [e("s", "next", "c", "in")]));
+  assert.deepEqual(runCodeTool(cropCode, ectx), cropOps, "crop blocks convert to identical code");
+  // And the op applies to a media clip.
+  const mtl = normalizeTimeline({ fps: 30, resolution: { width: 1280, height: 720 }, clips: [
+    { id: "m", assetId: "vid", track: "video", start: 0, outPoint: 3, volume: 1, muted: false },
+  ] });
+  const cropped = cropOps.reduce((t, op) => applyTimelineOp(t, op, () => undefined), mtl);
+  assert.deepEqual(cropped.clips[0].crop, { x: 0.1, y: 0, w: 0.9, h: 0.8 });
+  // Text and shapes cannot be cropped — a readable error, nothing breaks.
+  const ttl = normalizeTimeline({ fps: 30, resolution: { width: 1280, height: 720 }, clips: [{ id: "t", assetId: "", track: "overlay", text: "Hi", start: 0, outPoint: 3, volume: 1, muted: false }] });
+  assert.throws(() => applyTimelineOp(ttl, { op: "update_clip", args: { clipId: "t", crop: { x: 0, y: 0, w: 0.5, h: 0.5 } } }, () => undefined), /picture and video/);
+
+  // Motion presets accept an easing that replaces the curves' own.
+  const eased = applyTimelineOp(tl, { op: "apply_motion", args: { clipId: "t1", preset: "fade", easing: "back-out" } }, () => undefined);
+  const easedKeys = Object.values(eased.clips.find((c) => c.id === "t1")?.keyframes ?? {});
+  assert.ok(easedKeys.length > 0 && easedKeys.every((frames) => (frames as { easing?: string }[]).every((k) => k.easing === undefined || k.easing === "back-out")), "the easing replaces the preset's own");
+  // "preset" leaves the curves untouched.
+  const own = applyTimelineOp(tl, { op: "apply_motion", args: { clipId: "t1", preset: "fade", easing: "preset" } }, () => undefined);
+  const ownKeys = Object.values(own.clips.find((c) => c.id === "t1")?.keyframes ?? {});
+  assert.ok(ownKeys.length > 0 && ownKeys.some((frames) => (frames as { easing?: string }[]).some((k) => k.easing === "ease-out")), "preset keeps the built-in easing");
+
+  // An opacity-only fade with an easing must not touch an existing x animation
+  // or the x expression driving it — the preset owns only what it animates.
+  const driven = normalizeTimeline({ fps: 30, resolution: { width: 1280, height: 720 }, clips: [
+    { id: "d", assetId: "", track: "overlay", text: "D", start: 0, outPoint: 3, volume: 1, muted: false,
+      keyframes: { x: [{ time: 0, value: 0.2, easing: "linear" }, { time: 1, value: 0.8, easing: "linear" }] },
+      expressions: { x: "0.5+0.1*sin(t*2)" } },
+  ] });
+  const faded = applyTimelineOp(driven, { op: "apply_motion", args: { clipId: "d", preset: "fade", easing: "back-out" } }, () => undefined);
+  const dc = faded.clips.find((c) => c.id === "d");
+  assert.deepEqual(dc?.keyframes?.x, [{ time: 0, value: 0.2, easing: "linear" }, { time: 1, value: 0.8, easing: "linear" }], "the x keyframes survive the fade");
+  assert.equal(dc?.expressions?.x, "0.5+0.1*sin(t*2)", "the x expression survives the fade");
+  assert.ok((dc?.keyframes?.opacity ?? []).every((k) => k.easing === undefined || k.easing === "back-out"), "the fade's own curves take the easing");
+});
+
+await check("friendly fields validate live", async () => {
+  const node = (args: Record<string, unknown>) => G([
+    { id: "s", type: "start", position: pos },
+    { id: "b", type: "action", block: "edit-brightness", args, position: pos },
+  ], [e("s", "next", "b", "in")]);
+  assert.ok(validateGraph(node({ clipId: "a", brightness: "abc" }), ectx).some((i) => i.level === "error" && /must be a number/.test(i.message)), "non-numeric brightness is flagged");
+  assert.ok(validateGraph(node({ clipId: "a", brightness: "5" }), ectx).some((i) => i.level === "error" && /between -0.5 and 0.5/.test(i.message)), "out-of-range brightness is flagged");
+  assert.equal(validateGraph(node({ clipId: "a", brightness: "0.2" }), ectx).filter((i) => i.level === "error").length, 0, "in-range brightness is clean");
+  assert.ok(validateGraph(node({ clipId: "a", brightness: "$playhead" }), ectx).filter((i) => i.level === "error").length === 0, "templates are left alone");
+});
+
+await check("colour filters skip media, audio clips are walkable", async () => {
+  // Media clips have no colour, so a white filter must not catch them.
+  assert.equal(selectCtxClips("colour:#ffffff", ectx).length, 0, "media clips carry no colour");
+  // Audio clips appear in the context and for-each can walk them.
+  const atl = normalizeTimeline({ fps: 30, resolution: { width: 1280, height: 720 }, clips: [
+    { id: "snd", assetId: "snd", track: "audio", start: 0, outPoint: 3, volume: 1, muted: false },
+    { id: "t", assetId: "", track: "overlay", text: "Hi", start: 0, outPoint: 3, volume: 1, muted: false },
+  ] });
+  const actx = toolContext(atl, 0, [], 3);
+  assert.deepEqual(actx.clips.map((c) => c.kind), ["audio", "text"], "audio clips are included");
+  const vol = compileBlocks([{ kind: "eachClip", select: "audio", blocks: [{ kind: "op", op: "update_clip", args: { clipId: "$clipId", volume: 0.5 } }] }], actx);
+  assert.deepEqual(vol.map((o) => o.args.clipId), ["snd"], "for-each audio changes the sound clip");
+  // An empty selection resolves to an empty list — and the converted code agrees.
+  const emptyCtx = { ...ectx, selection: [] };
+  const ops = compileGraph(G([
+    { id: "s", type: "start", position: pos },
+    { id: "a", type: "action", block: "edit-align", args: { clipIds: "$selection", mode: "center" }, position: pos },
+  ], [e("s", "next", "a", "in")]), emptyCtx);
+  assert.deepEqual(ops[0].args.clipIds, []);
+  assert.deepEqual(runCodeTool(graphToCode(G([
+    { id: "s", type: "start", position: pos },
+    { id: "a", type: "action", block: "edit-align", args: { clipIds: "$selection", mode: "center" }, position: pos },
+  ], [e("s", "next", "a", "in")])), emptyCtx), ops, "empty selections match between blocks and code");
+});
+
+console.log(`custom-tools.spec: ${checks} checks passed`);
+
+await check("renderer stacks overlay visuals by z across types", async () => {
+  // Mixed overlay visuals: a picture (z 0), a shape (z 5) and text (z -5).
+  // One stacking order must run across all three kinds: text, then picture, then shape.
+  const tl = normalizeTimeline({ fps: 30, resolution: { width: 1280, height: 720 }, clips: [
+    { id: "vid", assetId: "v", track: "video", x: 0.5, y: 0.5, start: 0, outPoint: 4, crop: { x: 0.1, y: 0, w: 0.9, h: 0.8 } },
+    { id: "pic", assetId: "i", track: "overlay", x: 0.3, y: 0.3, start: 0, outPoint: 4 },
+    { id: "shp", track: "overlay", x: 0.5, y: 0.5, start: 0, outPoint: 4, z: 5, shape: { type: "rectangle", width: 0.2, height: 0.1, fill: "#ff0000" } },
+    { id: "txt", track: "overlay", x: 0.5, y: 0.2, start: 0, outPoint: 4, z: -5, text: "Hi" },
+  ] });
+  const assets = new Map<any, any>([
+    ["v", { id: "v", kind: "video", filename: "v.mp4", width: 1920, height: 1080, duration: 5 }],
+    ["i", { id: "i", kind: "image", filename: "i.png", width: 800, height: 600, duration: 0 }],
+  ]);
+  const dir = await import("node:fs/promises").then((fs) => fs.mkdtemp(tmpdir() + "/vf-test-"));
+  const plan = buildRenderPlan(tl, assets, dir, dir, "t", dir + "/out.mp4");
+  const order: string[] = [];
+  const re = /\[base\d+\]\[(cv|ct|cg)\d+\]overlay=/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(plan.filter))) order.push(m[1]);
+  assert.deepEqual(order, ["cv", "ct", "cv", "cg"], "overlay visuals stack by z across media, shapes and text");
+  // The crop keeps the layer box: cut, then padded back at its original offset.
+  assert.match(plan.filter, /crop=\d+:\d+:\d+:\d+,pad=1280:720:\d+:\d+:color=black@0/, "crop is padded back into the layer box");
+});
 console.log(`custom-tools.spec: ${checks} checks passed`);

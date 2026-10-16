@@ -51,6 +51,13 @@ function transformFilters(c:Clip, width:number, height:number, dur:number, text=
     chain.push(c.fit==="fill" ? `scale=${width}:${height}` : `scale=${width}:${height}:force_original_aspect_ratio=${c.fit==="cover"?"increase":"decrease"}`);
     if(c.fit==="cover") chain.push(`crop=${width}:${height}`);
     chain.push("format=yuva420p",`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black@0`);
+    // Spatial crop: fractions of the padded layer box to keep, matching the preview's
+    // inset — the layer keeps its box, with transparent padding where pixels were cut.
+    if(c.crop){
+      const even=(n:number)=>Math.round(n/2)*2;
+      const cw=even(width*c.crop.w),chh=even(height*c.crop.h),x0=even(width*c.crop.x),y0=even(height*c.crop.y);
+      chain.push(`crop=${cw}:${chh}:${x0}:${y0}`,`pad=${width}:${height}:${x0}:${y0}:color=black@0`);
+    }
   }
   // Wipe reveal: a left-to-right alpha mask on the unscaled layer, so it follows later scale/rotation.
   if(isAnimated(c,"reveal")||(c.reveal??1)<1) chain.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*lt(X,W*(${animationExpression(c,"reveal","T")}))'`);
@@ -89,7 +96,7 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     .filter((c) => c.assetId && c.track !== "audio" && !tl.tracks?.[c.track]?.hidden)
     .map((c) => ({ c, a: assets.get(c.assetId) }))
     .filter((x): x is { c: Clip; a: Asset } => !!x.a && (x.a.kind === "video" || x.a.kind === "image"))
-    .sort((p, q) => (p.c.track === q.c.track ? p.c.start - q.c.start : p.c.track === "video" ? -1 : 1));
+    .sort((p, q) => (p.c.track === q.c.track ? ((p.c.z ?? 0) - (q.c.z ?? 0)) || (p.c.start - q.c.start) : p.c.track === "video" ? -1 : 1));
 
   const audioSources: { c: Clip; a: Asset }[] = tl.clips
     .filter((c) => c.assetId && !c.muted && !tl.tracks?.[c.track]?.muted && (c.volume > 0 || isAnimated(c,"volume")))
@@ -108,7 +115,7 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
   let layer = 0;
   const videoInputIndex = new Map<Clip, number>();
 
-  for (const { c, a } of visual) {
+  for (const { c, a } of visual.filter((v) => v.c.track !== "overlay")) {
     const idx = inputCount++;
     videoInputIndex.set(c, idx);
     const dur = clipDuration(c);
@@ -140,9 +147,50 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     layer++;
   }
 
+  // Overlay visuals — overlay-track media, shapes and text — share one stacking
+  // order: z first (higher draws on top), then start. Video-track footage stays
+  // beneath every overlay visual.
+  const overlayEmitters: Array<{ z: number; start: number; emit: () => void }> = [];
+
+  for (const { c, a } of visual.filter((v) => v.c.track === "overlay")) {
+    overlayEmitters.push({ z: c.z ?? 0, start: c.start, emit: () => {
+    const idx = inputCount++;
+    videoInputIndex.set(c, idx);
+    const dur = clipDuration(c);
+    if (a.kind === "image") inputs.push("-loop", "1", "-framerate", String(fps), "-t", String(f(dur)), "-i", path.join(mediaDir, a.id));
+    else inputs.push("-i", path.join(mediaDir, a.id));
+    const chain: string[] = [];
+    if (a.kind === "video") {
+      chain.push(`trim=start=${f(c.inPoint)}:end=${f(c.outPoint)}`);
+      chain.push(`setpts=(PTS-STARTPTS)/${f(clipSpeed(c))}`);
+    } else {
+      chain.push(`trim=duration=${f(dur)}`, "setpts=PTS-STARTPTS");
+    }
+    chain.push(`fps=${fps}`);
+    chain.push(...colorFilters(c));
+    const aspect = a.width && a.height ? a.width/a.height : W/H;
+    const width=c.track==="overlay" ? W : W, height=c.track==="overlay" ? Math.max(2,Math.round(W/aspect/2)*2) : H;
+    chain.push(...transformFilters(c,width,height,dur));
+    const tr = incomingTransition(tl,c);
+    if(tr) { const p=`min(1,max(0,T/${f(tr.duration)}))`, alpha=({dissolve:p,'wipe-left':`lte(X,W*(${p}))`,'wipe-right':`gte(X,W*(1-(${p})))`,'wipe-up':`gte(Y,H*(1-(${p})))`,'wipe-down':`lte(Y,H*(${p}))`,iris:`lte(hypot(X-W/2,Y-H/2),hypot(W/2,H/2)*(${p}))`,'barn-h':`lte(abs(X-W/2),W/2*(${p}))`,'barn-v':`lte(abs(Y-H/2),H/2*(${p}))`,diamond:`lte(abs(X-W/2)/W+abs(Y-H/2)/H,${p})`,'wipe-diagonal':`lte(X/W+Y/H,2*(${p}))`} as Record<string,string>)[tr.type];
+      chain.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*(${alpha})'`); }
+
+    chain.push(`setpts=PTS+${f(c.start)}/TB`);
+    filters.push(`[${idx}:v]${chain.join(",")}[cv${layer}]`);
+    const next = `base${layer + 1}`;
+    const x = `main_w*(${animationExpression(c,"x",`(t-${f(c.start)})`)})-overlay_w/2`;
+    const y = `main_h*(${animationExpression(c,"y",`(t-${f(c.start)})`)})-overlay_h/2`;
+    filters.push(`[${current}][cv${layer}]overlay=x='${x}':y='${y}':eof_action=pass:enable='between(t,${f(c.start)},${f(c.start + dur)})':format=auto[${next}]`);
+    current = next;
+    layer++;
+    } });
+  }
+
+
   // text clips (and captions attached to asset clips) via textfile=, so user text never needs filter escaping
   // Procedural graphics use bounded masks, never arbitrary SVG/JS or external media.
   for (const c of tl.clips.filter(c => c.shape && !tl.tracks?.[c.track]?.hidden)) {
+    overlayEmitters.push({ z: c.z ?? 0, start: c.start, emit: () => {
     const s = c.shape!, dur = clipDuration(c);
     const w = Math.max(2, Math.round(W * s.width / 2) * 2), h = Math.max(2, Math.round(H * s.height / 2) * 2);
     const factor = W / tl.resolution.width, radius = Math.min(s.radius * factor, w / 2, h / 2), stroke = Math.min(s.strokeWidth * factor, w / 2, h / 2);
@@ -166,11 +214,13 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
       ...colorFilters(c), ...transformFilters(c, w, h, dur, true), `setpts=PTS+${f(c.start)}/TB`].join(",") + `[${label}]`);
     filters.push(`[${current}][${label}]overlay=x='main_w*(${animationExpression(c,"x",`(t-${f(c.start)})`)})-overlay_w/2':y='main_h*(${animationExpression(c,"y",`(t-${f(c.start)})`)})-overlay_h/2':eof_action=pass:enable='gte(t,${f(c.start)})*lt(t,${f(c.start+dur)})':format=auto[${next}]`);
     current = next; layer++;
+    } });
   }
 
   const texts = tl.clips.filter((c) => c.text && c.text.trim() && !tl.tracks?.[c.track]?.hidden);
   const escPath = (p: string) => p.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
   texts.forEach((c, i) => {
+    overlayEmitters.push({ z: c.z ?? 0, start: c.start, emit: () => {
     const lay = textLayout(c, { width: W, height: H });
     // One drawtext per line, aligned without relying on text_align (FFmpeg 6.1+), and no stray newline glyphs.
     const files = lay.lines.map((line, j) => { const file = path.join(tmpDir, `${jobId}_t${i}_${j}.txt`); fs.writeFileSync(file, line.replace(/\r/g, "")); tempFiles.push(file); return file; });
@@ -303,7 +353,10 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     filters.push(`[${current}][ct${i}]overlay=x='${x}':y='${y}':eof_action=pass:enable='between(t,${f(c.start)},${f(c.start+dur)})':format=auto[${next}]`);
     current = next;
     layer++;
+    } });
   });
+
+  overlayEmitters.sort((p, q) => p.z - q.z || p.start - q.start).forEach((e) => e.emit());;
   filters.push(`[${current}]format=yuv420p[vout]`);
 
   // audio mix

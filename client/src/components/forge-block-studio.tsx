@@ -162,7 +162,7 @@ function EachClipNode({ data }: NodeProps) {
         <span className="bs-node-icon">🎞</span><b>For each clip</b>
         <select aria-label="Which clips" value={base} disabled={(data as any).__readOnly}
           onChange={(e) => setSelect(e.target.value === "colour" ? "colour:#ffffff" : e.target.value === "contains" ? "contains:" : e.target.value)}>
-          {["all", "text", "shape", "media", "selected", "colour", "contains"].map((s) => <option key={s} value={s}>{s}</option>)}
+          {["all", "text", "shape", "media", "audio", "selected", "colour", "contains"].map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
         {base === "colour" ? (
           <input className="bs-count" type="color" aria-label="Clip colour" value={select.slice(7) || "#ffffff"}
@@ -240,7 +240,7 @@ function ClipNode({ data }: NodeProps) {
   return (
     <div className={`bs-node bs-node-clip${d.hasError ? " bs-node-error" : ""}`}>
       <div className="bs-node-head">
-        <span className="bs-node-icon">{node.select === "media" ? "🎬" : node.select === "shape" ? "◼" : "T"}</span>
+        <span className="bs-node-icon">{node.select === "media" ? "🎬" : node.select === "shape" ? "◼" : node.select === "audio" ? "🎵" : "T"}</span>
         <b>{node.text || node.clipId}</b>
         <button className="bs-node-delete" aria-label="Delete block" onClick={() => (data as any).__delete(node.id)}>✕</button>
       </div>
@@ -356,6 +356,7 @@ function CodeTab({ tool, ctx, readOnly, onChange, runError, notice, onDismissNot
             <button key={h.name} className="bs-ref-item" onClick={() => insert(h.example)} disabled={readOnly} title={h.description} data-testid={`bs-ref-${h.name}`}>
               <code className="bs-ref-sig">{h.signature}</code>
               <span className="bs-ref-desc">{h.description}</span>
+              <code className="bs-ref-example">{h.example}</code>
             </button>
           ))}
           <p className="bs-ref-title">$ templates (blocks) → code</p>
@@ -610,7 +611,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun }: StudioProps) 
             {ctx.clips.map((c) => (
               <button key={c.id} className="bs-import-row" disabled={readOnly}
                 onClick={() => { addNode({ id: uid(), type: "clipRef", clipId: c.id, text: c.label ?? "", select: c.kind, position: freeSpot() }); setImportOpen(false); }}>
-                <span>{c.kind === "media" ? "🎬" : c.kind === "shape" ? "◼" : "T"}</span>
+                <span>{c.kind === "media" ? "🎬" : c.kind === "shape" ? "◼" : c.kind === "audio" ? "🎵" : "T"}</span>
                 <span className="bs-import-label">{c.label || c.id}</span>
                 <span className="bs-import-time">{c.start.toFixed(1)}s · {c.duration.toFixed(1)}s</span>
               </button>

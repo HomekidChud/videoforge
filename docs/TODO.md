@@ -15,14 +15,16 @@ The block studio, the code editor and the tool engine are in good shape. Each it
 - [x] Code tab as a real editor: helper reference sidebar with click-to-insert examples, $-template reference, line numbers, tab-key support, bigger monospace font and inline run errors.
 - [x] Blocks → Code conversion on tab switch, with generated JavaScript that produces the same operations the blocks would, and a notice that the tool now runs the code.
 - [x] Animation everything: all motion presets in the palette (entrances, exits, attention, springy, camera), animate-any-property keyframe blocks with easings, text effects (typewriter, word/line reveal, colour cycle), draw-on, pulsing glow, parallax, speed and timing blocks.
-- [x] Many more edit tools: the Edit group covers transform, flip and mirror, align and distribute, snap to grid, crop, opacity, colour looks and filters, brightness/contrast/saturation/blur, speed and duration, volume, mute, audio fades, tracks and layering, copy with offset, replace words, and for-each filtering by colour and contained text.
+- [x] Many more edit tools: the Edit group covers transform, flip and mirror, row/column placement and distribute, snap to grid, crop, opacity, colour looks and filters, brightness/contrast/saturation/blur, speed and duration, volume, mute, audio fades, tracks and layering, copy with offset, replace words, and for-each filtering by colour and contained text. (True edge-to-edge alignment is still open — see the bucket list.)
+- [x] True z-order: clips carry a z field (-100..100). Overlay visuals — media, shapes and text alike — stack by z in one order, in both the preview and the renderer; move_layer blocks step past the nearest neighbour even with unequal ranks.
+- [x] Spatial crop for media clips: a crop box (fractions of the layer box) applied by the preview's clip-path and the renderer's crop filter (the layer keeps its box, padded back transparent, so preview and export match), driven by the friendly trim-sides Crop block.
+- [x] Motion blocks take an easing pick; audio clips are walkable by for-each (kind "audio") for volume tools.
 
 ## Bucket list
 
 Big and small ideas, roughly by value. Each one is a candidate for its own commit and browser-verified round.
 
-- [ ] True z-order within a track: the renderer layers clips by track then start time, so Bring to front / Send to back currently switch tracks. A per-clip z-index would need renderer support (FFmpeg filter order and the preview sort) before a block can honestly promise it.
-- [ ] Spatial crop and vignette for media clips (today's Crop block uses the left-to-right reveal mask).
+- [ ] Real edge alignment for the Line up block: left/right/top/bottom edges flush against the frame or each other — needs per-clip width/height, including measuring rendered text.
 - [ ] Real speed ramps and freeze frames as first-class timeline ops (currently speed is a static per-clip value).
 - [ ] Undo/redo for studio palette drags (adding a block is one edit; consider coalescing node drops).
 - [ ] Shareable tool links: export a tool as a compact string so kids can pass automations around (they are localStorage-only today).

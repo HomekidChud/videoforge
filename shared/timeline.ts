@@ -38,6 +38,8 @@ export type Clip = {
   keyframes?: Keyframes;
   expressions?: Expressions; // animate with code: property -> expression of t, d, p, base
   rotation?: number;
+  z?: number; // layer order within a track; higher draws on top (-100..100)
+  crop?: { x: number; y: number; w: number; h: number }; // fractions of the layer box to keep (0..1)
   fit?: "contain" | "cover" | "fill"; // fill stretches footage to the frame
   flipX?: boolean;
   flipY?: boolean;
@@ -138,6 +140,17 @@ export function normalizeClip(raw: any): Clip {
   opt("scale", raw.scale, 0.1, 2, assetId && track === "overlay" ? 0.35 : 1);
   opt("rotation", raw.rotation, -360, 360, 0);
   opt("blur", raw.blur, 0, 20, 0);
+  opt("z", raw.z, -100, 100, 0); // layer order within a track; higher draws on top
+  if (raw.crop !== undefined && raw.crop !== null) {
+    const cr = raw.crop as { x?: unknown; y?: unknown; w?: unknown; h?: unknown };
+    const parts = [cr.x, cr.y, cr.w, cr.h];
+    if (parts.every((n) => typeof n === "number" && Number.isFinite(n))) {
+      const clamp01 = (n: number) => Math.min(1, Math.max(0, Math.round(n * 1000) / 1000));
+      const x = clamp01(cr.x as number), y = clamp01(cr.y as number);
+      const w = clamp01(cr.w as number), h = clamp01(cr.h as number);
+      if (w > 0 && h > 0 && x + w <= 1.001 && y + h <= 1.001) clip.crop = { x, y, w, h };
+    }
+  }
   if(raw.fit === "cover" || raw.fit === "fill") clip.fit = raw.fit;
   if(raw.flipX) clip.flipX = true;
   if(raw.flipY) clip.flipY = true;

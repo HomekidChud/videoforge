@@ -1,6 +1,6 @@
 import { PreviewCursors, type Peer } from "./forge-presence";
 import { incomingTransition, transitionProgress, transitionAudio, transitionClipPath } from "@shared/transitions";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Film } from "lucide-react";
 import { evaluateClip, valueAt } from "@shared/animation";
 import { clipDuration, clipEnd, type Clip, type Timeline } from "@shared/timeline";
@@ -14,6 +14,12 @@ export function previewFilter(c:Clip,scaleBlur=1) {
   return `${preset[c.filter??"none"]??""} brightness(${1+(c.brightness??0)}) contrast(${c.contrast??1}) saturate(${c.saturation??1})${c.blur?` blur(${c.blur*scaleBlur}px)`:""}`;
 }
 export const revealClip=(r?:number)=>r!==undefined&&r<1?`inset(0 ${(1-Math.max(0,r))*100}% 0 0)`:undefined;
+/** A crop box (fractions of the layer box to keep) as a CSS inset, combined with the reveal mask. */
+export const cropClip=(c?:{x:number;y:number;w:number;h:number},r?:number)=>{
+  const l=c?c.x*100:0,t=c?c.y*100:0,rt=c?(1-(c.x+c.w))*100:0,b=c?(1-(c.y+c.h))*100:0;
+  const rr=r!==undefined&&r<1?(1-Math.max(0,r))*100:0;
+  return c||rr>0?`inset(${t}% ${Math.max(rt,rr)}% ${b}% ${l}%)`:undefined;
+};
 export function envelope(c:Clip,time:number) {
   const relative=time-c.start,remain=clipEnd(c)-time;
   const fadeIn=(c.fadeIn??0)>0?Math.min(1,Math.max(0,relative/c.fadeIn!)):1;
@@ -47,7 +53,7 @@ function MediaLayer({clip,asset,time,playing,source,hidden,muted,onError,timelin
   const visual=clip.track!=="audio"&&asset.kind!=="audio";
   const tr=incomingTransition(timeline,clip),p=transitionProgress(timeline,clip,time);
   const g=layerTransform(ev),opacity=(ev.opacity??1)*envelope(clip,time)*(tr?.type==="dissolve"?p:1);
-  const base={opacity,clipPath:tr&&p<1?transitionClipPath(tr.type,p):revealClip(ev.reveal),filter:previewFilter(ev,.6),display:active&&!hidden?undefined:"none",transform:g.transform,mixBlendMode:undefined};
+  const base={opacity,clipPath:tr&&p<1?transitionClipPath(tr.type,p):cropClip(clip.crop,ev.reveal),filter:previewFilter(ev,.6),display:active&&!hidden?undefined:"none",transform:g.transform,mixBlendMode:undefined};
   const style=clip.track==="overlay" ? {left:`${g.x*100}%`,top:`${g.y*100}%`,width:`${g.scale*100}%`,height:"auto",...base} : {left:`${g.x*100}%`,top:`${g.y*100}%`,width:"100%",height:"100%",objectFit:clip.fit==="cover"?"cover" as const:clip.fit==="fill"?"fill" as const:"contain" as const,...base,transform:`${g.transform} scale(${g.scale})`};
   const fail=()=>{if(!failed){setFailed(true);onError(`Couldn’t load ${asset.filename}. Check the source or API key.`);}};
   const common={"data-layer":clip.id} as any;
@@ -89,7 +95,7 @@ export default function ForgePreview({timeline,assets,time,playing,selectedId,re
     resize();const ro=new ResizeObserver(resize);ro.observe(el);return()=>ro.disconnect();
   },[ratio]);
   const hiddenTrack=(c:Clip)=>!!timeline.tracks?.[c.track]?.hidden;
-  const ordered=[...timeline.clips].sort((a,b)=>a.track===b.track?a.start-b.start:a.track==="video"?-1:b.track==="video"?1:0);
+  const ordered=[...timeline.clips].sort((a,b)=>a.track===b.track?((a.z??0)-(b.z??0))||(a.start-b.start):a.track==="video"?-1:b.track==="video"?1:0);
   const selected=timeline.clips.find(c=>c.id===selectedId),selectedActive=!!selected&&time>=selected.start&&time<clipEnd(selected)&&selected.track!=="audio"&&!hiddenTrack(selected);
   // Measure the selected layer so the on-canvas handles follow rotation, scale and keyframes.
   useLayoutEffect(()=>{
@@ -115,7 +121,30 @@ export default function ForgePreview({timeline,assets,time,playing,selectedId,re
     const up=()=>{window.removeEventListener("pointermove",move);window.removeEventListener("pointerup",up);gesture.end();};
     window.addEventListener("pointermove",move);window.addEventListener("pointerup",up);
   };
-  const texts=timeline.clips.filter(c=>c.text&&time>=c.start&&time<clipEnd(c)&&!hiddenTrack(c));
+  const layerSort=(a:Clip,b:Clip)=>((a.z??0)-(b.z??0))||(a.start-b.start);
+  const texts=timeline.clips.filter(c=>c.text&&time>=c.start&&time<clipEnd(c)&&!hiddenTrack(c)).sort(layerSort);
+  // One stacking order for every overlay visual — media, shapes and text alike:
+  // z first (higher draws on top), then start. Video-track footage stays beneath.
+  const overlayItems:Array<{z:number;start:number;node:ReactNode}>=[];
+  for(const c of ordered){
+    if(c.track!=="overlay")continue;
+    const a=assets.find(x=>x.id===c.assetId);
+    if(a)overlayItems.push({z:c.z??0,start:c.start,node:<MediaLayer key={c.id} timeline={timeline} clip={c} asset={a} time={time} playing={playing} hidden={hiddenTrack(c)} muted={!!muted||!!timeline.tracks?.[c.track]?.muted} source={mediaUrl(a.id,`/api/media/${a.id}/raw`)} onError={onError}/>});
+  }
+  for(const c of timeline.clips.filter(c=>c.shape&&time>=c.start&&time<clipEnd(c)&&!hiddenTrack(c))){
+    const ev=evaluateClip(c,time),g=layerTransform(ev),s=c.shape!;
+    overlayItems.push({z:c.z??0,start:c.start,node:(
+      <div key={c.id} data-layer={c.id} data-testid={`shape-layer-${c.id}`} style={{
+        position:"absolute",boxSizing:"border-box",left:`${g.x*100}%`,top:`${g.y*100}%`,
+        width:Math.max(2,Math.round(size.width*s.width/2)*2),height:Math.max(2,Math.round(size.height*s.height/2)*2),
+        background:s.fill,border:`${s.strokeWidth*size.width/timeline.resolution.width}px solid ${s.stroke}`,
+        borderRadius:s.type==="ellipse"?"50%":s.radius*size.width/timeline.resolution.width,
+        clipPath:revealClip(ev.reveal),opacity:(ev.opacity??1)*envelope(c,time),transform:`${g.transform} scale(${g.scale})`,filter:previewFilter(ev,size.width/timeline.resolution.width),
+      }}/>)});
+  }
+  for(const c of texts){const ev=evaluateClip(c,time),g=layerTransform(c.assetId?{...c,assetId:"",x:.5,y:.82,rotation:0,scale:1,keyframes:undefined}:ev),lay=textLayout(c,timeline.resolution),fitted=c.textFit!=="none",shown=revealedText(fitted?lay.text:(c.text??""),c.textReveal,c.start,time);overlayItems.push({z:c.z??0,start:c.start,node:(
+    <div key={`${c.id}-text`} data-layer={c.assetId?undefined:c.id} className="preview-caption" style={{left:`${g.x*100}%`,top:`${g.y*100}%`,fontSize:fitted?lay.fontSize*size.height/timeline.resolution.height*g.scale:Math.round(size.height*(c.textSize??6)/100*g.scale),maxWidth:fitted?"none":undefined,whiteSpace:fitted?"pre":undefined,color:cycledColor(c.textColorCycle,c.start,time)??c.textColor??"#ffffff",fontFamily:getFont(c.font).stack,fontWeight:c.fontWeight??400,textAlign:c.textAlign,lineHeight:c.lineHeight,letterSpacing:c.letterSpacing?`${c.letterSpacing}em`:undefined,textTransform:c.textTransform==="uppercase"?"uppercase":undefined,background:c.textBg?"rgba(0,0,0,.55)":undefined,padding:c.textBg?".25em .35em":0,opacity:(c.assetId?1:(ev.opacity??1))*envelope(c,time),transform:g.transform,filter:c.blur?`blur(${c.blur*.6}px)`:undefined,textShadow:c.textBg?"none":"0 1px 3px #000"}}>{shown}</div>)});}
+  overlayItems.sort((p,q)=>p.z-q.z||p.start-q.start);
   return <div className={`preview-area ${dropHot?"drop-hot":""}`} ref={area} onDragOver={e=>{if(onDropEffect&&!readOnly&&e.dataTransfer.types.includes("application/x-vf-effect")){e.preventDefault();e.dataTransfer.dropEffect="copy";setDropHot(true);}}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node|null))setDropHot(false);}} onDrop={e=>{setDropHot(false);if(!onDropEffect||readOnly)return;try{const effect=JSON.parse(e.dataTransfer.getData("application/x-vf-effect"));e.preventDefault();e.stopPropagation();onDropEffect(effect);}catch{/* not an effect */}}}>
     <div className={`preview-stage ${onSelect?"selectable-stage":""}`} ref={stage} style={{width:size.width,height:size.height,background:timeline.background??"#000"}} data-testid="preview-stage"
       onPointerDown={e=>{
@@ -125,18 +154,8 @@ export default function ForgePreview({timeline,assets,time,playing,selectedId,re
         else if(e.target===e.currentTarget)onSelect(null);
       }}
       onPointerMove={e=>{if(!onCursor)return;const r=e.currentTarget.getBoundingClientRect();onCursor({area:"preview",x:Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),y:Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))});}} onPointerLeave={()=>onCursor?.(null)}>
-      {ordered.map(c=>{const a=assets.find(x=>x.id===c.assetId);return a?<MediaLayer key={c.id} timeline={timeline} clip={c} asset={a} time={time} playing={playing} hidden={hiddenTrack(c)} muted={!!muted||!!timeline.tracks?.[c.track]?.muted} source={mediaUrl(a.id,`/api/media/${a.id}/raw`)} onError={onError}/>:null;})}
-      {timeline.clips.filter(c=>c.shape&&time>=c.start&&time<clipEnd(c)&&!hiddenTrack(c)).map(c=>{
-        const ev=evaluateClip(c,time),g=layerTransform(ev),s=c.shape!;
-        return <div key={c.id} data-layer={c.id} data-testid={`shape-layer-${c.id}`} style={{
-          position:"absolute",boxSizing:"border-box",left:`${g.x*100}%`,top:`${g.y*100}%`,
-          width:Math.max(2,Math.round(size.width*s.width/2)*2),height:Math.max(2,Math.round(size.height*s.height/2)*2),
-          background:s.fill,border:`${s.strokeWidth*size.width/timeline.resolution.width}px solid ${s.stroke}`,
-          borderRadius:s.type==="ellipse"?"50%":s.radius*size.width/timeline.resolution.width,
-          clipPath:revealClip(ev.reveal),opacity:(ev.opacity??1)*envelope(c,time),transform:`${g.transform} scale(${g.scale})`,filter:previewFilter(ev,size.width/timeline.resolution.width),
-        }}/>;
-      })}
-      {texts.map(c=>{const ev=evaluateClip(c,time),g=layerTransform(c.assetId?{...c,assetId:"",x:.5,y:.82,rotation:0,scale:1,keyframes:undefined}:ev),lay=textLayout(c,timeline.resolution),fitted=c.textFit!=="none",shown=revealedText(fitted?lay.text:(c.text??""),c.textReveal,c.start,time);return <div key={`${c.id}-text`} data-layer={c.assetId?undefined:c.id} className="preview-caption" style={{left:`${g.x*100}%`,top:`${g.y*100}%`,fontSize:fitted?lay.fontSize*size.height/timeline.resolution.height*g.scale:Math.round(size.height*(c.textSize??6)/100*g.scale),maxWidth:fitted?"none":undefined,whiteSpace:fitted?"pre":undefined,color:cycledColor(c.textColorCycle,c.start,time)??c.textColor??"#ffffff",fontFamily:getFont(c.font).stack,fontWeight:c.fontWeight??400,textAlign:c.textAlign,lineHeight:c.lineHeight,letterSpacing:c.letterSpacing?`${c.letterSpacing}em`:undefined,textTransform:c.textTransform==="uppercase"?"uppercase":undefined,background:c.textBg?"rgba(0,0,0,.55)":undefined,padding:c.textBg?".25em .35em":0,opacity:(c.assetId?1:(ev.opacity??1))*envelope(c,time),transform:g.transform,filter:c.blur?`blur(${c.blur*.6}px)`:undefined,textShadow:c.textBg?"none":"0 1px 3px #000"}}>{shown}</div>;})}
+      {ordered.filter(c=>c.track!=="overlay").map(c=>{const a=assets.find(x=>x.id===c.assetId);return a?<MediaLayer key={c.id} timeline={timeline} clip={c} asset={a} time={time} playing={playing} hidden={hiddenTrack(c)} muted={!!muted||!!timeline.tracks?.[c.track]?.muted} source={mediaUrl(a.id,`/api/media/${a.id}/raw`)} onError={onError}/>:null;})}
+      {overlayItems.map((it)=>it.node)}
       {box&&!playing&&<div className="selection-frame" style={{left:box.l,top:box.t,width:box.w,height:box.h}} onPointerDown={e=>startDrag(e,"move")} data-testid="selection-frame"><span className="scale-handle" onPointerDown={e=>startDrag(e,"scale")} aria-label="Drag to scale"/></div>}
       {peers&&<PreviewCursors peers={peers}/>}
       {!timeline.clips.length&&<div className="preview-empty"><Film size={28}/><h3>Your next story starts here.</h3><p>Import media or add a title to begin.</p></div>}

@@ -11,8 +11,23 @@ const uid = () => Math.random().toString(36).slice(2,14);
 export type TimelineOp = { op: string; args?: any };
 export function splitKeyframes(c:Clip, at:number) { return [sliceKeyframes(c,0,at),sliceKeyframes(c,at,clipDuration(c))]; }
 /** A preset that animates a property takes over from any code expression on it. */
-function usePreset(c: Clip, preset: string, options: { duration?: number; delay?: number; strength?: number }) {
+function usePreset(c: Clip, preset: string, options: { duration?: number; delay?: number; strength?: number; easing?: string }) {
   const patch = motionPreset(c, preset, options);
+  // An explicit easing (anything but "preset") replaces the curves' own easings —
+  // except sampled curves (spring, bounce), whose shape lives in the samples.
+  // The preset's patch carries over the clip's other curves unchanged (same array
+  // reference), so only curves whose array the preset replaced get the new easing —
+  // and the expression cleanup below still recognises which properties it owns.
+  const easing = typeof options.easing === "string" && options.easing && options.easing !== "preset" ? options.easing : undefined;
+  if (easing && patch.keyframes) {
+    for (const p of Object.keys(patch.keyframes) as AnimationProperty[]) {
+      const frames = patch.keyframes[p] ?? [];
+      if (patch.keyframes[p] === c.keyframes?.[p]) continue; // not the preset's curve
+      if (frames.length > 4 && frames.every((k) => (k.easing ?? "linear") === "linear")) continue;
+      if (!frames.some((k) => k.easing !== undefined && k.easing !== easing)) continue;
+      patch.keyframes[p] = frames.map((k) => k.easing === undefined ? k : { ...k, easing: easing as Keyframe["easing"] });
+    }
+  }
   if (c.expressions) {
     const rest = { ...c.expressions };
     for (const p of Object.keys(patch.keyframes ?? {}) as AnimationProperty[]) if (patch.keyframes![p] !== c.keyframes?.[p]) delete rest[p];
@@ -107,7 +122,12 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
           const { clipId, start, track } = args || {};
           const c = find(clipId);
           if (typeof start === "number") c.start = Math.max(0, start);
-          if (["video", "overlay", "audio"].includes(track)) c.track = track;
+          if (["video", "overlay", "audio"].includes(track)) {
+            // Text and shapes always render above video footage, so the video track
+            // is for pictures and footage — keep them on the overlay track.
+            if (track === "video" && (c.text || c.shape)) throw new Error("text and shapes stay on the overlay track");
+            c.track = track;
+          }
           break;
         }
         case "set_audio": {
@@ -128,6 +148,7 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
           const { clipId, ...patch } = args || {};
           const c = find(clipId);
           const { id: _id, assetId: _asset, ...safe } = patch;
+          if (safe.crop !== undefined && !c.assetId) throw new Error("crop applies to picture and video clips — text and shapes cannot be cropped");
           // normalizeClip drops fields equal to their defaults, so replacing the
           // object (rather than merging) lets a patch reset a value to default.
           clips[clips.indexOf(c)] = patchWithAnimation(c, safe);
@@ -254,8 +275,9 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
           clips.push(copy); break;
         }
         case "align_clips": {
-          // Line clips up or spread them evenly across the frame. Uses each clip's
-          // live position, so it needs no absolute values in the op itself.
+          // Line clips up or spread them evenly across the frame. Align modes use
+          // fixed frame positions (0.25 / 0.5 / 0.75) so the result is predictable
+          // whatever the clips' sizes; distribute spreads centres evenly.
           if (!Array.isArray(args.clipIds) || !args.clipIds.length) throw new Error("clipIds required");
           const modes=["left","center","right","top","middle","bottom","distribute-h","distribute-v"];
           const mode=modes.includes(args.mode)?args.mode:"center";
@@ -264,12 +286,31 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
           const round3=(n:number)=>Math.round(n*1000)/1000;
           if (mode==="distribute-h") targets.forEach((c: Clip,i: number)=>{ c.x=round3(targets.length===1?0.5:(i+1)/(targets.length+1)); });
           else if (mode==="distribute-v") targets.forEach((c: Clip,i: number)=>{ c.y=round3(targets.length===1?0.5:(i+1)/(targets.length+1)); });
-          else if (mode==="left") { const x=Math.min(...targets.map(clipX)); targets.forEach((c: Clip)=>{ c.x=round3(x); }); }
-          else if (mode==="right") { const x=Math.max(...targets.map(clipX)); targets.forEach((c: Clip)=>{ c.x=round3(x); }); }
-          else if (mode==="center") { const x=targets.reduce((s: number,c: Clip)=>s+clipX(c),0)/targets.length; targets.forEach((c: Clip)=>{ c.x=round3(x); }); }
-          else if (mode==="top") { const y=Math.min(...targets.map(clipY)); targets.forEach((c: Clip)=>{ c.y=round3(y); }); }
-          else if (mode==="bottom") { const y=Math.max(...targets.map(clipY)); targets.forEach((c: Clip)=>{ c.y=round3(y); }); }
-          else { const y=targets.reduce((s: number,c: Clip)=>s+clipY(c),0)/targets.length; targets.forEach((c: Clip)=>{ c.y=round3(y); }); } // middle
+          else if (mode==="left") targets.forEach((c: Clip)=>{ c.x=0.25; });
+          else if (mode==="right") targets.forEach((c: Clip)=>{ c.x=0.75; });
+          else if (mode==="center") targets.forEach((c: Clip)=>{ c.x=0.5; });
+          else if (mode==="top") targets.forEach((c: Clip)=>{ c.y=0.25; });
+          else if (mode==="bottom") targets.forEach((c: Clip)=>{ c.y=0.75; });
+          else targets.forEach((c: Clip)=>{ c.y=0.5; }); // middle
+          break;
+        }
+        case "move_layer": {
+          // True stacking order within a track: z is honoured by the preview and the renderer.
+          // The clip moves exactly one position in the track's paint order (z, then start,
+          // then list order) — front/back jump to the ends — and the track's z ranks are
+          // renumbered 0..n-1 so the new order is exact, whatever the old ranks were.
+          const c=find(args?.clipId);
+          if (c.track === "audio") throw new Error("audio clips have no layers");
+          const dir = ["forward", "backward", "front", "back"].includes(args.direction) ? args.direction : "forward";
+          const track=clips.filter((x: Clip) => x.track === c.track);
+          const order=track.map((x: Clip, i: number) => ({ x, i }))
+            .sort((a, b) => ((a.x.z ?? 0) - (b.x.z ?? 0)) || (a.x.start - b.x.start) || (a.i - b.i))
+            .map((e: { x: Clip }) => e.x);
+          const from = order.indexOf(c);
+          const to = dir === "front" ? order.length - 1 : dir === "back" ? 0 : dir === "forward" ? Math.min(order.length - 1, from + 1) : Math.max(0, from - 1);
+          if (to === from) break; // nowhere to move (single clip, or already at the end)
+          order.splice(to, 0, order.splice(from, 1)[0]);
+          order.forEach((x: Clip, k: number) => { x.z = Math.max(-100, Math.min(100, k)); });
           break;
         }
         case "snap_to_grid": {
@@ -322,7 +363,7 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
         }
         case "set_transition": return setTransition(timeline,args.clipId,args.type,args.duration,args.join!==false);
         case "remove_clips": { if(!Array.isArray(args.clipIds)) throw new Error("clipIds required"); timeline.clips=clips.filter(c=>!args.clipIds.includes(c.id)); break; }
-        case "apply_motion": { const c=find(args?.clipId); usePreset(c,args.preset,{duration:args.duration,delay:args.delay,strength:args.strength}); break; }
+        case "apply_motion": { const c=find(args?.clipId); usePreset(c,args.preset,{duration:args.duration,delay:args.delay,strength:args.strength,easing:args.easing}); break; }
         case "apply_motion_sequence": {
           // One preset across several clips, each starting `stagger` seconds after the previous one.
           if (!Array.isArray(args.clipIds) || !args.clipIds.length || new Set(args.clipIds).size !== args.clipIds.length) throw new Error("unique clipIds required");
@@ -330,7 +371,7 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
           if (!Number.isFinite(stagger) || stagger < 0 || stagger > 60) throw new Error("stagger must be 0..60 seconds");
           const start = args.start ?? Math.min(...args.clipIds.map((id: string) => find(id).start));
           if (!Number.isFinite(start) || start < 0) throw new Error("start must be nonnegative");
-          args.clipIds.forEach((id: string, i: number) => { const c = find(id); usePreset(c, args.preset, { duration: args.duration, delay: args.delay, strength: args.strength }); c.start = Math.round((start + i * stagger) * 1000) / 1000; });
+          args.clipIds.forEach((id: string, i: number) => { const c = find(id); usePreset(c, args.preset, { duration: args.duration, delay: args.delay, strength: args.strength, easing: args.easing }); c.start = Math.round((start + i * stagger) * 1000) / 1000; });
           break;
         }
         case "reverse_animation": { const c=find(args?.clipId); if(!c.keyframes) throw new Error("clip has no animation to reverse"); c.keyframes=reverseAnimation(c); break; }
