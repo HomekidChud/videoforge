@@ -99,10 +99,32 @@ function requestIsSecure(req: Request): boolean {
   return req.secure || (typeof proto === "string" && proto.split(",")[0].trim() === "https");
 }
 
+/**
+ * Cookie SameSite: Lax by default, but when the frontend lives on another site
+ * (e.g. the app on GitHub Pages calling an API on render.com), the browser
+ * would never send a Lax cookie on those cross-site requests — sign-in would
+ * silently fail on the next API call. Cross-site frontends need SameSite=None
+ * (which also requires Secure, so only on HTTPS).
+ */
+function sameSiteFor(req: Request, secure: boolean): "Lax" | "None" {
+  if (!secure) return "Lax"; // None without Secure is rejected by browsers
+  const origin = req.headers.origin;
+  const host = req.headers.host;
+  if (typeof origin !== "string" || typeof host !== "string") return "Lax";
+  try {
+    const o = new URL(origin).hostname;
+    const h = host.split(":")[0];
+    if (o === h) return "Lax"; // same host
+    if (o.endsWith("." + h) || h.endsWith("." + o)) return "Lax"; // subdomains of each other: same site
+    return "None"; // a different site entirely (github.io → onrender.com)
+  } catch { return "Lax"; }
+}
+
 function setSessionCookie(res: Response, token: string, req: Request): void {
   // Secure only when this request actually arrived over HTTPS — otherwise the
   // browser silently drops the cookie and every reload looks like a sign-out.
-  res.setHeader("Set-Cookie", `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}${requestIsSecure(req) ? "; Secure" : ""}`);
+  const secure = requestIsSecure(req);
+  res.setHeader("Set-Cookie", `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=${sameSiteFor(req, secure)}; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}${secure ? "; Secure" : ""}`);
 }
 
 function clearSessionCookie(res: Response): void {
@@ -248,7 +270,9 @@ export function registerAccountRoutes(app: Express) {
     app.get("/api/auth/google/start", (req, res) => {
       const state = crypto.randomBytes(16).toString("base64url");
       const redirectUri = `${originOf(req)}/api/auth/google/callback`;
-      res.setHeader("Set-Cookie", `vf_oauth_state=${state}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600${process.env.NODE_ENV === "production" ? "; Secure" : ""}`);
+      // Same relaxation as the session cookie: cross-site frontends need None.
+      const secure = requestIsSecure(req);
+      res.setHeader("Set-Cookie", `vf_oauth_state=${state}; Path=/; HttpOnly; SameSite=${sameSiteFor(req, secure)}; Max-Age=600${secure ? "; Secure" : ""}`);
       const params = new URLSearchParams({
         client_id: googleClient().id,
         redirect_uri: redirectUri,
@@ -283,7 +307,9 @@ export function registerAccountRoutes(app: Express) {
         const user = upsertGoogleUser(payload.sub, payload.email.toLowerCase(), payload.name ?? "");
         res.setHeader("Set-Cookie", `vf_oauth_state=; Path=/; HttpOnly; Max-Age=0`);
         setSessionCookie(res, createSession(user.id), req);
-        res.redirect(302, "/#/editor");
+        // Back to the app: the SPA origin when the frontend is hosted elsewhere.
+        const spa = process.env.CORS_ORIGIN?.trim() || `${originOf(req)}/`;
+        res.redirect(302, `${spa.replace(/\/$/, "")}/#/editor`);
       } catch (e: any) { fail(e.message ?? "something went wrong"); }
     });
   }

@@ -1,17 +1,14 @@
-Fix sign-in bouncing back to the sign-in page after redirect
+Fix sign-out loop for split deployments (GitHub Pages app + Render API)
 
-Two ways the session cookie could be silently dropped right after login,
-which made the editor look like it signed you out:
+The app is served from homekidchud.github.io and the API from
+videoforge-api-s54w.onrender.com, so every API call is cross-site — and
+browsers refuse to send SameSite=Lax cookies on cross-site requests.
+Login set the session cookie, the very next /api/auth/me sent nothing,
+and the app bounced back to the sign-in page.
 
-- The cookie was marked Secure purely because NODE_ENV=production, so any
-  production build served over plain HTTP (local npm start, LAN IP, a
-  proxy without TLS) had its cookie rejected by the browser. Secure now
-  follows the actual request: req.secure or x-forwarded-proto=https.
-- Cross-origin setups (frontend and API on different origins) never
-  stored the cookie: fetches didn't send credentials and CORS answered
-  with Allow-Origin: *, which credentialed responses reject. All client
-  fetches now send credentials: include, and CORS reflects the request
-  origin (CORS_ORIGIN still wins when set).
-
-Regression tests: the session cookie must not be Secure on plain HTTP
-and must be Secure behind an HTTPS proxy.
+- Session (and OAuth state) cookies now relax to SameSite=None; Secure
+  when the request comes from a different site over HTTPS; same-origin
+  and same-site requests keep Lax. Regression-tested: Lax same-origin,
+  None + Secure for a github.io origin against the API host.
+- Google sign-in now returns to the SPA origin (CORS_ORIGIN) instead of
+  the API's own host after the callback.

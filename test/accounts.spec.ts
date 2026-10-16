@@ -97,6 +97,19 @@ const cookieOf = (r: { setCookie: string | null }) => (r.setCookie ?? "").split(
       body: JSON.stringify({ email: "owner@example.com", password: "password123" }),
     });
     if (!/Secure/i.test(proxied.headers.get("set-cookie") ?? "")) throw new Error("HTTPS-proxied requests should set Secure");
+    // And a same-origin HTTPS request keeps SameSite=Lax.
+    const laxCookie = proxied.headers.get("set-cookie") ?? "";
+    if (!/SameSite=Lax/i.test(laxCookie)) throw new Error("same-origin requests should keep SameSite=Lax");
+    // A cross-site frontend (app on github.io, API on render.com) can never
+    // receive Lax cookies on its API calls — those need SameSite=None.
+    const split = await fetch(`${BASE}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-forwarded-proto": "https", Origin: "https://homekidchud.github.io", Host: "videoforge-api-s54w.onrender.com" },
+      body: JSON.stringify({ email: "owner@example.com", password: "password123" }),
+    });
+    const splitCookie = split.headers.get("set-cookie") ?? "";
+    if (!/SameSite=None/i.test(splitCookie)) throw new Error("cross-site frontends need SameSite=None, got: " + splitCookie);
+    if (!/Secure/i.test(splitCookie)) throw new Error("SameSite=None requires Secure");
     // the cookie opens the workspace without any API key
     const me = await j("GET", "/api/auth/me", undefined, cookie);
     if (me.status !== 200 || me.data.email !== "owner@example.com") throw new Error("the session should work like a key");
