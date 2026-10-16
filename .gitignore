@@ -23,3 +23,6 @@ Thumbs.db
 .idea/
 *.swp
 data.test.db*
+data.*.db*
+data.*.db-shm
+data.*.db-wal
