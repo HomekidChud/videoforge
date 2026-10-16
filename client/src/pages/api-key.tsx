@@ -20,6 +20,14 @@ export default function ApiKeyPage() {
   const [busy, setBusy] = useState(false);
   const configQ = useQuery<AuthConfig>({ queryKey: ["/api/auth/config"] });
   const config = configQ.data ?? { google: false, accountsOpen: false, hasAccounts: false };
+  const meQ = useQuery<{ email?: string; label?: string }>({ queryKey: ["/api/auth/me"], retry: false });
+
+  const signOut = async () => {
+    try { await fetch(`${API_BASE}/api/auth/logout`, { method: "POST" }); } catch { /* already gone */ }
+    clearApiKey();
+    window.location.hash = "#/editor";
+    window.location.reload();
+  };
 
   useEffect(() => { if (!configQ.isLoading && configQ.data && !configQ.data.hasAccounts) setMode("create"); }, [configQ.isLoading, configQ.data]);
 
@@ -76,6 +84,15 @@ export default function ApiKeyPage() {
       <section className="auth-copy"><div className="eyebrow">VIDEO PRODUCTION, PROGRAMMABLE</div><h1>Cut, compose and render — from the browser or your code.</h1><p>One workspace for a full timeline editor and an API with scoped, revocable keys. Share finished videos publicly while keeping footage and credentials private.</p>
         <ul className="feature-list"><li><ShieldCheck size={18} /> Accounts that stay signed in across restarts</li><li><Terminal size={18} /> The editor uses the same API you do</li><li><Server size={18} /> Self-hosted — your footage stays on your server</li></ul></section>
       <section className="auth-card">
+        {meQ.data && (
+          <div className="notice" style={{ marginBottom: 16 }} data-testid="already-signed-in">
+            <div><b>You're already signed in{meQ.data.email ? ` as ${meQ.data.email}` : ""}.</b></div>
+            <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+              <a className="primary-btn" href="#/editor">Go to the studio</a>
+              <button className="ghost-link" onClick={signOut} data-testid="button-sign-out-page">Sign out</button>
+            </div>
+          </div>
+        )}
         <div className="auth-tabs" role="tablist" aria-label="Sign-in method">
           <button role="tab" aria-selected={tab === "email"} className={tab === "email" ? "active" : ""} onClick={() => setTab("email")} data-testid="tab-signin-email"><Mail size={14} /> Email</button>
           <button role="tab" aria-selected={tab === "key"} className={tab === "key" ? "active" : ""} onClick={() => setTab("key")} data-testid="tab-signin-key"><KeyRound size={14} /> API key</button>

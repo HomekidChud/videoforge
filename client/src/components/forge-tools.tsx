@@ -15,21 +15,36 @@ export function ForgeTools({ disabled, onRun, onError, onNote, getCtx, studio = 
   useEffect(() => saveUserTools(userTools, window.localStorage), [userTools]);
 
   // The tool library on the server: tools sync per account (or per API key), so
-  // they follow you between browsers. The local copy is the offline fallback —
-  // on load, server tools join it and local-only tools are pushed up.
+  // they follow you between browsers. The browser keeps an offline copy, but the
+  // server is the source of truth: on load, its version of each tool wins and
+  // only tools the server has never seen are pushed up (so deletes elsewhere
+  // stick). The cached copy is scoped to the signed-in identity, so switching
+  // accounts does not leak one library into another.
   const pushTool = (tool: CustomTool) => api("PUT", `/api/tools/${tool.id}`, { name: tool.name, description: tool.description, mode: tool.mode, code: tool.code, graph: tool.graph }).catch(() => {});
   const dropTool = (id: string) => api("DELETE", `/api/tools/${id}`).catch(() => {});
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
+        const me = await api<{ id?: string; kind?: string }>("GET", "/api/auth/me");
+        const identity = me?.id ?? "anonymous";
+        if (!alive) return;
+        const prevOwner = window.localStorage.getItem("vf.custom-tools.owner");
+        if (prevOwner !== identity) {
+          // A different account (or key) is in: start fresh from the server.
+          window.localStorage.setItem("vf.custom-tools.owner", identity);
+          saveUserTools([], window.localStorage);
+          setUserTools([]);
+        }
         const data = await api<{ tools: CustomTool[] }>("GET", "/api/tools");
         if (!alive || !Array.isArray(data.tools)) return;
         const server = data.tools;
         setUserTools((local) => {
-          const have = new Set(local.map((t) => t.id));
+          const byId = new Map(local.map((t) => [t.id, t]));
+          // Tools the server has never seen (e.g. made offline, or from before the
+          // library synced) are pushed up; the server's version wins otherwise.
           for (const t of local) if (!server.some((s) => s.id === t.id)) void pushTool(t);
-          return [...local, ...server.filter((t) => !have.has(t.id))];
+          return [...local.filter((t) => !server.some((s) => s.id === t.id)), ...server.map((s) => ({ ...byId.get(s.id), ...s }))];
         });
       } catch { /* offline or read-only: the local library still works */ }
     })();

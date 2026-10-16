@@ -1668,6 +1668,115 @@ export function decodeTool(text: string): CustomTool {
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
+ * Export a code tool as a standalone script: a single .mjs file that runs the
+ * same code against the API (an API key with write scope does the writing).
+ * ────────────────────────────────────────────────────────────────────────── */
+
+export function exportStandaloneScript(tool: CustomTool): string {
+  const code = JSON.stringify(tool.code ?? "");
+  const name = JSON.stringify(tool.name);
+  const file = slug(tool.name);
+  return [
+    "// VideoForge tool: " + tool.name,
+    "// A standalone version of this code tool — it runs against the VideoForge API.",
+    "//",
+    "// Usage:",
+    "//   VF_API_KEY=vf_live_xxx node " + file + ".mjs <projectId> [--dry-run]",
+    "//   VF_API_BASE overrides the server address (default http://localhost:5000).",
+    "// The playhead starts at 0 and nothing is selected — tools that read vf.playhead",
+    "// or vf.selection run from the start of the timeline.",
+    "// Get an API key with write scope from the Developer platform.",
+    "",
+    "const API = process.env.VF_API_BASE || \"http://localhost:5000\";",
+    "const KEY = process.env.VF_API_KEY;",
+    "const projectId = process.argv[2];",
+    "const dryRun = process.argv.includes(\"--dry-run\");",
+    "if (!KEY) { console.error(\"Set VF_API_KEY (an API key with write scope).\"); process.exit(1); }",
+    "if (!projectId) { console.error(\"Usage: VF_API_KEY=... node " + file + ".mjs <projectId> [--dry-run]\"); process.exit(1); }",
+    "const H = { \"Content-Type\": \"application/json\", Authorization: \"Bearer \" + KEY };",
+    "",
+    "const res = await fetch(API + \"/api/projects/\" + projectId, { headers: H });",
+    "if (!res.ok) { console.error(\"Could not read the project:\", await res.text()); process.exit(1); }",
+    "const project = await res.json();",
+    "const timeline = project.timeline;",
+    "// Ramp-aware clip duration: speed 0 is a freeze (it holds), segments map linearly.",
+    "const rampDuration = (c) => {",
+    "  const segs = Array.isArray(c.speedRamp?.steps) && c.speedRamp.steps.length ? c.speedRamp.steps : null;",
+    "  if (!segs) return (c.outPoint - c.inPoint) / (c.speed || 1);",
+    "  return segs.reduce((sum, s) => sum + Math.max(0, (s.outPoint - s.inPoint) / (s.speed || 1)), 0);",
+    "};",
+    "const duration = Math.max(0, ...timeline.clips.map(c => c.start + rampDuration(c)));",
+    "const ctx = {",
+    "  playhead: 0, duration, selection: [],",
+    "  clips: timeline.clips.map(c => ({",
+    "    id: c.id,",
+    "    kind: c.track === \"audio\" ? \"audio\" : c.shape ? \"shape\" : c.assetId ? \"media\" : \"text\",",
+    "    start: c.start,",
+    "    duration: rampDuration(c),",
+    "    label: c.label ?? (c.text || \"\").slice(0, 40),",
+    "    color: c.shape ? c.shape.fill : c.assetId ? undefined : (c.textColor ?? \"#ffffff\").toLowerCase(),",
+    "    text: c.text,",
+    "    raw: c,",
+    "  })),",
+    "  resolution: timeline.resolution,",
+    "  fps: timeline.fps ?? 30,",
+    "};",
+    "",
+    "// The vf helpers — the same ones the studio's code tools use.",
+    "const needId = (id) => { if (!id || typeof id !== \"string\") throw new Error(\"this helper needs a clip id\"); return id; };",
+    "const vf = {",
+    "  playhead: ctx.playhead, duration: ctx.duration, selection: ctx.selection,",
+    "  clips: ctx.clips.map(c => ({ ...c })), resolution: { ...ctx.resolution }, fps: ctx.fps,",
+    "  addText: (args = {}) => ({ op: \"add_text_clip\", args: { start: ctx.playhead, ...args } }),",
+    "  addShape: (args = {}) => ({ op: \"add_shape_clip\", args }),",
+    "  update: (id, patch) => ({ op: \"update_clip\", args: { clipId: needId(id), ...patch } }),",
+    "  remove: (id) => ({ op: \"remove_clip\", args: { clipId: needId(id) } }),",
+    "  duplicate: (id, start) => ({ op: \"duplicate_clip\", args: { clipId: needId(id), ...(start !== undefined ? { start } : {}) } }),",
+    "  motion: (id, preset, opts = {}) => ({ op: \"apply_motion\", args: { clipId: needId(id), preset, ...opts } }),",
+    "  stagger: (ids, opts = {}) => ({ op: \"stagger_clips\", args: { clipIds: ids, start: ctx.playhead, ...opts } }),",
+    "  keyframes: (id, property, keyframes) => ({ op: \"set_keyframes\", args: { clipId: needId(id), property, keyframes } }),",
+    "  animate: (id, expressions) => ({ op: \"animate_code\", args: { clipId: needId(id), expressions } }),",
+    "  markers: (bpm = 120, count = 8) => ({ op: \"add_beat_markers\", args: { bpm, count } }),",
+    "  animateProperty: (id, property, from, to, opts = {}) => {",
+    "    const duration = Math.max(0.01, opts.duration ?? 1);",
+    "    const delay = Math.max(0, opts.delay ?? 0);",
+    "    const easing = opts.easing ?? \"ease-out\";",
+    "    return { op: \"set_keyframes\", args: { clipId: needId(id), property, keyframes: [",
+    "      { time: delay, value: from, easing }, { time: delay + duration, value: to, easing }] } };",
+    "  },",
+    "  textEffect: (id, mode, opts = {}) => ({ op: \"update_clip\", args: { clipId: needId(id), textReveal: { mode, duration: Math.max(0.1, opts.duration ?? 1.5), delay: Math.max(0, opts.delay ?? 0) } } }),",
+    "  colorCycle: (id, steps, duration = 2) => {",
+    "    const clean = steps.filter(s => /^#[0-9a-fA-F]{6}$/.test(s)).slice(0, 8);",
+    "    if (clean.length < 2) throw new Error(\"colorCycle needs at least two colours, like #e74c3c\");",
+    "    return { op: \"update_clip\", args: { clipId: needId(id), textColorCycle: { steps: clean, duration: Math.max(0.2, duration) } } };",
+    "  },",
+    "};",
+    "",
+    "// The tool's own code. It runs in your terminal, unsandboxed — only run code you trust.",
+    "const TOOL_CODE = " + code + ";",
+    "const fn = new Function(\"vf\", '\"use strict\";\\n' + TOOL_CODE);",
+    "const ops = fn(vf);",
+    "if (!Array.isArray(ops)) { console.error(\"The tool returned nothing to do.\"); process.exit(1); }",
+    "",
+    "const endpoint = API + \"/api/projects/\" + projectId + \"/timeline/ops\";",
+    "const r = await fetch(endpoint, { method: \"POST\", headers: H, body: JSON.stringify({ ops, ...(dryRun ? { dryRun: true } : {}) }) });",
+    "const body = await r.json().catch(() => ({}));",
+    "if (!r.ok) { console.error((dryRun ? \"Dry run failed:\" : \"The tool failed:\"), body.message ?? r.status); process.exit(1); }",
+    "if (dryRun) {",
+    "  console.log(\"Dry run: \" + ops.length + \" ops would run.\");",
+    "  console.log(JSON.stringify(body.summary ?? {}, null, 2));",
+    "} else {",
+    "  console.log(" + name + " + \" ran: \" + (body.applied ?? ops.length) + \" ops applied.\");",
+    "}",
+    "",
+  ].join("\n");
+}
+
+function slug(name: string): string {
+  return (name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "videoforge-tool");
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
  * Stickers: any clip saved as a reusable building block. A sticker is the clip's
  * style without its id, so every drop gets a fresh clip.
  * ────────────────────────────────────────────────────────────────────────── */

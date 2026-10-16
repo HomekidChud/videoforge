@@ -6,7 +6,7 @@
 //   npx tsx test/accounts.spec.ts
 // ============================================================================
 
-import { spawn, ChildProcess } from "node:child_process";
+import { spawn, spawnSync, ChildProcess } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -160,6 +160,28 @@ const cookieOf = (r: { setCookie: string | null }) => (r.setCookie ?? "").split(
       const raw = await fetch(`${BASE}/api/media/0123456789abcdef/raw?st=${minted.data.token}`);
       if (raw.status === 401) throw new Error("account-minted media tokens should verify (asset may 404, not 401)");
     }
+  });
+
+  await check("exported standalone scripts run against the API", async () => {
+    const again = await j("POST", "/api/auth/login", { email: "owner@example.com", password: "password123" });
+    const cookie = cookieOf(again);
+    const made = await j("POST", "/api/keys", { label: "script runner", scope: "write" }, cookie);
+    if (made.status !== 201) throw new Error("minting a key for the script failed");
+    const project = await j("POST", "/api/projects", { name: "Script test", timeline: { clips: [] } }, cookie);
+    if (project.status !== 201) throw new Error("creating a project failed");
+    const pid = project.data.id;
+    // generate the script with the same code the studio exports
+    const { exportStandaloneScript } = await import("../shared/custom-tools");
+    const fs = await import("node:fs");
+    fs.writeFileSync("/tmp/vf-standalone.mjs", exportStandaloneScript({ id: "t", name: "Standalone check", description: "", mode: "code", code: "return [vf.addText({ text: 'Hola', start: 0, duration: 2 })];" }));
+    const run = spawnSync("node", ["/tmp/vf-standalone.mjs", pid], {
+      env: { ...process.env, VF_API_BASE: BASE, VF_API_KEY: made.data.key },
+      encoding: "utf8", timeout: 30000,
+    });
+    if (run.status !== 0) throw new Error(`script failed: ${run.stderr || run.stdout}`);
+    if (!/1 ops applied/.test(run.stdout)) throw new Error(`unexpected script output: ${run.stdout}`);
+    const after = await j("GET", `/api/projects/${pid}`, undefined, cookie);
+    if (!after.data.timeline.clips.some((c: any) => c.text === "Hola")) throw new Error("the script's op did not land in the timeline");
   });
 
   killServer();

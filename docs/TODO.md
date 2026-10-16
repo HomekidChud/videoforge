@@ -28,17 +28,19 @@ The block studio, the code editor and the tool engine are in good shape. Each it
 - [x] Blocks panel: the block studio now opens from its own Blocks tab next to Effects — the Tools tab is code-only (no block editor: its studio hides the Blocks tab and the block-creation buttons), while it still runs tools.
 - [x] Blocks tab opens the canvas itself: clicking Blocks goes straight into the block studio (your latest tool, or a fresh draft with the tutorial) — no tools list in between; closing it returns to the panel you came from.
 - [x] Palette diet: the canned motion chips (Move in, Move out, Attention, Springy, Camera and their Animate duplicates) are out of the palette — the friendly from/to Animate blocks and presets cover them; hidden ids still load older saved tools.
+- [x] Real edge alignment for the Line up block: clips line up by their measured edges — against each other or flush with the frame — including text clips (the renderer measures rendered text with drawtext/ascent).
+- [x] Real speed ramps and freeze frames as first-class timeline ops: the Speed steps block builds a per-clip ramp (segments of constant speed, 0 = freeze), rendered with per-segment trim/setpts/concat (audio silenced and padded to match), and the preview plays the same ramp. Freeze frame is its own block.
+- [x] Undo/redo for the studio: one entry per drop, delete, paste or edge; drags are one entry (committed at drag start); quick typing coalesces (900 ms). Ctrl+Z / Ctrl+Shift+Z, with a capture-phase listener so text fields don't swallow it.
+- [x] Shareable tool codes: the 🔗 Share button copies a compact `VFT1:` code; the tools panel imports it. Old links keep working (damaged codes get a friendly error).
+- [x] Server-side tool library: tools sync per account (or per API key) with `GET/PUT/DELETE /api/tools/:id`, merged with the browser's local copy as the offline fallback.
+- [x] Save as sticker: the block turns any clip into a reusable building block; stickers appear in their own palette category and drop as fresh clips.
+- [x] Hover help on palette groups and a searchable palette (search matches either language).
+- [x] Export code tools as standalone scripts: the Code tab's “Export as standalone script” downloads a single .mjs that runs the same code against the API (`VF_API_KEY` env, `--dry-run` preview), for agents and cron jobs.
+- [x] Localization: Spanish labels and descriptions for every block and group (🌐 button in the studio, remembered per browser; the browser language is the default). Search matches either language.
+- [x] Accounts with durable sign-ins: email + password (first account needs the owner key), Google when configured, API keys for agents; sessions live in SQLite so they survive restarts. No API key needed to use the studio.
 
 ## Bucket list
 
 Big and small ideas, roughly by value. Each one is a candidate for its own commit and browser-verified round.
 
-- [ ] Real edge alignment for the Line up block: left/right/top/bottom edges flush against the frame or each other — needs per-clip width/height, including measuring rendered text.
-- [ ] Real speed ramps and freeze frames as first-class timeline ops (currently speed is a static per-clip value).
-- [ ] Undo/redo for studio palette drags (adding a block is one edit; consider coalescing node drops).
-- [ ] Shareable tool links: export a tool as a compact string so kids can pass automations around (they are localStorage-only today).
-- [ ] Server-side tool library per account, synced between browsers.
-- [ ] A "save clip as sticker" block that turns any clip into a reusable asset.
-- [ ] More help: hover tooltips on palette groups.
-- [ ] Export code tools as standalone snippets that run via the API (same vf helper, server-side).
-- [ ] Localization of the block labels and descriptions for a first second language.
+- [ ] Your idea here — the studio is in good shape; what should kids be able to make next?

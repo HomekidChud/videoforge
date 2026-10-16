@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, createContext } from "react";
 import {
   ReactFlow, Background, BackgroundVariant, Controls, MiniMap, Panel,
   Handle, Position, MarkerType, ReactFlowProvider, useReactFlow,
@@ -9,10 +9,14 @@ import "@xyflow/react/dist/style.css";
 import {
   BLOCK_GROUPS, BLOCK_LIBRARY, BLOCK_MAP, OP_IDS, OP_PARAMS, blocksToGraph, connectableParamKeys, nodeParamKeys, HIDDEN_BLOCKS,
   codeErrorLine, compileGraph, graphToCode, validateGraph, runTool, TEMPLATE_DOCS, VF_HELPERS,
-  TOOL_PRESETS, encodeTool, decodeTool, listStickers, stickerArgs,
+  TOOL_PRESETS, encodeTool, decodeTool, listStickers, stickerArgs, exportStandaloneScript,
   type CustomTool, type ToolContext, type ToolGraph, type ToolGraphNode, type ToolParam, type ToolPreset,
 } from "@shared/custom-tools";
 import type { TimelineOp } from "@shared/editing";
+import { loadLang, saveLang, trLabel, trDescription, trGroup, trHeading, trUI, matchesSearch, type BlockLang } from "@shared/block-i18n";
+
+/** The studio's language, so palette chips and node titles can speak it. */
+const LangContext = createContext<BlockLang>("en");
 
 type NodeData = { node: ToolGraphNode; hasError: boolean; hasWarning: boolean; fps: number; functionNames: string[] };
 type StudioProps = {
@@ -197,6 +201,7 @@ function StartNode({ data }: NodeProps) {
 }
 
 function ActionNode({ data, selected }: NodeProps) {
+  const lang = useContext(LangContext);
   const d = data as unknown as NodeData;
   const node = d.node;
   const block = node.block ? BLOCK_MAP.get(node.block) : undefined;
@@ -206,9 +211,9 @@ function ActionNode({ data, selected }: NodeProps) {
   const update = (key: string, value: unknown) => { (data as any).__update(node.id, { args: { ...(node.args ?? {}), [key]: value } }); };
   return (
     <NodeShell tone="action" hasError={d.hasError} hasWarning={d.hasWarning}
-      title={block?.label ?? node.op ?? "Advanced op"} icon={block ? ({ Create: "＋", Edit: "✂", Entrances: "↗", Exits: "↘", Attention: "❗", Springy: "🌀", Camera: "🎥", Animate: "✦", Text: "T", Style: "✎", Clips: "🎞", Timing: "⏱" } as Record<string, string>)[block.group] ?? "★" : "★"}
+      title={block ? trLabel(lang, block) : node.op ?? "Advanced op"} icon={block ? ({ Create: "＋", Edit: "✂", Entrances: "↗", Exits: "↘", Attention: "❗", Springy: "🌀", Camera: "🎥", Animate: "✦", Text: "T", Style: "✎", Clips: "🎞", Timing: "⏱" } as Record<string, string>)[block.group] ?? "★" : "★"}
       onDelete={(data as any).__delete ? () => (data as any).__delete(node.id) : undefined}>
-      {block?.description ? <p className="bs-hint">{block.description}</p> : null}
+      {block ? <p className="bs-hint">{trDescription(lang, block)}</p> : null}
       {advanced ? (
         <>
           <ParamField param={{ key: "__op", label: "Operation", type: "select", def: node.op ?? "", options: OP_IDS }} value={node.op} onChange={(v) => (data as any).__update(node.id, { op: v, args: {} })} disabled={(data as any).__readOnly} />
@@ -229,15 +234,16 @@ function ActionNode({ data, selected }: NodeProps) {
 
 function RepeatNode({ data }: NodeProps) {
   const d = data as unknown as NodeData;
+  const lang = useContext(LangContext);
   const node = d.node;
   return (
     <div className={`bs-node bs-node-control${d.hasError ? " bs-node-error" : ""}`}>
       <InHandle />
       <div className="bs-node-head">
-        <span className="bs-node-icon">↻</span><b>Repeat</b>
+        <span className="bs-node-icon">↻</span><b>{trUI(lang, "flow-repeat", "Repeat")}</b>
         <input className="bs-count" data-testid="bs-repeat-count" type="text" inputMode="numeric" aria-label="Repeat count" value={node.count ?? 3}
           onChange={(e) => (data as any).__update(node.id, { count: Number(e.target.value) || 0 })} disabled={(data as any).__readOnly} />
-        <span>times</span>
+        <span>{trUI(lang, "flow-times", "times")}</span>
         <button className="bs-node-delete" aria-label="Delete block" onClick={() => (data as any).__delete(node.id)}>✕</button>
       </div>
       <p className="bs-hint">Connect blocks to the right side to repeat them.</p>
@@ -257,7 +263,7 @@ function EachClipNode({ data }: NodeProps) {
     <div className={`bs-node bs-node-control${d.hasError ? " bs-node-error" : ""}`}>
       <InHandle />
       <div className="bs-node-head">
-        <span className="bs-node-icon">🎞</span><b>For each clip</b>
+        <span className="bs-node-icon">🎞</span><b>{useContext(LangContext) === "es" ? "Para cada clip" : "For each clip"}</b>
         <select aria-label="Which clips" value={base} disabled={(data as any).__readOnly}
           onChange={(e) => setSelect(e.target.value === "colour" ? "colour:#ffffff" : e.target.value === "contains" ? "contains:" : e.target.value)}>
           {["all", "text", "shape", "media", "audio", "selected", "colour", "contains"].map((s) => <option key={s} value={s}>{s}</option>)}
@@ -286,7 +292,7 @@ function FunctionNode({ data }: NodeProps) {
     <div className={`bs-node bs-node-fn${d.hasError ? " bs-node-error" : ""}`}>
       <InHandle />
       <div className="bs-node-head">
-        <span className="bs-node-icon">ƒ</span><b>Function</b>
+        <span className="bs-node-icon">ƒ</span><b>{trUI(useContext(LangContext), "flow-function", "Function")}</b>
         <input className="bs-name" type="text" aria-label="Function name" placeholder="name" value={node.name ?? ""}
           onChange={(e) => (data as any).__update(node.id, { name: e.target.value })} disabled={(data as any).__readOnly} />
         <button className="bs-node-delete" aria-label="Delete block" onClick={() => (data as any).__delete(node.id)}>✕</button>
@@ -305,7 +311,7 @@ function CallNode({ data }: NodeProps) {
     <div className={`bs-node bs-node-fn${d.hasError ? " bs-node-error" : ""}`}>
       <InHandle />
       <div className="bs-node-head">
-        <span className="bs-node-icon">ƒ→</span><b>Call</b>
+        <span className="bs-node-icon">ƒ→</span><b>{trUI(useContext(LangContext), "flow-call", "Call")}</b>
         <select aria-label="Function name" value={node.name ?? ""} disabled={(data as any).__readOnly}
           onChange={(e) => (data as any).__update(node.id, { name: e.target.value })}>
           <option value="">choose…</option>
@@ -377,7 +383,7 @@ function ValueNode({ data }: NodeProps) {
     <div className={`bs-node bs-node-value${d.hasError ? " bs-node-error" : ""}`} data-testid={`bs-value-node-${node.id}`}>
       <div className="bs-node-head">
         <span className="bs-node-icon">{node.valueType === "number" ? "🔢" : node.valueType === "yesno" ? "🔘" : "📝"}</span>
-        <b>{node.valueType === "number" ? "Number" : node.valueType === "yesno" ? "Yes / No" : "Text"}</b>
+        <b>{node.valueType === "number" ? trUI(useContext(LangContext), "value-number", "Number") : node.valueType === "yesno" ? trUI(useContext(LangContext), "value-yesno", "Yes / No") : trUI(useContext(LangContext), "value-text", "Text")}</b>
         <button className="bs-node-delete" aria-label="Delete block" onClick={() => (data as any).__delete(node.id)}>✕</button>
       </div>
       {node.valueType === "yesno" ? (
@@ -443,6 +449,17 @@ function CodeTab({ tool, ctx, readOnly, onChange, runError, notice, onDismissNot
     if (e.key === "Tab" && !readOnly) { e.preventDefault(); insert("  "); }
   };
 
+  /** Download this tool as a standalone script that runs it against the API. */
+  const exportScript = () => {
+    const blob = new Blob([exportStandaloneScript(tool)], { type: "text/javascript" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${tool.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "videoforge-tool"}.mjs`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="bs-code-wrap" data-testid="bs-code-panel">
       {notice && (
@@ -480,6 +497,7 @@ function CodeTab({ tool, ctx, readOnly, onChange, runError, notice, onDismissNot
         </div>
         <div className="bs-code-side" data-testid="bs-code-ref">
           <p className="bs-ref-title">vf helpers — click to insert</p>
+          <button className="bs-ref-export" onClick={exportScript} data-testid="bs-export-script" title="Download this tool as a standalone script that runs it against the API">⬇ Export as standalone script</button>
           {VF_HELPERS.map((h) => (
             <button key={h.name} className="bs-ref-item" onClick={() => insert(h.example)} disabled={readOnly} title={h.description} data-testid={`bs-ref-${h.name}`}>
               <code className="bs-ref-sig">{h.signature}</code>
@@ -522,6 +540,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
   const [presetsOpen, setPresetsOpen] = useState(false);
   const [shared, setShared] = useState("");
   const [histTick, bumpHist] = useState(0);
+  const [lang, setLang] = useState<BlockLang>(() => loadLang(window.localStorage));
   const historyRef = useRef<{ past: ToolGraph[]; future: ToolGraph[]; tag: string | null; at: number }>({ past: [], future: [], tag: null, at: 0 });
   const [tutorialStep, setTutorialStep] = useState<number | null>(() =>
     fresh && tool.mode === "blocks" && !tutorialSeen() ? 0 : null);
@@ -839,6 +858,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
   );
 
   return (
+    <LangContext.Provider value={lang}>
     <div className="bs-studio" data-testid="block-studio">
       <header className="bs-header">
         <input className="bs-title" aria-label="Tool name" value={tool.name} onChange={(e) => onChange({ ...tool, name: e.target.value })} disabled={readOnly} data-testid="bs-name" />
@@ -854,7 +874,10 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
           <button className="bs-btn" disabled={readOnly} onClick={() => addNode({ id: uid(), type: "frame", frame: Math.round(ctx.playhead * ctx.fps), position: freeSpot() })} data-testid="bs-add-frame">🖼 Add frame</button>
         )}
         {tab === "blocks" && (
-          <button className="bs-btn" disabled={readOnly} onClick={() => setTutorialStep(0)} data-testid="bs-tutorial-open" title="Show the first-tool tutorial">🎓 Tutorial</button>
+          <button className="bs-btn" onClick={() => setTutorialStep(0)} disabled={readOnly} data-testid="bs-tutorial-open" title="Show the first-tool tutorial">🎓 Tutorial</button>
+        )}
+        {tab === "blocks" && (
+          <button className="bs-btn" onClick={() => { const next: BlockLang = lang === "es" ? "en" : "es"; setLang(next); saveLang(next, window.localStorage); }} data-testid="bs-lang" title="Switch language / Cambiar idioma">🌐 {lang === "es" ? "ES" : "EN"}</button>
         )}
         {tab === "blocks" && (
           <button className="bs-btn bs-btn-presets" onClick={() => setPresetsOpen((o) => !o)} disabled={readOnly} data-testid="bs-presets" title="Ready-made recipes of connected blocks">✨ Presets</button>
@@ -915,23 +938,23 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
                 aria-pressed={category === c.id} data-testid={`bs-cat-${c.id}`} onClick={() => { setCategory(c.id); setSearch(""); }}
                 title={c.help}>
                 <i className={`bs-cat-dot bs-dot-cat-${c.id.toLowerCase().replace(/\s+/g, "-")}`} />
-                <span className="bs-cat-label">{c.label}</span>
+                <span className="bs-cat-label">{trGroup(lang, c.label)}</span>
               </button>
             ))}
           </nav>
           <aside className="bs-palette" data-testid="bs-palette">
             <input className="bs-search" type="search" placeholder="Search blocks…" aria-label="Search blocks"
               data-testid="bs-search" value={search} onChange={(e) => setSearch(e.target.value)} />
-            <p className="bs-palette-title" data-testid="bs-palette-heading">{search ? `Matches for “${search}”` : `${category} blocks`}</p>
+            <p className="bs-palette-title" data-testid="bs-palette-heading">{search ? `Matches for “${search}”` : trHeading(lang, category)}</p>
             {search ? (
               <div className="bs-palette-group">
-                {BLOCK_LIBRARY.filter((b) => !(HIDDEN_BLOCKS as readonly string[]).includes(b.id) && (b.label + " " + b.description).toLowerCase().includes(search.toLowerCase())).map((b) => (
+                {BLOCK_LIBRARY.filter((b) => !(HIDDEN_BLOCKS as readonly string[]).includes(b.id) && matchesSearch(lang, b, search)).map((b) => (
                   <div key={b.id} className={`bs-chip bs-group-${(b.group ?? "create").toLowerCase().replace(/\s+/g, "-")}`} draggable={!readOnly}
                     data-testid={`bs-chip-${b.id}`}
                     onDragStart={(e) => { e.dataTransfer.setData("application/videoforge-block", b.id); e.dataTransfer.effectAllowed = "move"; }}
-                    title={`${b.group ?? ""} — ${b.description}`}><span className="bs-chip-group">{b.group}</span>{b.label}</div>
+                    title={`${trGroup(lang, b.group ?? "")} — ${trDescription(lang, b)}`}><span className="bs-chip-group">{trGroup(lang, b.group ?? "")}</span>{trLabel(lang, b)}</div>
                 ))}
-                {!BLOCK_LIBRARY.some((b) => !(HIDDEN_BLOCKS as readonly string[]).includes(b.id) && (b.label + " " + b.description).toLowerCase().includes(search.toLowerCase())) && <p className="bs-hint">No blocks match that. Try “title”, “zoom” or “speed”.</p>}
+                {!BLOCK_LIBRARY.some((b) => !(HIDDEN_BLOCKS as readonly string[]).includes(b.id) && matchesSearch(lang, b, search)) && <p className="bs-hint">No blocks match that. Try “title”, “zoom” or “speed”.</p>}
               </div>
             ) : category === "Stickers" ? (
               <div className="bs-palette-group">
@@ -945,17 +968,17 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
               </div>
             ) : category === "Flow" ? (
               <div className="bs-palette-group">
-                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "repeat"); }} title="Run blocks a number of times">↻ Repeat</div>
-                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "eachClip"); }} title="Run blocks for every clip">🎞 For each clip</div>
-                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "function"); }} title="A named group of blocks">ƒ Function</div>
-                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "call"); }} title="Run a function">ƒ→ Call</div>
-                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "comment"); }} title="A note that does nothing">💬 Note</div>
+                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "repeat"); }} title={trUI(lang, "flow-repeat", "Run blocks a number of times")}>{trUI(lang, "flow-repeat", "↻ Repeat")}</div>
+                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "eachClip"); }} title={trUI(lang, "flow-each-clip", "Run blocks for every clip")}>{trUI(lang, "flow-each-clip", "🎞 For each clip")}</div>
+                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "function"); }} title={trUI(lang, "flow-function", "A named group of blocks")}>{trUI(lang, "flow-function", "ƒ Function")}</div>
+                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "call"); }} title={trUI(lang, "flow-call", "Run a function")}>{trUI(lang, "flow-call", "ƒ→ Call")}</div>
+                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "comment"); }} title={trUI(lang, "flow-note", "A note that does nothing")}>{trUI(lang, "flow-note", "💬 Note")}</div>
               </div>
             ) : category === "Values" ? (
               <div className="bs-palette-group">
-                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "value-text"); }} title="A piece of text to plug into a field">📝 Text</div>
-                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "value-number"); }} title="A number to plug into a field">🔢 Number</div>
-                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "value-yesno"); }} title="A yes or no to plug into a field">🔘 Yes / No</div>
+                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "value-text"); }} title={trUI(lang, "value-text", "A piece of text to plug into a field")}>{trUI(lang, "value-text", "📝 Text")}</div>
+                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "value-number"); }} title={trUI(lang, "value-number", "A number to plug into a field")}>{trUI(lang, "value-number", "🔢 Number")}</div>
+                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "value-yesno"); }} title={trUI(lang, "value-yesno", "A yes or no to plug into a field")}>{trUI(lang, "value-yesno", "🔘 Yes / No")}</div>
                 <p className="bs-hint">Drag one next to a block, type your value, then drag from its dot into the block's field.</p>
               </div>
             ) : (
@@ -964,7 +987,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
                   <div key={b.id} className={`bs-chip bs-group-${category.toLowerCase().replace(/\s+/g, "-")}`} draggable={!readOnly}
                     data-testid={`bs-chip-${b.id}`}
                     onDragStart={(e) => { e.dataTransfer.setData("application/videoforge-block", b.id); e.dataTransfer.effectAllowed = "move"; }}
-                    title={b.description}>{b.label}</div>
+                    title={trDescription(lang, b)}>{trLabel(lang, b)}</div>
                 ))}
               </div>
             )}
@@ -1031,6 +1054,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
         </div>
       )}
     </div>
+    </LangContext.Provider>
   );
 }
 

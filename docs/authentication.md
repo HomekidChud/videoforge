@@ -2,14 +2,24 @@
 title: Authentication & scopes
 group: Get started
 order: 3
-description: Give agents only the access they need.
+description: Sign in with email, Google or an API key — and give agents only the access they need.
 ---
 
-## Bearer authentication
+## Three ways to sign in
 
-Send Authorization: Bearer <key> on every private API request. The health endpoint is public. Documentation and the homepage never require a key. Browser sign-in holds your key only in memory for the current page session.
+- **Email and password** — the everyday way for people. The first account is created with the workspace owner key (printed to `data/OWNER_KEY.txt` on first boot, or set `VIDEOFORGE_BOOTSTRAP_KEY`); it becomes the workspace admin. After that, new accounts come from an admin (Developer platform → Accounts) unless `VIDEOFORGE_ACCOUNTS=open` allows self-signup.
+- **Google** — a “Continue with Google” button appears when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set (standard OAuth, verified id-token claims).
+- **API keys** — for AI agents, scripts and the standalone tool exports. No password, no cookie: `Authorization: Bearer <key>`.
+
+Sessions are random tokens stored in SQLite behind an HttpOnly `vf_session` cookie (30 days), so **sign-ins survive server restarts and browser refreshes**. Logout destroys the session. The health endpoint, documentation, share pages and the homepage never require a sign-in.
 
 ```shell
+# Account sign-in (sets the cookie)
+curl -c jar -X POST "$BASE/api/auth/login" -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"…"}'
+curl -b jar "$BASE/api/auth/me"
+
+# Agent key
 curl "$BASE/api/auth/me" -H "Authorization: Bearer $KEY"
 ```
 

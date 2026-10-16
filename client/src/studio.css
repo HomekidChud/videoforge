@@ -394,6 +394,8 @@
 .bs-inline-error-jump { margin-left: auto; flex: none; background: #3a1d1d; color: #ffb3b3; border: 1px solid #6b2424; border-radius: 7px; padding: 3px 9px; cursor: pointer; font-size: 11.5px; }
 .bs-inline-error-jump:hover { background: #4a2222; }
 .bs-ref-title { color: #9aa0a8; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; margin: 4px 0 7px; }
+.bs-ref-export { width: 100%; margin-bottom: 4px; padding: 8px 10px; border-radius: 8px; border: 1px solid #3a4150; background: #232a37; color: #dbe4f0; cursor: pointer; font-size: 12px; text-align: left; }
+.bs-ref-export:hover { background: #2a3342; border-color: var(--forge-accent, #4a8fd6); }
 .bs-ref-item { display: block; width: 100%; text-align: left; background: #17191d; border: 1px solid #26292f; border-radius: 8px; padding: 7px 9px; margin-bottom: 6px; cursor: pointer; }
 .bs-ref-item:hover { border-color: #4a8fd6; }
 .bs-ref-item:disabled { opacity: .5; cursor: default; }
