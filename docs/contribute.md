@@ -7,12 +7,13 @@ description: Set up the project, find your way around the code, and open a pull 
 
 ## Ways to help
 
-You do not need to write code to help. Fixing a confusing sentence in the docs, reporting a bug with clear steps, adding a test for something that broke once, or building a new motion preset are all welcome.
+There are two kinds of contributor, and the rules are strict so that pull requests are small, true and easy to review.
 
-- **Docs:** every page is a markdown file in `docs/`. Small fixes are the easiest first pull request.
-- **Bugs:** open an issue with what you did, what you expected and what happened. Add the browser and the project JSON if you can.
-- **Features:** open an issue first for anything large, so the shape of the change is agreed before you spend time on it.
-- **Presets, templates and blocks:** each has a short recipe further down this page.
+- **Community contributors may only change the docs.** Your pull request must touch nothing outside the `docs/` folder, and it needs a description that says which page, what was wrong and how you checked it. Anything else is closed automatically by the contribution rules workflow. See `CONTRIBUTING.md` in the repository root for the full policy.
+- **Bugs and ideas:** open an issue with what you did, what you expected and what happened. Add the browser and the project JSON if you can. Do not fix code yourself; a maintainer will pick it up.
+- **Maintainers** (the repository owner) may change anything — code, presets, templates and blocks — using the recipes further down this page.
+
+> [!WARNING] Nonsense is rejected. A docs change must describe something you actually tried in a running Studio, written in your own words. AI-pasted filler, drive-by refactors, dependency bumps and mass rewrites of pages are closed without review.
 
 ## Set up your machine
 
