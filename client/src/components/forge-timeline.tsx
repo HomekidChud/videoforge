@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Type, Music2, Film, Image as ImageIcon, Eye, EyeOff, Volume2, VolumeX, Flag, Maximize2 } from "lucide-react";
+import { Type, Music2, Film, Image as ImageIcon, Eye, EyeOff, Volume2, VolumeX, Flag, Maximize2, Layers, ChevronDown } from "lucide-react";
 import { clipDuration, clipEnd, timelineDuration, type Clip, type Timeline } from "@shared/timeline";
 import { incomingTransition } from "@shared/transitions";
 import { ANIMATABLE, type AnimationProperty } from "@shared/animation";
@@ -8,8 +8,11 @@ import { api } from "@/lib/api";
 import type { Peer } from "@/components/forge-presence";
 import { clampClipPatch, round, timecode, type AssetDTO } from "@/lib/editor-model";
 
+/** Width of the sticky track-name column, in pixels. Keep in step with .lane-label in forge.css. */
+const LABEL_W = 168;
 export type TimelineGesture = { begin: () => void; update: (id: string, patch: Partial<Clip>) => void; end: () => void };
 type Props = {
+  collapsed?: string[]; onToggleLane?: (id: string) => void;
   animationMode?: boolean;
   onKeyframeFocus?: (clipId:string,property:AnimationProperty,time:number)=>void;
   timeline: Timeline; assets: AssetDTO[]; selectedId: string | null; selectedIds: string[]; peers: Peer[]; follow?: boolean; onSelectMany: (ids: string[]) => void; onCursor: (c: { area: "timeline"; t: number; lane?: string } | null) => void; time: number; playing: boolean; pps: number; snapping: boolean; readOnly: boolean;
@@ -51,7 +54,7 @@ function packRows(clips: Clip[], timeline: Timeline) {
   return { rows, count: Math.max(1, ends.length) };
 }
 
-export default function ForgeTimeline({ animationMode=false, onKeyframeFocus, timeline, assets, selectedId, selectedIds, peers, follow, onSelectMany, onCursor, time, playing, pps, snapping, readOnly, mediaUrl, onTrack, onFit, onAddMarker, onSelect, onSeek, onDropAsset, onDropEffect, onDropFiles, onMoveMarker, gesture, onZoom }: Props) {
+export default function ForgeTimeline({ collapsed = [], onToggleLane, animationMode=false, onKeyframeFocus, timeline, assets, selectedId, selectedIds, peers, follow, onSelectMany, onCursor, time, playing, pps, snapping, readOnly, mediaUrl, onTrack, onFit, onAddMarker, onSelect, onSeek, onDropAsset, onDropEffect, onDropFiles, onMoveMarker, gesture, onZoom }: Props) {
   const scroller = useRef<HTMLDivElement>(null), lanes = useRef(new Map<string, HTMLDivElement>()), drag = useRef<Drag | null>(null);
   const [width, setWidth] = useState(900), [hoverClip, setHoverClip] = useState<string | null>(null), [hoverLane, setHoverLane] = useState<string | null>(null);
   const markerDrag = useRef<string | null>(null), marqueeRef = useRef<Marquee | null>(null), [marquee, setMarquee] = useState<Marquee | null>(null);
@@ -71,7 +74,7 @@ export default function ForgeTimeline({ animationMode=false, onKeyframeFocus, ti
 
   const pointTime = (clientX: number) => {
     const el = scroller.current!, r = el.getBoundingClientRect();
-    return Math.max(0, (clientX - r.left + el.scrollLeft - 132) / pps);
+    return Math.max(0, (clientX - r.left + el.scrollLeft - LABEL_W) / pps);
   };
   const seekFrom = (e: React.PointerEvent) => { onSeek(round(Math.max(0, Math.round(pointTime(e.clientX) * timeline.fps) / timeline.fps))); };
   const targets = (exclude: string) => [0, time, ...(timeline.markers ?? []).map((m) => m.time), ...timeline.clips.filter((c) => c.id !== exclude).flatMap((c) => [c.start, clipEnd(c)])];
@@ -153,8 +156,9 @@ export default function ForgeTimeline({ animationMode=false, onKeyframeFocus, ti
     <div className="timeline-toolbar"><span className="mono time-readout" data-testid="text-timecode">{timecode(time, timeline.fps)}</span><span className="muted mono"> / {timecode(duration, timeline.fps)}</span><div className="flex-spacer"/>
       <button className="icon-btn" onClick={onAddMarker} disabled={readOnly} aria-label="Add marker at playhead" title="Add marker (M)"><Flag size={15} /></button><button className="icon-btn" onClick={onFit} aria-label="Fit timeline" title="Fit timeline to window"><Maximize2 size={15} /></button>
       <label className="zoom-control">Zoom<input type="range" aria-label="Timeline zoom" min={8} max={260} value={pps} onChange={(e) => onZoom(Number(e.target.value))} /></label></div>
+    <TimelineMinimap clips={timeline.clips} total={total} pps={pps} scroller={scroller} />
     <div className="timeline-scroll" ref={scroller} onPointerMove={trackCursor} onPointerLeave={() => onCursor(null)} onWheel={(e) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); onZoom(Math.min(260, Math.max(8, Math.round(pps * (e.deltaY < 0 ? 1.15 : 0.87))))); } }} data-testid="timeline">
-      <div className="timeline-inner" style={{ width: 132 + total * pps }}>
+      <div className="timeline-inner" style={{ width: LABEL_W + total * pps }}>
         <div className="ruler-row"><div className="lane-label sticky-corner"/>
           <div className="ruler" onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); seekFrom(e); }} onPointerMove={(e) => { if (e.buttons) seekFrom(e); }} data-testid="ruler">
             {ticks.map((t) => <div key={t} className="tick" style={{ left: t * pps }}><span className="mono">{t >= 60 ? `${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, "0")}` : `${t}s`}</span></div>)}
@@ -169,8 +173,8 @@ export default function ForgeTimeline({ animationMode=false, onKeyframeFocus, ti
           let graphicHeight = 0;
           for(const c of clips){graphicRows.set(c.id,graphicHeight/58);graphicHeight+=58+properties(c).length*30;}
           const packed = lane.id === "overlay" ? { rows: graphicRows, count: Math.max(58,graphicHeight)/58 } : packRows(clips, timeline);
-          return <div className="lane-row" key={lane.id} style={{ minHeight: packed.count * 58 + (lane.id==="overlay"?30:0) }}><div className={`lane-label ${lane.id==="overlay"?"overlay-lane-names":""}`}>
-            <div className={lane.id==="overlay"?"overlay-lane-heading":"track-lane-heading"}><b>{lane.id === "overlay" ? "G" : lane.id === "video" ? "V" : "A"}</b><span>{lane.id==="overlay"?"Graphics":lane.label}</span>{lane.id === "audio" ? <button className={`lane-toggle ${timeline.tracks?.audio?.muted ? "on" : ""}`} aria-label={timeline.tracks?.audio?.muted ? "Unmute audio track" : "Mute audio track"} aria-pressed={!!timeline.tracks?.audio?.muted} disabled={readOnly} onClick={() => onTrack("audio", { muted: !timeline.tracks?.audio?.muted })}>{timeline.tracks?.audio?.muted ? <VolumeX size={13} /> : <Volume2 size={13} />}</button> : <button className={`lane-toggle ${timeline.tracks?.[lane.id]?.hidden ? "on" : ""}`} aria-label={timeline.tracks?.[lane.id]?.hidden ? `Show ${lane.label}` : `Hide ${lane.label}`} aria-pressed={!!timeline.tracks?.[lane.id]?.hidden} disabled={readOnly} onClick={() => onTrack(lane.id, { hidden: !timeline.tracks?.[lane.id]?.hidden })}>{timeline.tracks?.[lane.id]?.hidden ? <EyeOff size={13} /> : <Eye size={13} />}</button>}</div>
+          return <div className={`lane-row ${collapsed.includes(lane.id) ? "collapsed" : ""}`} key={lane.id} style={collapsed.includes(lane.id) ? { minHeight: 34, maxHeight: 34, overflow: "hidden" } : { minHeight: packed.count * 58 + (lane.id==="overlay"?30:0) }}><div className={`lane-label ${lane.id==="overlay"?"overlay-lane-names":""}`}>
+            <div className={lane.id==="overlay"?"overlay-lane-heading":"track-lane-heading"}><b className="lane-icon">{lane.id === "overlay" ? <Layers size={14} /> : lane.id === "video" ? <Film size={14} /> : <Music2 size={14} />}</b><span>{lane.id==="overlay"?"Graphics":lane.label}</span>{onToggleLane && <button className={`lane-toggle lane-collapse ${collapsed.includes(lane.id) ? "on" : ""}`} aria-label={collapsed.includes(lane.id) ? `Expand ${lane.label}` : `Collapse ${lane.label}`} aria-expanded={!collapsed.includes(lane.id)} onClick={() => onToggleLane(lane.id)} data-testid={`collapse-${lane.id}`}><ChevronDown size={13} /></button>}{lane.id === "audio" ? <button className={`lane-toggle ${timeline.tracks?.audio?.muted ? "on" : ""}`} aria-label={timeline.tracks?.audio?.muted ? "Unmute audio track" : "Mute audio track"} aria-pressed={!!timeline.tracks?.audio?.muted} disabled={readOnly} onClick={() => onTrack("audio", { muted: !timeline.tracks?.audio?.muted })}>{timeline.tracks?.audio?.muted ? <VolumeX size={13} /> : <Volume2 size={13} />}</button> : <button className={`lane-toggle ${timeline.tracks?.[lane.id]?.hidden ? "on" : ""}`} aria-label={timeline.tracks?.[lane.id]?.hidden ? `Show ${lane.label}` : `Hide ${lane.label}`} aria-pressed={!!timeline.tracks?.[lane.id]?.hidden} disabled={readOnly} onClick={() => onTrack(lane.id, { hidden: !timeline.tracks?.[lane.id]?.hidden })}>{timeline.tracks?.[lane.id]?.hidden ? <EyeOff size={13} /> : <Eye size={13} />}</button>}</div>
             {lane.id==="overlay"&&clips.map((c,i)=><div key={c.id}><button className={`clip-lane-name ${selectedIds.includes(c.id)?"active":""}`} title={c.label??c.text??byId.get(c.assetId)?.filename??"Overlay"} onClick={e=>onSelect(c.id,e.shiftKey?"toggle":"replace")} data-testid={`layer-select-${c.id}`}><small>{String(i+1).padStart(2,"0")}</small><span>{c.label??c.text??byId.get(c.assetId)?.filename??"Overlay"}</span></button>
               {properties(c).map(p=><div key={p} className="property-lane-label">{ANIMATABLE[p].label}</div>)}
             </div>)}
@@ -198,8 +202,33 @@ export default function ForgeTimeline({ animationMode=false, onKeyframeFocus, ti
                 </div>;
             })}</div></div>;
         })}
-        {peers.map((p) => <div key={p.cid} className="peer-playhead" style={{ left: 132 + p.time * pps, "--pc": p.color } as any} data-testid="peer-playhead" aria-hidden="true"><b>{p.name}</b></div>)}
-        <div className="playhead" style={{ left: 132 + time * pps }} aria-hidden="true"><span className="playhead-cap" onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); }} onPointerMove={(e) => { if (e.buttons) seekFrom(e); }}/></div>
+        {peers.map((p) => <div key={p.cid} className="peer-playhead" style={{ left: LABEL_W + p.time * pps, "--pc": p.color } as any} data-testid="peer-playhead" aria-hidden="true"><b>{p.name}</b></div>)}
+        <div className="playhead" style={{ left: LABEL_W + time * pps }} aria-hidden="true"><span className="playhead-cap" onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); }} onPointerMove={(e) => { if (e.buttons) seekFrom(e); }}/></div>
       </div></div>
     {marquee?.moved && <div className="marquee-box" style={{ left: Math.min(marquee.x0, marquee.x1), top: Math.min(marquee.y0, marquee.y1), width: Math.abs(marquee.x1 - marquee.x0), height: Math.abs(marquee.y1 - marquee.y0) }} />}</div>;
+}
+
+/** A thin overview of the whole sequence. The bright window is what the timeline shows now; drag or click to move it. */
+function TimelineMinimap({ clips, total, pps, scroller }: { clips: Clip[]; total: number; pps: number; scroller: React.RefObject<HTMLDivElement> }) {
+  const [view, setView] = useState({ left: 0, width: 1 });
+  useEffect(() => {
+    const el = scroller.current; if (!el) return;
+    const update = () => { const full = Math.max(1, el.scrollWidth); setView({ left: el.scrollLeft / full, width: Math.min(1, el.clientWidth / full) }); };
+    update(); el.addEventListener("scroll", update, { passive: true });
+    const ro = new ResizeObserver(update); ro.observe(el);
+    return () => { el.removeEventListener("scroll", update); ro.disconnect(); };
+  }, [scroller, total, pps]);
+  const move = (e: React.PointerEvent<HTMLDivElement>) => {
+    const el = scroller.current; if (!el) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const frac = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    el.scrollLeft = frac * el.scrollWidth - el.clientWidth / 2;
+  };
+  if (!clips.length || view.width >= 0.9) return null;
+  return (
+    <div className="minimap" onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); move(e); }} onPointerMove={(e) => { if (e.buttons) move(e); }} aria-label="Sequence overview" data-testid="minimap">
+      {clips.map((c) => <i key={c.id} className={`mm-${c.track}`} style={{ left: `${(c.start / Math.max(total, 0.001)) * 100}%`, width: `${Math.max(0.4, (clipDuration(c) / Math.max(total, 0.001)) * 100)}%` }} />)}
+      <span className="mm-view" style={{ left: `${view.left * 100}%`, width: `${view.width * 100}%` }} />
+    </div>
+  );
 }

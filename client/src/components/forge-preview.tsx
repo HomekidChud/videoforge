@@ -66,7 +66,7 @@ function MediaLayer({clip,asset,time,playing,source,hidden,muted,onError,timelin
   return <video {...common} ref={el=>{media.current=el;}} src={source} crossOrigin="anonymous" preload="auto" playsInline className="preview-media" style={style} onLoadedMetadata={sync} onError={fail}/>;
 }
 
-type PreviewProps={timeline:Timeline;assets:AssetDTO[];time:number;playing:boolean;selectedId:string|null;readOnly:boolean;gesture:TimelineGesture;mediaUrl:(id:string,url:string)=>string;onError:(message:string)=>void;onValues:(id:string,values:Record<string,number>,live:boolean)=>void;onSelect?:(id:string|null,mode?:"replace"|"toggle")=>void;muted?:boolean;onDropEffect?:(effect:any)=>void;peers?:Peer[];onCursor?:(c:{area:"preview";x:number;y:number}|null)=>void};
+type PreviewProps={emptyActions?:React.ReactNode;timeline:Timeline;assets:AssetDTO[];time:number;playing:boolean;selectedId:string|null;readOnly:boolean;gesture:TimelineGesture;mediaUrl:(id:string,url:string)=>string;onError:(message:string)=>void;onValues:(id:string,values:Record<string,number>,live:boolean)=>void;onSelect?:(id:string|null,mode?:"replace"|"toggle")=>void;muted?:boolean;onDropEffect?:(effect:any)=>void;peers?:Peer[];onCursor?:(c:{area:"preview";x:number;y:number}|null)=>void};
 /** The visible part of a text clip's text at a moment in time, for reveal effects. */
 function revealedText(text: string, reveal: { mode: "typewriter" | "words" | "lines"; duration?: number; delay?: number } | undefined, start: number, time: number): string {
   if (!reveal) return text;
@@ -87,7 +87,7 @@ function cycledColor(cycle: { steps: string[]; duration?: number } | undefined, 
   return cycle.steps[Math.floor(elapsed / per) % cycle.steps.length];
 }
 
-export default function ForgePreview({timeline,assets,time,playing,selectedId,readOnly,gesture,mediaUrl,onError,onValues,onSelect,muted,onDropEffect,peers,onCursor}:PreviewProps) {
+export default function ForgePreview({timeline,assets,time,playing,selectedId,readOnly,gesture,mediaUrl,onError,onValues,onSelect,muted,onDropEffect,peers,onCursor,emptyActions}:PreviewProps) {
   const [dropHot,setDropHot]=useState(false);
   const area=useRef<HTMLDivElement>(null),stage=useRef<HTMLDivElement>(null);
   const [size,setSize]=useState({width:640,height:360}),[box,setBox]=useState<{l:number;t:number;w:number;h:number}|null>(null);
@@ -126,7 +126,7 @@ export default function ForgePreview({timeline,assets,time,playing,selectedId,re
   };
   const layerSort=(a:Clip,b:Clip)=>((a.z??0)-(b.z??0))||(a.start-b.start);
   const texts=timeline.clips.filter(c=>c.text&&time>=c.start&&time<clipEnd(c)&&!hiddenTrack(c)).sort(layerSort);
-  // One stacking order for every overlay visual — media, shapes and text alike:
+  // One stacking order for every overlay visual, media, shapes and text alike:
   // z first (higher draws on top), then start. Video-track footage stays beneath.
   const overlayItems:Array<{z:number;start:number;node:ReactNode}>=[];
   for(const c of ordered){
@@ -161,7 +161,7 @@ export default function ForgePreview({timeline,assets,time,playing,selectedId,re
       {overlayItems.map((it)=>it.node)}
       {box&&!playing&&<div className="selection-frame" style={{left:box.l,top:box.t,width:box.w,height:box.h}} onPointerDown={e=>startDrag(e,"move")} data-testid="selection-frame"><span className="scale-handle" onPointerDown={e=>startDrag(e,"scale")} aria-label="Drag to scale"/></div>}
       {peers&&<PreviewCursors peers={peers}/>}
-      {!timeline.clips.length&&<div className="preview-empty"><Film size={28}/><h3>Your next story starts here.</h3><p>Import media or add a title to begin.</p></div>}
+      {!timeline.clips.length&&<div className="preview-empty"><Film size={28}/><h3>Your next story starts here.</h3><p>Import media or add a title to begin.</p>{emptyActions&&<div className="preview-empty-actions">{emptyActions}</div>}</div>}
     </div><span className="preview-resolution mono">{timeline.resolution.width} × {timeline.resolution.height} · {timeline.fps} FPS</span>
   </div>;
 }

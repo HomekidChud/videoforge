@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { Scissors, Copy, Trash2, Globe, Lock, Link2, Film, Diamond, FlipHorizontal2, FlipVertical2, Flag, RotateCcw } from "lucide-react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { Scissors, Copy, Trash2, Globe, Lock, Link2, Film, Diamond, FlipHorizontal2, FlipVertical2, Flag, RotateCcw, Search, X } from "lucide-react";
 import { ANIMATABLE, valueAt, clamp, type AnimationProperty } from "@shared/animation";
 import { FILTERS, RESOLUTIONS, clipDuration, type Clip, type Timeline } from "@shared/timeline";
 import { round, timecode, type AssetDTO } from "@/lib/editor-model";
@@ -23,7 +23,34 @@ function NumberField({ label, value, min, max, step = 0.1, suffix = "s", disable
   const commit = () => { const n = Number(draft); if (Number.isFinite(n)) onCommit(Math.min(max, Math.max(min, n))); else setDraft(String(round(value))); };
   return <label className="number-field"><span>{label}</span><div><input type="number" inputMode="decimal" value={draft} min={min} max={max} step={step} disabled={disabled} onChange={(e) => setDraft(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} /><small>{suffix}</small></div></label>;
 }
-function Section({ title, children, open = true }: { title: string; children: ReactNode; open?: boolean }) {
+const InspectorMode = createContext<{ advanced: boolean }>({ advanced: true });
+
+/** Wraps an inspector: adds a search box that narrows the sections to those mentioning the query, and the Simple or Advanced switch for rarely used sections. */
+export function InspectorShell({ advanced, children }: { advanced: boolean; children: ReactNode }) {
+  const [q, setQ] = useState("");
+  const body = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = body.current; if (!root) return;
+    const needle = q.trim().toLowerCase();
+    root.querySelectorAll<HTMLDetailsElement>("details.insp-section").forEach((d) => {
+      const hit = !needle || (d.textContent ?? "").toLowerCase().includes(needle) || Array.from(d.querySelectorAll("input,textarea,select")).some((i) => (i as HTMLInputElement).getAttribute("aria-label")?.toLowerCase().includes(needle));
+      d.hidden = !hit;
+      if (needle && hit) d.open = true;
+    });
+    const any = !needle || Array.from(root.querySelectorAll("details.insp-section")).some((d) => !(d as HTMLElement).hidden);
+    root.dataset.empty = any ? "false" : "true";
+  });
+  return (
+    <InspectorMode.Provider value={{ advanced }}>
+      <div className="insp-search"><Search size={14} aria-hidden="true" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search settings" aria-label="Search inspector settings" data-testid="inspector-search" />{q && <button className="icon-btn" aria-label="Clear search" onClick={() => setQ("")}><X size={13} /></button>}</div>
+      <div className="insp-body" ref={body}>{children}<p className="insp-nomatch">No setting matches that search.</p></div>
+    </InspectorMode.Provider>
+  );
+}
+
+function Section({ title, children, open = true, advanced = false }: { title: string; children: ReactNode; open?: boolean; advanced?: boolean }) {
+  const mode = useContext(InspectorMode);
+  if (advanced && !mode.advanced) return null;
   return <details className="insp-section" open={open}><summary>{title}</summary><div className="insp-content">{children}</div></details>;
 }
 
@@ -76,7 +103,7 @@ export function ClipInspector({ canvas, clip, asset, readOnly, gesture, time, fp
       <Section title="Timing"><div className="two-col"><NumberField label="Start" value={clip.start} min={0} max={86400} disabled={readOnly} onCommit={(v) => patch({ start: v })} />
         {media ? <NumberField label="Speed" value={clip.speed ?? 1} min={0.25} max={4} step={0.25} suffix="×" disabled={readOnly} onCommit={(v) => patch({ speed: v })} /> : <NumberField label="Duration" value={dur} min={0.1} max={3600} disabled={readOnly} onCommit={(v) => patch({ outPoint: clip.inPoint + v })} />}</div>
         {media && <div className="two-col"><NumberField label="In" value={clip.inPoint} min={0} max={Math.max(0, (asset?.duration ?? 86400) - 0.1)} disabled={readOnly} onCommit={(v) => patch({ inPoint: v })} /><NumberField label="Out" value={clip.outPoint} min={0.1} max={asset?.duration || 86400} disabled={readOnly} onCommit={(v) => patch({ outPoint: v })} /></div>}</Section>
-      {clip.track === "video" && !isText && onTransition && <Section title="Transition in">
+      {clip.track === "video" && !isText && onTransition && <Section title="Transition in" advanced>
         <div className="chip-grid" role="radiogroup" aria-label="Transition">{["none", ...TRANSITIONS].map((t) => <button key={t} role="radio" aria-checked={(transition?.type ?? "none") === t} className={(transition?.type ?? "none") === t ? "selected chip" : "chip"} disabled={readOnly} onClick={() => onTransition(t, transition?.duration)} data-testid={`transition-${t}`}>{TRANSITION_LABELS[t]}</button>)}</div>
         {transition && <NumberField label="Length" value={transition.duration} min={0.1} max={3} disabled={readOnly} onCommit={(v) => onTransition(transition.type, v)} />}
         <p className="help-text">Overlaps this clip with the one before it. Later clips move up to close the gap.</p></Section>}
@@ -85,7 +112,7 @@ export function ClipInspector({ canvas, clip, asset, readOnly, gesture, time, fp
         <Slider label="Blur" value={clip.blur ?? 0} min={0} max={20} step={0.5} format={(v) => `${v}px`} onGesture={gesture} onChange={(v) => ps({ blur: v })} disabled={readOnly} />
         <div className="toggle-row"><button className={`chip ${clip.flipX ? "selected" : ""}`} aria-pressed={!!clip.flipX} disabled={readOnly} onClick={() => patch({ flipX: !clip.flipX })}><FlipHorizontal2 size={14} />Flip</button><button className={`chip ${clip.flipY ? "selected" : ""}`} aria-pressed={!!clip.flipY} disabled={readOnly} onClick={() => patch({ flipY: !clip.flipY })}><FlipVertical2 size={14} />Flip</button>
           <button className="chip" disabled={readOnly} onClick={() => patch({ x: undefined, y: undefined, scale: undefined, rotation: undefined, flipX: false, flipY: false, blur: 0, fit: "contain", textFit: undefined, textMaxWidth: undefined, textMaxHeight: undefined })} title="Reset transform"><RotateCcw size={13} />Reset</button></div></Section>}
-      {visual && <Section title="Fit to frame">
+      {visual && <Section title="Fit to frame" advanced>
         <div className="chip-grid" data-testid="fit-controls">
           <button className="chip" disabled={readOnly} onClick={() => patch(fitClip(clip, canvas, { width: asset?.width, height: asset?.height }, "safe"))} title="Scale and nudge this layer until it sits inside the frame" data-testid="fit-safe">Fit inside frame</button>
           {media && clip.track === "video" && (["contain", "cover", "fill"] as const).map((m) => <button key={m} className={`chip ${(clip.fit ?? "contain") === m ? "selected" : ""}`} aria-pressed={(clip.fit ?? "contain") === m} disabled={readOnly} onClick={() => patch({ fit: m })} title={m === "contain" ? "Show everything, letterbox the rest" : m === "cover" ? "Fill the frame and crop the edges" : "Stretch to the frame, ignoring the aspect ratio"} data-testid={`fit-${m}`}>{m === "contain" ? "Contain" : m === "cover" ? "Cover" : "Stretch"}</button>)}
@@ -96,7 +123,7 @@ export function ClipInspector({ canvas, clip, asset, readOnly, gesture, time, fp
       {visual && !isText && <Section title="Color"><div className="chip-grid" role="radiogroup" aria-label="Filter">{FILTERS.map((f) => <button key={f} role="radio" aria-checked={(clip.filter ?? "none") === f} className={(clip.filter ?? "none") === f ? "selected" : ""} disabled={readOnly} onClick={() => patch({ filter: f })} data-testid={`filter-${f}`}>{f === "none" ? "Original" : f}</button>)}</div>
         {anim("brightness", "Brightness", (v) => (v > 0 ? "+" : "") + Math.round(v * 100))}{anim("contrast", "Contrast", pct)}{anim("saturation", "Saturation", pct)}</Section>}
       {hasAudio && <Section title="Audio">{anim("volume", "Volume", pct, 0, 1, clip.muted)}<label className="check-field"><input type="checkbox" checked={clip.muted} disabled={readOnly} onChange={(e) => patch({ muted: e.target.checked })} data-testid="input-muted" />Mute clip</label></Section>}
-      <Section title="Fades" open={false}><Slider label="Fade in" value={clip.fadeIn ?? 0} min={0} max={Math.min(10, dur)} step={0.1} format={(v) => `${v.toFixed(1)}s`} onGesture={gesture} onChange={(v) => ps({ fadeIn: v })} disabled={readOnly} /><Slider label="Fade out" value={clip.fadeOut ?? 0} min={0} max={Math.min(10, dur)} step={0.1} format={(v) => `${v.toFixed(1)}s`} onGesture={gesture} onChange={(v) => ps({ fadeOut: v })} disabled={readOnly} /></Section></>}
+      <Section title="Fades" open={false} advanced><Slider label="Fade in" value={clip.fadeIn ?? 0} min={0} max={Math.min(10, dur)} step={0.1} format={(v) => `${v.toFixed(1)}s`} onGesture={gesture} onChange={(v) => ps({ fadeIn: v })} disabled={readOnly} /><Slider label="Fade out" value={clip.fadeOut ?? 0} min={0} max={Math.min(10, dur)} step={0.1} format={(v) => `${v.toFixed(1)}s`} onGesture={gesture} onChange={(v) => ps({ fadeOut: v })} disabled={readOnly} /></Section></>}
   </div>;
 }
 
@@ -117,7 +144,7 @@ export function ProjectInspector({ name, onName, timeline, setProject, readOnly,
       {!projectId && <p className="help-text">Save the project to manage sharing.</p>}
       {canPublish ? <button className="secondary-btn full" disabled={!projectId} onClick={onVisibility}>{visibility === "private" ? <><Globe size={15} />Make public</> : <><Lock size={15} />Make private</>}</button> : <p className="help-text">Only admin keys can change visibility.</p>}
       {visibility === "public" && <button className="secondary-btn full" onClick={onCopyLink}><Link2 size={15} />Copy public link</button>}</Section>
-    <Section title="Shortcuts" open={false}><dl className="shortcut-list">{[["Space", "Play / pause"], ["S", "Split at playhead"], ["M", "Add marker"], ["Del", "Delete clip"], ["⇧ Del", "Ripple delete"], ["⌘/Ctrl Z", "Undo (⇧ for redo)"], ["⌘/Ctrl C V", "Copy and paste clip"], ["⌘/Ctrl D", "Duplicate"], ["← →", "Step a frame (⇧ = 1s)"], ["[  ]", "Trim edge to playhead"], ["+ −", "Zoom timeline"]].map(([k, v]) => <div key={k}><dt className="mono">{k}</dt><dd>{v}</dd></div>)}</dl></Section>
+    <p className="help-text">Press <kbd>?</kbd> for every keyboard shortcut and <kbd>Ctrl</kbd> <kbd>K</kbd> to search commands.</p>
   </div>;
 }
 

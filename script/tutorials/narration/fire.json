@@ -1,0 +1,20 @@
+{
+  "id": "fire",
+  "doc": "tutorial-fire-edit",
+  "title": "Fire edit tutorial",
+  "subtitle": "Turn one clip into a finished, graded and exported edit",
+  "next": "Continue with the documentation",
+  "sections": [
+    { "id": "intro", "title": "Introduction", "say": "This tutorial turns one clip into a finished edit. You will trim two cuts and join them with a dissolve, apply a warm colour look, add a headline, a floating badge and a lower third, and then export an MP4. It takes about twenty minutes." },
+    { "id": "clip", "title": "Get the clip in", "say": "Begin by importing the clip. Choose Import media in the Media panel and select your file. Its length and thumbnail appear straight away. Drag the clip onto the video track, then name the project Fire edit." },
+    { "id": "trim", "title": "Trim to the beat", "say": "Watch the clip once and find its best moment. Select the clip, and in the inspector under Timing, set Out to eight seconds. The first cut now runs for eight seconds." },
+    { "id": "second", "title": "Make the second cut", "say": "Duplicate the clip with the Duplicate button in the inspector. Place the copy where the first cut ends. Set its In point to eight seconds, so the second cut shows new footage, and trim it to about seven and a half seconds." },
+    { "id": "look", "title": "Warm the edit up", "say": "Select both clips and open the Edit tab in the inspector. Under colour, set the look to Warm. Everything shifts toward amber, and the highlights roll off gently. If the footage is dark, raise the brightness a little." },
+    { "id": "headline", "title": "Add the headline", "say": "Choose Add title and type Fire edit. Set the size to ten percent, select a bold weight, and raise the title to twenty percent. Extend its duration to fifteen seconds, then apply the Spring preset from the Motion tab." },
+    { "id": "badge", "title": "Add a badge that floats", "say": "Open the Graphics panel and insert an ellipse. Size it as a small circle, fill it with orange, and place it low in the frame. In the Motion tab, expand Animate with code, choose the Float recipe and apply it." },
+    { "id": "lower", "title": "Add the lower third", "say": "Move the playhead to two seconds. In the Graphics panel, open the lower third template. Enter a name and a supporting line, set the duration to four seconds, and add it to the timeline." },
+    { "id": "dissolve", "title": "Join the cuts with a dissolve", "say": "Open the Effects panel and find Transitions. Select the second clip, and apply Dissolve. The transition overlaps the two cuts and moves later video up, so the edit stays tight. It plays in the preview and survives the export." },
+    { "id": "export", "title": "Check it, then export", "say": "Play the whole edit once from the start. The headline springs in, the badge floats, the lower third arrives at two seconds, and the two cuts dissolve. When you are satisfied, select Export. The render runs on the server with FFmpeg, and the finished MP4 downloads from the same panel." },
+    { "id": "outro", "title": "Summary", "say": "That completes the fire edit. Every layer is an ordinary clip, so anything can be retimed or restyled afterwards. The documentation covers transitions, rendering and the API operations behind every step you performed." }
+  ]
+}

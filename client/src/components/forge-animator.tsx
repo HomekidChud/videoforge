@@ -299,7 +299,7 @@ export default function ForgeAnimator(props: Props) {
         <span className="an-spacer" />
         <button className="an-icon" onClick={undo} disabled={!past.length} aria-label="Undo" title="Undo (Ctrl+Z)"><Undo2 size={15} /></button>
         <button className="an-icon" onClick={redo} disabled={!future.length} aria-label="Redo" title="Redo (Ctrl+Shift+Z)"><Redo2 size={15} /></button>
-        <button className="an-btn an-apply" onClick={apply} disabled={readOnly || emptyRig} data-testid="an-apply" title="Bake this animation into your edit as keyframes — one undoable step">{applied ? <Check size={15} /> : <Play size={14} />}{applied ? "Applied" : "Apply to edit"}</button>
+        <button className="an-btn an-apply" onClick={apply} disabled={readOnly || emptyRig} data-testid="an-apply" title="Bake this animation into your edit as keyframes, one undoable step">{applied ? <Check size={15} /> : <Play size={14} />}{applied ? "Applied" : "Apply to edit"}</button>
         <button className="an-icon" onClick={onClose} aria-label="Close Animator" title="Close (Esc)" data-testid="an-close"><X size={17} /></button>
       </header>
 

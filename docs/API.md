@@ -1,4 +1,4 @@
-# VideoForge Agent API — Complete Reference
+# VideoForge Agent API: Complete Reference
 
 VideoForge is a browser video editor with a first-class REST API for **AI agents**. Every endpoint the editor UI uses is the same JSON API exposed to external agents, so you can build, edit, and render video entirely programmatically.
 
@@ -283,7 +283,7 @@ curl -H "Authorization: Bearer vf_live_abc123" \
 
 ### The UI cookie bypass
 
-The browser editor sets a `vf_ui=1` cookie so it can call the API without a key. This is **not** a backdoor — it is only enabled when `VIDEOFORGE_REQUIRE_UI_AUTH` is not set to `1`. To force even the UI to use a key, set that env var.
+The browser editor sets a `vf_ui=1` cookie so it can call the API without a key. This is **not** a backdoor. It is only enabled when `VIDEOFORGE_REQUIRE_UI_AUTH` is not set to `1`. To force even the UI to use a key, set that env var.
 
 > ⚠️ For any production deployment, set `VIDEOFORGE_REQUIRE_UI_AUTH=1` so the UI must also present a key.
 
@@ -297,7 +297,7 @@ Three scopes exist. Each grants everything the previous one does.
 |---|---|---|
 | `read` | GET requests: list media, projects, renders, download finished renders | an agent that just inspects or summarizes timelines |
 | `write` | `read` + upload media, create/edit/delete projects, queue renders, download | the standard "do work" agent |
-| `admin` | `write` + create / list / revoke other API keys | **you only** — this is the owner key |
+| `admin` | `write` + create / list / revoke other API keys | **you only** (this is the owner key) |
 
 ### Scope enforcement table
 
@@ -338,7 +338,7 @@ Response (the plaintext key is shown **once**):
 
 ```json
 {
-  "message": "Save this key now — it is shown only once.",
+  "message": "Save this key now. It is shown only once.",
   "key": "vf_live_9f8e7d6c5b4a3210fedcba9876543210fedcba9876543210",
   "record": {
     "id": "b2f2...",
@@ -398,7 +398,7 @@ curl -H "Authorization: Bearer vf_admin_..." \
      http://localhost:5000/api/keys
 ```
 
-Returns metadata only — no key plaintext.
+Returns metadata only. No key plaintext.
 
 ### Revoking a key
 
@@ -412,7 +412,7 @@ Any subsequent request with that key now returns `403 Forbidden: this key has be
 
 ### Recovering the owner key
 
-`GET /api/keys/owner` (admin only) returns the owner key plaintext **only while it is still held in memory from the boot process**. If the server has restarted and `data/OWNER_KEY.txt` has been deleted, this returns 404 — create a new admin key instead. Because only one admin key exists at a time, the recommended flow is:
+`GET /api/keys/owner` (admin only) returns the owner key plaintext **only while it is still held in memory from the boot process**. If the server has restarted and `data/OWNER_KEY.txt` has been deleted, this returns 404, create a new admin key instead. Because only one admin key exists at a time, the recommended flow is:
 
 1. On first boot, save the owner key from `data/OWNER_KEY.txt` somewhere safe.
 2. `rm data/OWNER_KEY.txt`
@@ -454,7 +454,7 @@ Requirements:
 
 ### Security notes
 
-- `data.db` (SQLite) and `data/media/` are where user uploads and metadata live. **Never** commit these to git — `.gitignore` already excludes them.
+- `data.db` (SQLite) and `data/media/` are where user uploads and metadata live. **Never** commit these to git. The `.gitignore` already excludes them.
 - Only key plaintexts are shown once, at creation time. They are never logged by the server, never returned by any other endpoint, and never stored in the database in plaintext.
 - To rotate a key: mint a new one, update your agent's credentials, then revoke the old key.
 - The `/api/keys/owner` endpoint is only useful immediately after the first boot; after a restart, use the existing admin key to mint new ones.
@@ -654,7 +654,7 @@ Animatable properties: `x`, `y`, `scale`, `rotation`, `opacity`, `reveal`, `volu
 - `POST /api/projects/:id/duplicate` copies a project.
 - `GET /api/projects/:id/frame?t=1.5&width=640` returns a PNG still of the composed frame at that time. Use it to check an edit visually before exporting.
 
-Example — append a clip:
+Example: append a clip:
 
 ```json
 { "op": "add_clip",
@@ -662,7 +662,7 @@ Example — append a clip:
             "inPoint": 0, "outPoint": 5.2, "volume": 1, "muted": false } }
 ```
 
-Example — trim:
+Example: trim:
 
 ```json
 { "op": "trim_clip", "args": { "clipId": "c1", "inPoint": 1.0, "outPoint": 4.5 } }

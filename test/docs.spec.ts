@@ -17,7 +17,9 @@ async function check(label: string, fn: () => void | Promise<void>) {
 await check("generated matches source", async () => {
   const pages = await readDocPages();
   assert.equal(pages.length, DOC_PAGES.length);
-  for (let i = 0; i < pages.length; i++) assert.deepEqual(pages[i], DOC_PAGES[i]);
+  // The updated and added stamps come from git history, which changes the moment the regenerated file is committed, so they are compared separately by shape.
+  const strip = ({ updated, added, ...rest }: any) => rest;
+  for (let i = 0; i < pages.length; i++) assert.deepEqual(strip(pages[i]), strip(DOC_PAGES[i]));
 });
 
 // Pages are ordered, unique, and every link resolves.

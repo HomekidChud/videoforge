@@ -15,7 +15,7 @@ The first boot prints an owner key and writes it to `data/OWNER_KEY.txt`. The fi
 
 ## Uploads and media
 
-**Upload fails with "probe" or "unsupported".** Every file is probed once on upload. Video and audio need a codec FFmpeg can decode: MP4/H.264, MOV, WebM and MP3/WAV/AAC/M4A are the safe choices. A zero-byte or partially uploaded file also fails here — check the file plays locally first.
+**Upload fails with "probe" or "unsupported".** Every file is probed once on upload. Video and audio need a codec FFmpeg can decode: MP4/H.264, MOV, WebM and MP3/WAV/AAC/M4A are the safe choices. A zero-byte or partially uploaded file also fails here. Check the file plays locally first.
 
 **The thumbnail or waveform never appears.** Thumbnails are made straight after upload; if the file is still uploading elsewhere or the disk is full, they are skipped. Re-upload the file once the underlying problem is fixed.
 
@@ -25,7 +25,7 @@ The first boot prints an owner key and writes it to `data/OWNER_KEY.txt`. The fi
 
 **A render stays queued.** Renders run one at a time by default and need disk space in `data/renders`. Check the server logs for the FFmpeg error line; the most common causes are a full disk, a missing binary and a clip whose asset was deleted.
 
-**The render looks different from the preview.** Report it with the project ID — preview and export share the same engine, so a mismatch is a bug, not a tuning knob. Before reporting, check the project still validates with `POST /api/projects/:id/timeline/validate`.
+**The render looks different from the preview.** Report it with the project ID. Preview and export share the same engine, so a mismatch is a bug, not a tuning knob. Before reporting, check the project still validates with `POST /api/projects/:id/timeline/validate`.
 
 **Renders are slow.** Render time scales with clip count, effects and resolution. Render at 720p while composing, and switch the project resolution up for the final pass. `GET /api/renders/:id` reports progress so you can poll instead of guessing.
 
@@ -35,13 +35,13 @@ The first boot prints an owner key and writes it to `data/OWNER_KEY.txt`. The fi
 
 **403 with a scope error.** The key's scope is too small: read keys cannot upload or edit, write keys cannot manage other keys. The error names the missing scope; recreate the key with it or use an admin key.
 
-**Sessions signed out after a restart.** Sessions live in SQLite, so restarts keep them. If everyone is signed out, the SQLite file changed or was restored from a different backup — sign in again.
+**Sessions signed out after a restart.** Sessions live in SQLite, so restarts keep them. If everyone is signed out, the SQLite file changed or was restored from a different backup. Sign in again.
 
 **First account: "owner key required".** That is by design. Use the key from `data/OWNER_KEY.txt` (or `VIDEOFORGE_BOOTSTRAP_KEY`) for the first account only.
 
 ## API and agents
 
-**409 on a timeline edit.** The batch carried `expectedUpdatedAt` and another edit landed first — the write is refused so nothing is clobbered. GET the project, read the fresh `updatedAt`, and send it with the next batch — the atomic batches page explains the pattern.
+**409 on a timeline edit.** The batch carried `expectedUpdatedAt` and another edit landed first. The write is refused so nothing is clobbered. GET the project, read the fresh `updatedAt`, and send it with the next batch. The atomic batches page explains the pattern.
 
 **An operation name is rejected.** Operation names come from `GET /api/capabilities`; never invent one. The validation error names the closest known operation if there is a typo.
 
@@ -49,7 +49,7 @@ The first boot prints an owner key and writes it to `data/OWNER_KEY.txt`. The fi
 
 ## Self-hosting
 
-**The frontend cannot reach the API.** If the frontend is hosted separately, `VITE_API_BASE` must be set at build time to the API origin, and `CORS_ORIGIN` on the backend must allow the frontend origin. The frontend alone cannot render video — FFmpeg must stay with the API.
+**The frontend cannot reach the API.** If the frontend is hosted separately, `VITE_API_BASE` must be set at build time to the API origin, and `CORS_ORIGIN` on the backend must allow the frontend origin. The frontend alone cannot render video, FFmpeg must stay with the API.
 
 **Data directories.** `data/` (SQLite), `data/media` (uploads) and `data/renders` (exports) hold everything. Back them up together, restore them together, and never serve them statically. The Storage & durability page covers backups and the optional MongoDB store.
 

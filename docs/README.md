@@ -17,10 +17,10 @@ description: One timeline. A browser studio. An API your agents can actually use
 ---
 ```
 
-- `title` — heading and search result title
-- `group` — sidebar section (pages with the same group are grouped together)
-- `order` — position in the sidebar and previous/next navigation
-- `description` — lede paragraph and search description
+- `title`: heading and search result title
+- `group`: sidebar section (pages with the same group are grouped together)
+- `order`: position in the sidebar and previous/next navigation
+- `description`: lede paragraph and search description
 
 The body is a light markdown dialect:
 
@@ -51,7 +51,7 @@ remembered per browser, and its overall percentage shows next to its sidebar
 entry.
 
 The bucket list (docs/TODO.md) is the live example. Keep each item listed
-once — the build fails on duplicates, so counts stay honest.
+once. The build fails on duplicates, so counts stay honest.
 
 ## Tables that stay in sync with the code
 

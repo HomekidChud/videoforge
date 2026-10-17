@@ -78,7 +78,7 @@ export function ForgeTools({ disabled, onRun, onError, onNote, getCtx, studio = 
       for (const op of stickers) {
         const id = String((op.args as any)?.clipId ?? "");
         const raw = getCtx().clips.find((c) => c.id === id)?.raw;
-        if (!raw) return onError("Save as sticker needs a clip — connect a clip block to its Clip field");
+        if (!raw) return onError("Save as sticker needs a clip. Connect a clip block to its Clip field");
         saveSticker(window.localStorage, String((op.args as any)?.name ?? "Sticker"), JSON.parse(JSON.stringify(raw)));
         onNote?.(`Saved sticker “${String((op.args as any)?.name ?? "Sticker")}”`);
       }
@@ -126,7 +126,7 @@ export function ForgeTools({ disabled, onRun, onError, onNote, getCtx, studio = 
 
   return <div className="effects-panel" data-testid="tools-library">
     <div className="library-heading"><h3>Blocks &amp; scripts</h3><span className="eyebrow">{BUILT_IN_TOOLS.length + userTools.length} saved</span></div>
-    <p className="help-text">Build anything for your edit in the block studio — titles, timing, styling, rigs, whole sequences. Drag blocks, connect them, pick which clips they work on, then press the green Apply to edit button to change your timeline in one undoable step. Prefer typing? Every set of blocks also has a code mode.</p>
+    <p className="help-text">Build anything for your edit in the block studio: titles, timing, styling, rigs and whole sequences. Drag blocks, connect them, pick which clips they work on, then press the green Apply to edit button to change your timeline in one undoable step. Prefer typing? Every set of blocks also has a code mode.</p>
     <section className="effect-group"><h4>Examples</h4>{BUILT_IN_TOOLS.map((t) => card(t, true))}</section>
     {userTools.length > 0 && <section className="effect-group"><h4>Yours</h4>{userTools.map((t) => card(t, false))}</section>}
     <div className="tool-add-row">

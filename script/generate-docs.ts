@@ -10,6 +10,7 @@ import { MOTION_PRESETS, presetGroup } from "../shared/presets";
 import { CODE_RECIPES, EXPRESSION_FUNCTIONS } from "../shared/expr";
 import { EXAMPLES } from "../shared/examples";
 import { TRANSITIONS, TRANSITION_LABELS } from "../shared/transitions";
+import { SHORTCUTS } from "../shared/shortcuts";
 export const DOC_ENDPOINTS = [
   ["GET","/api/health","Public health check."],["GET","/api/auth/me","Check your key and scope."],
   ["GET","/api/capabilities","Operation, property and preset discovery."],
@@ -41,6 +42,7 @@ const AUTO_ROWS: Record<string, () => string[][]> = {
   functions: () => [...Object.entries(EXPRESSION_FUNCTIONS).map(([k, v]) => [k, v.doc]), ["wiggle", "wiggle(frequency, amount) is smooth noise over time"]],
   recipes: () => CODE_RECIPES.map((r) => [r.id, r.description]),
   transitions: () => TRANSITIONS.map((t) => [t, TRANSITION_LABELS[t]]),
+  shortcuts: () => SHORTCUTS.map((k) => [k.keys.join(" + "), `${k.label} (${k.group.toLowerCase()})`]),
   examples: () => EXAMPLES.map((e) => [e.id, `${e.summary} (${e.features.join(", ")})`]),
 };
 

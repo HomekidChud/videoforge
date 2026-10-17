@@ -1,0 +1,22 @@
+{
+  "id": "mg",
+  "doc": "motion-graphics-tutorial",
+  "title": "Motion graphics tutorial",
+  "subtitle": "Build an animated intro in the VideoForge Studio",
+  "next": "Next: the Animator tutorial",
+  "sections": [
+    { "id": "intro", "title": "Introduction", "say": "This tutorial builds a five second animated intro in the VideoForge Studio. It contains a headline, an accent bar, a tagline, a floating badge and a lower third. No footage is required, and the whole project takes about fifteen minutes." },
+    { "id": "start", "title": "Start the project", "say": "Begin by naming the project. Select the project name at the top left and enter Animated intro. With nothing selected, the inspector on the right shows the project settings. Set the background colour to a deep navy." },
+    { "id": "headline", "title": "Add a headline", "say": "Now add the headline. Choose Add title, and type the headline text into the inspector. Set the size to ten percent, select Poppins in bold, and raise the title to forty four percent of the frame height. Finally, extend its duration to five seconds." },
+    { "id": "spring", "title": "Make it spring in", "say": "Open the Motion tab and expand Motion presets. Set the preset duration to zero point nine seconds and select Spring. Press play to review the result. The headline arrives with a controlled bounce, and then settles into place." },
+    { "id": "bar", "title": "Add an accent bar", "say": "Next, add an accent bar. Open the Graphics panel and insert a rectangle. Reduce its height to a thin line, fill it with the brand orange, and position it beneath the headline. Then apply the Wipe reveal preset, so the bar opens from left to right." },
+    { "id": "tagline", "title": "Add a tagline", "say": "Add a tagline in the same way. Insert a second title and enter the supporting text. Reduce the size, and choose a softer colour, so that it ranks below the headline. Apply the Rise preset, and the tagline climbs into position." },
+    { "id": "badge", "title": "Add a badge that keeps moving", "say": "The badge should keep moving for the whole intro. Insert an ellipse from the Graphics panel and size it as a small circle. In the Motion tab, expand Animate with code, choose the Float recipe and apply it. The motion comes from a formula, so it loops at any length." },
+    { "id": "lower-third", "title": "Drop in a lower third", "say": "Move the playhead to two seconds, then open the Lower third template in the Graphics panel. Enter a name and a supporting line, set the duration to three seconds, and add it to the timeline. It appears exactly where the playhead was placed." },
+    { "id": "graph", "title": "Tune the motion on a graph", "say": "To refine the motion, switch to the Animate workspace and select the headline. Each animated property has its own curve. Add a keyframe at the playhead, and drag it to adjust the timing. When you have finished, return to the Edit workspace." },
+    { "id": "fade", "title": "Fade everything out", "say": "Now soften the ending. Select the headline and set Fade out to zero point six seconds. Repeat this for the tagline, so that both elements leave the screen together." },
+    { "id": "playback", "title": "Check the fit and play it back", "say": "Before exporting, open the project settings and choose Fit everything. This confirms that every layer sits inside the frame. Return to the start of the timeline and play the full sequence once." },
+    { "id": "export", "title": "Export your video", "say": "Finally, select Export. The render runs on the server with FFmpeg, and the progress panel reports each stage. When it finishes, the MP4 is ready to download." },
+    { "id": "outro", "title": "Summary", "say": "That completes the animated intro. Every layer is an ordinary clip, so you can retime or restyle any part at any time. The next tutorial introduces the Animator, which lets you rig and pose a character." }
+  ]
+}

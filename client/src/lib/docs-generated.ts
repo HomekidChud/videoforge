@@ -11,7 +11,7 @@ export const DOC_PAGES: DocPage[] = [
     "sections": [
       {
         "title": "Welcome to VideoForge",
-        "text": "VideoForge is a self-hosted video editor and programmable composition engine. Use the Studio to cut footage and animate graphics, or use the same HTTP API to let scripts and AI agents build the edit. Your media stays on your server.\n\nA hosted deployment runs at [videoforge-api-s54w.onrender.com](https://videoforge-api-s54w.onrender.com) — set BASE to it and use an API key issued by that deployment. GET /api/health reports status. To run your own, see Self-hosting."
+        "text": "VideoForge is a self-hosted video editor and programmable composition engine. Use the Studio to cut footage and animate graphics, or use the same HTTP API to let scripts and AI agents build the edit. Your media stays on your server.\n\nA hosted deployment runs at [videoforge-api-s54w.onrender.com](https://videoforge-api-s54w.onrender.com). Set BASE to it and use an API key issued by that deployment. GET /api/health reports status. To run your own, see Self-hosting."
       },
       {
         "title": "Choose your starting point",
@@ -87,7 +87,8 @@ export const DOC_PAGES: DocPage[] = [
     "sections": [
       {
         "title": "What you will make",
-        "text": "A five second intro: a headline that springs in, an accent bar that wipes open, a tagline that rises, a badge that floats forever and a lower third that arrives at two seconds. It takes about fifteen minutes and needs no uploads. Every layer is a normal clip, so you can change anything afterwards.\n\nEach step below has a short recording of the Studio doing it — watch the clip, then do the same in your own tab.",
+        "text": "A five second intro: a headline that springs in, an accent bar that wipes open, a tagline that rises, a badge that floats forever and a lower third that arrives at two seconds. It takes about fifteen minutes and needs no uploads. Every layer is a normal clip, so you can change anything afterwards.\n\nThe video above follows every step below, with narration and captions. Use its chapter list to jump to a step, then repeat the step in your own tab.",
+        "video": "mg",
         "callouts": [
           {
             "kind": "tip",
@@ -97,8 +98,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Start the project",
-        "text": "Click the project name at the top left and type `Animated intro`. With nothing selected, the right panel shows Project settings: leave Canvas on 16:9 HD (1280×720) and Frame rate on 30 fps, and set the Background swatch to a dark navy such as `#101826`.",
-        "video": "mg-start"
+        "text": "Click the project name at the top left and type `Animated intro`. With nothing selected, the right panel shows Project settings: leave Canvas on 16:9 HD (1280×720) and Frame rate on 30 fps, and set the Background swatch to a dark navy such as `#101826`."
       },
       {
         "title": "Add a headline",
@@ -108,8 +108,7 @@ export const DOC_PAGES: DocPage[] = [
             "kind": "note",
             "text": "Size is a percentage of the frame height, and Horizontal and Vertical are percentages of the frame, so the same numbers work at any resolution."
           }
-        ],
-        "video": "mg-headline"
+        ]
       },
       {
         "title": "Make it spring in",
@@ -119,8 +118,7 @@ export const DOC_PAGES: DocPage[] = [
             "kind": "tip",
             "text": "Click any preset to preview it, then press Ctrl+Z and try another. Presets replace only the properties they animate."
           }
-        ],
-        "video": "mg-spring"
+        ]
       },
       {
         "title": "Add an accent bar",
@@ -128,15 +126,13 @@ export const DOC_PAGES: DocPage[] = [
         "callouts": [
           {
             "kind": "note",
-            "text": "Shape width and height are fractions of the frame, so on a 16:9 canvas equal percentages do not make a square — which matters for the next circle."
+            "text": "Shape width and height are fractions of the frame, so on a 16:9 canvas equal percentages do not make a square, which matters for the next circle."
           }
-        ],
-        "video": "mg-bar"
+        ]
       },
       {
         "title": "Add a tagline",
-        "text": "Click Add title again and type `Motion graphics, made in the Studio`. Set Size to about 3.5%, Poppins, colour `#9fb3c8`, Vertical to 62%, Start to 0.5 and Duration to 4.5. In the Motion tab choose Rise with a Duration of 0.6.",
-        "video": "mg-tagline"
+        "text": "Click Add title again and type `Motion graphics, made in the Studio`. Set Size to about 3.5%, Poppins, colour `#9fb3c8`, Vertical to 62%, Start to 0.5 and Duration to 4.5. In the Motion tab choose Rise with a Duration of 0.6."
       },
       {
         "title": "Add a badge that keeps moving",
@@ -146,28 +142,23 @@ export const DOC_PAGES: DocPage[] = [
             "kind": "tip",
             "text": "A recipe is a formula, not keyframes, so it keeps looping at any clip length. Click Bake to keyframes if you later want to edit the movement by hand."
           }
-        ],
-        "video": "mg-badge"
+        ]
       },
       {
         "title": "Drop in a lower third",
-        "text": "Click the timeline ruler at 2 seconds to place the playhead. In Graphics, click Lower third, set Headline to `Ada Lovelace`, Supporting text to `Pioneer of computing`, keep the orange Accent, set Duration to 3 and click Add to timeline. The template expands into three ordinary clips you can edit like any layer.",
-        "video": "mg-lower-third"
+        "text": "Click the timeline ruler at 2 seconds to place the playhead. In Graphics, click Lower third, set Headline to `Ada Lovelace`, Supporting text to `Pioneer of computing`, keep the orange Accent, set Duration to 3 and click Add to timeline. The template expands into three ordinary clips you can edit like any layer."
       },
       {
         "title": "Tune the motion on a graph",
-        "text": "Click Animate in the top bar and select the headline. Its clip opens into Scale and Opacity lanes, with an Animation panel at the bottom right. The spring is drawn as a curve that overshoots and settles: drag the highest diamond down to soften the bounce, drag sideways to change timing, or click Key at playhead to add a key. Click Edit when you are done.",
-        "video": "mg-graph"
+        "text": "Click Animate in the top bar and select the headline. Its clip opens into Scale and Opacity lanes, with an Animation panel at the bottom right. The spring is drawn as a curve that overshoots and settles: drag the highest diamond down to soften the bounce, drag sideways to change timing, or click Key at playhead to add a key. Click Edit when you are done."
       },
       {
         "title": "Fade everything out",
-        "text": "Select the headline, then drag the Fade out slider in the Edit tab to 0.6 seconds. Do the same for the tagline. Fade out is separate from keyframes, so it never fights the spring you set up earlier.",
-        "video": "mg-fade"
+        "text": "Select the headline, then drag the Fade out slider in the Edit tab to 0.6 seconds. Do the same for the tagline. Fade out is separate from keyframes, so it never fights the spring you set up earlier."
       },
       {
         "title": "Check it fits and play it back",
-        "text": "With nothing selected, click Fit all layers in the Project panel to pull anything sticking out back inside. Click the skip-to-start button next to Play, press Space and watch the whole intro through once. Watch the save status next to the project name: when it says All changes saved, your work is stored with your account.",
-        "video": "mg-playback"
+        "text": "With nothing selected, click Fit all layers in the Project panel to pull anything sticking out back inside. Click the skip-to-start button next to Play, press Space and watch the whole intro through once. Watch the save status next to the project name: when it says All changes saved, your work is stored with your account."
       },
       {
         "title": "Export your video",
@@ -177,8 +168,7 @@ export const DOC_PAGES: DocPage[] = [
             "kind": "note",
             "text": "The preview and the export use the same formulas, but font metrics can differ by a pixel or two. Watch the export once before you publish it."
           }
-        ],
-        "video": "mg-export"
+        ]
       },
       {
         "title": "Build the same thing with the API",
@@ -212,18 +202,18 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T08:48:53Z",
+    "updated": "2026-10-17T18:48:19Z",
     "added": "2026-10-17T08:48:53Z"
   },
   {
     "slug": "authentication",
     "group": "Get started",
     "title": "Authentication & scopes",
-    "description": "Sign in with email, Google or an API key — and give agents only the access they need.",
+    "description": "Sign in with email, Google or an API key, and give agents only the access they need.",
     "sections": [
       {
         "title": "Three ways to sign in",
-        "text": "- **Email and password** — the everyday way for people. The first account is created with the workspace owner key (printed to `data/OWNER_KEY.txt` on first boot, or set `VIDEOFORGE_BOOTSTRAP_KEY`); it becomes the workspace admin. After that, new accounts come from an admin (Developer platform → Accounts) unless `VIDEOFORGE_ACCOUNTS=open` allows self-signup.\n- **Google** — a “Continue with Google” button appears when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set (standard OAuth, verified id-token claims).\n- **API keys** — for AI agents, scripts and the standalone tool exports. No password, no cookie: `Authorization: Bearer <key>`.\n\nSessions are random tokens stored in SQLite behind an HttpOnly `vf_session` cookie (30 days), so **sign-ins survive server restarts and browser refreshes**. Logout destroys the session. The health endpoint, documentation, share pages and the homepage never require a sign-in.",
+        "text": "- **Email and password**: the everyday way for people. The first account is created with the workspace owner key (printed to `data/OWNER_KEY.txt` on first boot, or set `VIDEOFORGE_BOOTSTRAP_KEY`); it becomes the workspace admin. After that, new accounts come from an admin (Developer platform → Accounts) unless `VIDEOFORGE_ACCOUNTS=open` allows self-signup.\n- **Google**: a “Continue with Google” button appears when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set (standard OAuth, verified id-token claims).\n- **API keys**: for AI agents, scripts and the standalone tool exports. No password, no cookie: `Authorization: Bearer <key>`.\n\nSessions are random tokens stored in SQLite behind an HttpOnly `vf_session` cookie (30 days), so **sign-ins survive server restarts and browser refreshes**. Logout destroys the session. The health endpoint, documentation, share pages and the homepage never require a sign-in.",
         "language": "SHELL",
         "code": "# Account sign-in (sets the cookie)\ncurl -c jar -X POST \"$BASE/api/auth/login\" -H 'Content-Type: application/json' \\\n  -d '{\"email\":\"you@example.com\",\"password\":\"…\"}'\ncurl -b jar \"$BASE/api/auth/me\"\n\n# Agent key\ncurl \"$BASE/api/auth/me\" -H \"Authorization: Bearer $KEY\""
       },
@@ -277,6 +267,7 @@ export const DOC_PAGES: DocPage[] = [
       {
         "title": "What you will make",
         "text": "A set of blocks called **Title every clip** that adds a styled title to the playhead and fades every clip in your edit in half a second. You build it in the block studio without writing a line of code, check it with Preview, then press Apply to edit and watch the whole change land as one undoable step.\n\nIt takes about ten minutes. The same blocks run through the same operations and validation as the API, so what you build here is exactly what an agent could send as a batch.",
+        "video": "blocks",
         "callouts": [
           {
             "kind": "tip",
@@ -286,15 +277,15 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Open the block studio",
-        "text": "Sign in to the Studio and click the **Blocks** tab, next to Effects. The block studio takes over the screen: the palette sits on the left, the canvas in the middle and the run controls in the header.\n\nIf you have never used blocks before, press the 🎓 **Tutorial** button in the header first. It walks you through naming a set of blocks, the block menu and your first Apply. It replays any time."
+        "text": "Sign in to the Studio and open **Blocks** from the tool dock on the left. The block studio takes over the screen: the palette sits on the left, the canvas in the middle and the run controls in the header.\n\nIf you have never used blocks before, press the **Tutorial** button in the header first. It walks you through naming a set of blocks, the block menu and your first Apply. It replays any time."
       },
       {
         "title": "Start from the green block",
-        "text": "Every set of blocks begins with the green **When Apply is pressed** block. It is already on the canvas when you start. Its **Work on** setting decides what `$selection` means later — set it to **Every clip**, so this set of blocks works on the whole edit without you selecting anything.\n\nClick the set's name in the header and type `Title every clip`. The description is optional; write one if you plan to share it."
+        "text": "Every set of blocks begins with the green **When Apply is pressed** block. It is already on the canvas when you start. Its **Work on** setting decides what `$selection` means later. Set it to **Every clip**, so this set of blocks works on the whole edit without you selecting anything.\n\nClick the set's name in the header and type `Title every clip`. The description is optional; write one if you plan to share it."
       },
       {
         "title": "Build the chain",
-        "text": "The run order follows the lines between blocks, from the green block down. You will add three blocks to it.\n\nDrag an **Add title** block from the **Create** category onto the canvas. Drag from the green block's bottom dot to the Add title block's top dot: the line snaps in place, so the title is added first. In the block's Text field, type `Made with blocks`.\n\nNext, from the **Animate** category, drag **Fade in**. Connect it under the Add title block. Fade in asks which clips to work on: click its clip field and pick `$selection`.\n\nFinally, from the **Timing** category, drag a **For each clip** block and drop it on empty canvas. Move the Fade in block into its body — connect it to the dot on the block's right side, not the bottom. Then connect the For each clip block under the Add title block. Fade in now runs once per clip instead of once for the selection.",
+        "text": "The run order follows the lines between blocks, from the green block down. You will add three blocks to it.\n\nDrag an **Add title** block from the **Create** category onto the canvas. Drag from the green block's bottom dot to the Add title block's top dot: the line snaps in place, so the title is added first. In the block's Text field, type `Made with blocks`.\n\nNext, from the **Animate** category, drag **Fade in**. Connect it under the Add title block. Fade in asks which clips to work on: click its clip field and pick `$selection`.\n\nFinally, from the **Timing** category, drag a **For each clip** block and drop it on empty canvas. Move the Fade in block into its body, connect it to the dot on the block's right side, not the bottom. Then connect the For each clip block under the Add title block. Fade in now runs once per clip instead of once for the selection.",
         "callouts": [
           {
             "kind": "note",
@@ -304,11 +295,11 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Wire a value block",
-        "text": "The title's text does not have to be typed into the field. From the **Values** category, drag a 📝 **Text** block next to the Add title block, type `Made with blocks` into it, and drag from its dot into the Add title block's Text field. The connected value wins over whatever is typed in the field.\n\nThis is the whole idea of block coding: values, clips and frames are blocks too, so a set of blocks can be re-wired without retyping anything. Try a 🔢 **Number** block in Fade in's Duration field with `0.5`."
+        "text": "The title's text does not have to be typed into the field. From the **Values** category, drag a **Text** block next to the Add title block, type `Made with blocks` into it, and drag from its dot into the Add title block's Text field. The connected value wins over whatever is typed in the field.\n\nThis is the whole idea of block coding: values, clips and frames are blocks too, so a set of blocks can be re-wired without retyping anything. Try a **Number** block in Fade in's Duration field with `0.5`."
       },
       {
         "title": "Preview, then apply",
-        "text": "Press **Preview** in the header. The preview lists exactly what Apply would change, one line per change, without touching your edit: a title is added, every clip gets a fade.\n\nPress **▶ Apply to edit**. The title lands at the playhead and every clip in the edit fades in. One Ctrl+Z in the editor undoes the whole apply, because it is one step.\n\nIf something is wrong, the error bar at the bottom of the studio explains what and jumps to the offending block. Applying is disabled until errors are fixed.",
+        "text": "Press **Preview** in the header. The preview lists exactly what Apply would change, one line per change, without touching your edit: a title is added, every clip gets a fade.\n\nPress **Apply to edit**. The title lands at the playhead and every clip in the edit fades in. One Ctrl+Z in the editor undoes the whole apply, because it is one step.\n\nIf something is wrong, the error bar at the bottom of the studio explains what and jumps to the offending block. Applying is disabled until errors are fixed.",
         "callouts": [
           {
             "kind": "tip",
@@ -318,7 +309,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Save, share and reuse",
-        "text": "Your blocks save to your account as you work. Back in the Studio, the Tools panel lists them, and pressing ▶ Apply to edit on a saved set runs it against the timeline you have open.\n\n- The 🔗 **Share** button copies a compact `VFT1:` code that anyone can paste into their Tools panel.\n- The **Save as sticker** block turns any clip into a reusable building block that appears in its own palette category.\n- The Code tab shows the same set of blocks as JavaScript, and Export as standalone script downloads a single `.mjs` that runs against the API."
+        "text": "Your blocks save to your account as you work. Back in the Studio, the Tools panel lists them, and pressing Apply to edit on a saved set runs it against the timeline you have open.\n\n- The **Share** button copies a compact `VFT1:` code that anyone can paste into their Tools panel.\n- The **Save as sticker** block turns any clip into a reusable building block that appears in its own palette category.\n- The Code tab shows the same set of blocks as JavaScript, and Export as standalone script downloads a single `.mjs` that runs against the API."
       },
       {
         "title": "Build the same thing with the API",
@@ -401,6 +392,7 @@ export const DOC_PAGES: DocPage[] = [
       {
         "title": "What you will make",
         "text": "A waving figure: the ready-made stick figure rigged in the Animator, with one arm keyed to wave twice in under three seconds, eased so it swings naturally. You pose, key and play inside the Animator, then press **Apply to edit** and the whole motion lands on your timeline as ordinary keyframes.\n\nIt takes about ten minutes. Because the result is plain keyframes, the preview, the FFmpeg export and the API all agree with no new renderer.",
+        "video": "animator",
         "callouts": [
           {
             "kind": "tip",
@@ -410,7 +402,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Put something on the timeline",
-        "text": "Open the Studio and click **Stick figure** in the Animator, or add a couple of shapes first: an ellipse for a head and two rectangles for arms work well. For this tutorial, open the Animator with the **Animator** button in the top bar and press **Stick figure**. Ten shapes land on the timeline, already rigged."
+        "text": "Open the Animator and click **Stick figure**, or add a couple of shapes first: an ellipse for a head and two rectangles for arms work well. For this tutorial, open the **More** menu (the three dots at the top right), choose **Animator** and press **Stick figure**. You can also press Ctrl+K and type Animator. Ten shapes land on the timeline, already rigged."
       },
       {
         "title": "Meet the rig",
@@ -418,7 +410,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Pose and key",
-        "text": "Drag the playhead to `0.0`. Nothing to key yet — this is the rest pose.\n\nDrag the playhead to `0.3`. Now pose the forearm: drag it on the stage, or type into its **Pose** fields. Set **Turn** to `-60` so the forearm swings out. Each change writes a keyframe at the playhead, and a first key at the start pins the resting value so nothing jumps.\n\nMove the playhead to `1.0` and pose the forearm the other way: **Turn** `40`. A second key appears.\n\nTwo keys are a wave, but a stiff one. Select the second key and set its **Easing** to **ease-in-out**, then drag between keys to check the swing. Add one more pair of keys at `1.7` (`-50`) and `2.4` (`0`) so the arm settles back to rest.",
+        "text": "Drag the playhead to `0.0`. Nothing to key yet. This is the rest pose.\n\nDrag the playhead to `0.3`. Now pose the forearm: drag it on the stage, or type into its **Pose** fields. Set **Turn** to `-60` so the forearm swings out. Each change writes a keyframe at the playhead, and a first key at the start pins the resting value so nothing jumps.\n\nMove the playhead to `1.0` and pose the forearm the other way: **Turn** `40`. A second key appears.\n\nTwo keys are a wave, but a stiff one. Select the second key and set its **Easing** to **ease-in-out**, then drag between keys to check the swing. Add one more pair of keys at `1.7` (`-50`) and `2.4` (`0`) so the arm settles back to rest.",
         "callouts": [
           {
             "kind": "note",
@@ -428,7 +420,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Play it back",
-        "text": "Press play in the Animator. The figure waves twice and settles. Scrub the playhead to check individual poses. If a key lands in the wrong place, drag the diamond — it snaps to frames.\n\nUseful keys while you work:",
+        "text": "Press play in the Animator. The figure waves twice and settles. Scrub the playhead to check individual poses. If a key lands in the wrong place, drag the diamond. It snaps to frames.\n\nUseful keys while you work:",
         "rows": [
           [
             "Key",
@@ -450,7 +442,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Build the same thing with the API",
-        "text": "The Animator's result is one `rig_bake` operation. Send this to `POST /api/projects/:id/timeline/ops` with a write key and the same wave lands on the timeline — parts, joints and keyframes included.\n\nThe forearm is parented to the upper arm with a joint above it, and only its rotation is keyed — the same rig you posed by hand.",
+        "text": "The Animator's result is one `rig_bake` operation. Send this to `POST /api/projects/:id/timeline/ops` with a write key and the same wave lands on the timeline, parts, joints and keyframes included.\n\nThe forearm is parented to the upper arm with a joint above it, and only its rotation is keyed. It is the same rig you posed by hand.",
         "code": "{\n  \"ops\": [\n    {\"op\": \"add_shape_clip\", \"args\": {\"id\": \"upper-arm\", \"start\": 0, \"duration\": 3, \"x\": 0.44, \"y\": 0.5, \"shape\": {\"type\": \"rectangle\", \"width\": 0.03, \"height\": 0.18, \"fill\": \"#e8edf4\"}}},\n    {\"op\": \"add_shape_clip\", \"args\": {\"id\": \"forearm\", \"start\": 0, \"duration\": 3, \"x\": 0.44, \"y\": 0.62, \"shape\": {\"type\": \"rectangle\", \"width\": 0.028, \"height\": 0.16, \"fill\": \"#e8edf4\"}}},\n    {\"op\": \"rig_bake\", \"args\": {\"start\": 0, \"animation\": {\"name\": \"Wave\", \"length\": 3, \"parts\": [{\"clipId\": \"upper-arm\"}, {\"clipId\": \"forearm\", \"parentId\": \"upper-arm\", \"pivotX\": 0, \"pivotY\": -0.08}], \"tracks\": {\"forearm\": {\"rotation\": [{\"time\": 0, \"value\": 0, \"easing\": \"ease-in-out\"}, {\"time\": 0.3, \"value\": -60, \"easing\": \"ease-in-out\"}, {\"time\": 1.0, \"value\": 40, \"easing\": \"ease-in-out\"}, {\"time\": 1.7, \"value\": -50, \"easing\": \"ease-in-out\"}, {\"time\": 2.4, \"value\": 0}]}}}}}\n  ]\n}"
       },
       {
@@ -599,6 +591,7 @@ export const DOC_PAGES: DocPage[] = [
       {
         "title": "What you will make",
         "text": "A fifteen second edit from a single clip: two trimmed cuts joined with a dissolve, a warm colour look over everything, a headline that springs in, a floating badge and a lower third that arrives late. You upload a clip (a screen recording works just as well as camera footage), cut it in the editor, dress it with motion graphics and export an MP4.\n\nIt takes about twenty minutes. Every layer is a normal clip, so you can retime and restyle anything afterwards.",
+        "video": "fire",
         "callouts": [
           {
             "kind": "tip",
@@ -620,7 +613,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Warm the whole edit up",
-        "text": "Select both clips — shift-click the second one — and open the **Edit** tab in the inspector. Under colour, set the **look** to **Warm**. Fire edits live in warm tones: everything shifts toward amber, and the highlights roll off gently.\n\nIf your footage is dark, raise **Brightness** a little. If it is flat, raise **Contrast** and **Colour strength**."
+        "text": "Select both clips, shift-click the second one, and open the **Edit** tab in the inspector. Under colour, set the **look** to **Warm**. Fire edits live in warm tones: everything shifts toward amber, and the highlights roll off gently.\n\nIf your footage is dark, raise **Brightness** a little. If it is flat, raise **Contrast** and **Colour strength**."
       },
       {
         "title": "Add the headline",
@@ -628,15 +621,15 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Add a badge that floats",
-        "text": "Open the **Graphics** tab and click **ellipse**. Set Shape width to 7% and height to 12% so it reads as a circle on 16:9, fill it orange `#f6a447`, and set Vertical to 68%, low on the frame.\n\nIn the Motion tab, expand **Animate with code** and under Looping recipe choose **Float**, then click **Apply recipe**. The badge bobs gently for the whole edit — a formula, not keyframes, so it loops at any length."
+        "text": "Open the **Graphics** tab and click **ellipse**. Set Shape width to 7% and height to 12% so it reads as a circle on 16:9, fill it orange `#f6a447`, and set Vertical to 68%, low on the frame.\n\nIn the Motion tab, expand **Animate with code** and under Looping recipe choose **Float**, then click **Apply recipe**. The badge bobs gently for the whole edit. It runs from a formula rather than keyframes, so it loops at any length."
       },
       {
         "title": "Add the lower third",
-        "text": "In the **Graphics** tab, find the lower third template card. Set the title to your name, the subtitle to `Cut · graded · exported`, and the accent colour to the same orange. Set Start to `2` and Duration to `4`.\n\nHover the card to preview its animation, then click **Add to timeline**. It lands at the playhead, already selected — drag it or set its start until it sits where you want."
+        "text": "In the **Graphics** tab, find the lower third template card. Set the title to your name, the subtitle to `Cut · graded · exported`, and the accent colour to the same orange. Set Start to `2` and Duration to `4`.\n\nHover the card to preview its animation, then click **Add to timeline**. It lands at the playhead, already selected. Drag it or set its start until it sits where you want."
       },
       {
         "title": "Join the cuts with a dissolve",
-        "text": "Open the **Effects** tab and look under **Transitions**. Drag **Dissolve** onto the second clip — the one that follows the first — or select the second clip and choose Dissolve in the inspector. Set its duration to about `0.5`.\n\nThe transition overlaps the two cuts and moves later video up, so the edit stays tight. It plays in the preview and survives the FFmpeg export.",
+        "text": "Open the **Effects** tab and look under **Transitions**. Drag **Dissolve** onto the second clip, the one that follows the first, or select the second clip and choose Dissolve in the inspector. Set its duration to about `0.5`.\n\nThe transition overlaps the two cuts and moves later video up, so the edit stays tight. It plays in the preview and survives the FFmpeg export.",
         "callouts": [
           {
             "kind": "tip",
@@ -650,7 +643,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Build the same thing with the API",
-        "text": "Everything you did in the editor is operations. This batch assumes the clip is uploaded and its asset id is `clip-1` — replace it with the id from `GET /api/media`. Send the ops to `POST /api/projects/:id/timeline/ops` with a write key, then enqueue a render with `POST /api/renders`.\n\n`update_clips` with `clipIds` warms both cuts at once, exactly like selecting them in the editor. The transition, presets and templates are the same operations the Studio sends.",
+        "text": "Everything you did in the editor is operations. This batch assumes the clip is uploaded and its asset id is `clip-1`. Replace it with the id from `GET /api/media`. Send the ops to `POST /api/projects/:id/timeline/ops` with a write key, then enqueue a render with `POST /api/renders`.\n\n`update_clips` with `clipIds` warms both cuts at once, exactly like selecting them in the editor. The transition, presets and templates are the same operations the Studio sends.",
         "code": "{\n  \"ops\": [\n    {\"op\": \"add_clip\", \"args\": {\"assetId\": \"clip-1\", \"id\": \"cut-1\", \"start\": 0, \"outPoint\": 8, \"track\": \"video\"}},\n    {\"op\": \"add_clip\", \"args\": {\"assetId\": \"clip-1\", \"id\": \"cut-2\", \"start\": 8, \"inPoint\": 8, \"outPoint\": 15.5, \"track\": \"video\"}},\n    {\"op\": \"update_clips\", \"args\": {\"clipIds\": [\"cut-1\", \"cut-2\"], \"patch\": {\"filter\": \"warm\"}}},\n    {\"op\": \"set_transition\", \"args\": {\"clipId\": \"cut-2\", \"type\": \"dissolve\", \"duration\": 0.5}},\n    {\"op\": \"add_text_clip\", \"args\": {\"id\": \"headline\", \"text\": \"Fire edit\", \"start\": 0, \"duration\": 15, \"x\": 0.5, \"y\": 0.2, \"textSize\": 10, \"fontWeight\": 700, \"textColor\": \"#ffffff\"}},\n    {\"op\": \"apply_motion\", \"args\": {\"clipId\": \"headline\", \"preset\": \"spring\", \"duration\": 0.9}},\n    {\"op\": \"add_shape_clip\", \"args\": {\"id\": \"badge\", \"start\": 0, \"duration\": 15, \"x\": 0.5, \"y\": 0.68, \"shape\": {\"type\": \"ellipse\", \"width\": 0.07, \"height\": 0.124, \"fill\": \"#f6a447\"}}},\n    {\"op\": \"apply_code_motion\", \"args\": {\"clipIds\": [\"badge\"], \"recipe\": \"float\", \"speed\": 1, \"strength\": 1}},\n    {\"op\": \"add_motion_template\", \"args\": {\"template\": \"lower-third\", \"title\": \"Your name\", \"subtitle\": \"Cut · graded · exported\", \"color\": \"#f6a447\", \"start\": 2, \"duration\": 4, \"idPrefix\": \"lt\"}}\n  ]\n}"
       },
       {
@@ -746,6 +739,130 @@ export const DOC_PAGES: DocPage[] = [
     ],
     "updated": "2026-10-17T08:48:53Z",
     "added": "2026-10-15T22:20:52+01:00"
+  },
+  {
+    "slug": "studio-tour",
+    "group": "Get started",
+    "title": "Studio tour",
+    "description": "A guided look at the editor: the tool dock, workspaces, timeline, inspector, command palette and keyboard shortcuts.",
+    "sections": [
+      {
+        "title": "What you will see",
+        "text": "The Studio is arranged in four areas: the tool dock and library on the left, the preview in the middle, the inspector on the right and the timeline along the bottom. The video above is a three minute tour of each one. Use its chapter list to jump to a part.",
+        "video": "tour",
+        "callouts": [
+          {
+            "kind": "tip",
+            "text": "The Studio offers a short tour of its own the first time you open it. Replay it at any time from the More menu, under Help."
+          }
+        ]
+      },
+      {
+        "title": "The tool dock",
+        "text": "The narrow column of icons on the left is the tool dock. Each icon opens one panel in the library beside it.\n\nHover over an icon to see its name. Blocks and Tools are part of Advanced mode.",
+        "rows": [
+          [
+            "Icon",
+            "Panel",
+            "What it holds"
+          ],
+          [
+            "Media",
+            "Media",
+            "Footage, music and images for this project"
+          ],
+          [
+            "Effects",
+            "Effects",
+            "Motion presets and transitions to drag onto clips"
+          ],
+          [
+            "Graphics",
+            "Graphics",
+            "Titles, shapes and ready made templates"
+          ],
+          [
+            "Blocks",
+            "Blocks",
+            "The block studio, for building repeatable edits"
+          ],
+          [
+            "Tools",
+            "Tools",
+            "Saved scripts you can run against the timeline"
+          ],
+          [
+            "Projects",
+            "Projects",
+            "Every project you have saved"
+          ]
+        ]
+      },
+      {
+        "title": "Workspaces",
+        "text": "The workspace switcher at the top of the Studio rearranges the panels for one kind of work. Your last choice is remembered in this browser.",
+        "rows": [
+          [
+            "Workspace",
+            "Arrangement"
+          ],
+          [
+            "Edit",
+            "Library, preview, inspector and timeline: the default"
+          ],
+          [
+            "Animate",
+            "The library is hidden and the timeline grows, so keyframes have room"
+          ],
+          [
+            "Graphics",
+            "The Graphics panel opens beside the preview"
+          ],
+          [
+            "Audio",
+            "A taller timeline with the graphics track collapsed"
+          ],
+          [
+            "Blocks",
+            "Opens the block studio (Advanced mode)"
+          ]
+        ]
+      },
+      {
+        "title": "The timeline",
+        "text": "Titles and shapes sit on the Graphics track, footage on the Video track and music or voice over on the Audio track. Select a clip and press S to split it at the playhead, or drag its edges to trim it. Use the arrow beside a track name to collapse the track, and the overview strip above the ruler to move around a long edit."
+      },
+      {
+        "title": "The inspector",
+        "text": "The inspector shows the settings for the current selection. With nothing selected it shows the project settings. The search box at the top narrows the list to the sections that mention your words, so typing opacity jumps straight to it.\n\nAdvanced mode shows every section. Simple mode hides the rarely used ones, such as Fit to frame, Fades and Transition in. Switch modes from the More menu at the top right of the Studio."
+      },
+      {
+        "title": "The command palette",
+        "text": "Press Ctrl+K to open the command palette. It lists every action in the Studio, groups them by task and shows the keyboard shortcut beside each one. The commands you used most recently appear first."
+      },
+      {
+        "title": "Keyboard shortcuts",
+        "text": "Press the question mark key to open the shortcut sheet. The full list is also on the [Keyboard shortcuts](keyboard-shortcuts) page."
+      },
+      {
+        "title": "Where to go next",
+        "text": "",
+        "links": [
+          {
+            "label": "Motion graphics tutorial",
+            "slug": "motion-graphics-tutorial"
+          },
+          {
+            "label": "Using the editor",
+            "slug": "editor"
+          },
+          {
+            "label": "Keyboard shortcuts",
+            "slug": "keyboard-shortcuts"
+          }
+        ]
+      }
+    ]
   },
   {
     "slug": "keyframes",
@@ -1080,7 +1197,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Known limits",
-        "text": "Text width uses per-family estimates — the base Noto Sans table scaled for each catalog font — with about 12% spare room, so an unusual font may fit more loosely or more tightly. Fit checks the static position and the peak animated scale and rotation. It does not account for x and y travel of entrance animations, which are meant to start off position.",
+        "text": "Text width uses per-family estimates, the base Noto Sans table scaled for each catalog font, with about 12% spare room, so an unusual font may fit more loosely or more tightly. Fit checks the static position and the peak animated scale and rotation. It does not account for x and y travel of entrance animations, which are meant to start off position.",
         "links": [
           {
             "label": "Keyframes & easing",
@@ -1100,7 +1217,7 @@ export const DOC_PAGES: DocPage[] = [
     "slug": "fonts-and-text",
     "group": "Motion graphics",
     "title": "Fonts & text",
-    "description": "A large font catalog, bold, alignment, line height, letter spacing and uppercase — with a fit engine that knows every family.",
+    "description": "A large font catalog, bold, alignment, line height, letter spacing and uppercase, with a fit engine that knows every family.",
     "sections": [
       {
         "title": "A catalog of families",
@@ -1572,7 +1689,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Cut out the dead air",
-        "text": "Split at the boring moment, then ripple the rest closed — no gap left behind. The split's response lists the new right-hand clip's id in `createdClipIds`; use it in the second batch.",
+        "text": "Split at the boring moment, then ripple the rest closed. No gap left behind. The split's response lists the new right-hand clip's id in `createdClipIds`; use it in the second batch.",
         "code": "{\n  \"ops\": [\n    { \"op\": \"ripple_delete\", \"args\": { \"clipId\": \"the new id from createdClipIds\" } }\n  ]\n}"
       },
       {
@@ -1587,7 +1704,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Everything inside the frame",
-        "text": "One call refits every clip that crosses the edges — media, text and shapes alike, with a margin.",
+        "text": "One call refits every clip that crosses the edges (media, text and shapes alike), with a margin.",
         "code": "{\n  \"ops\": [\n    { \"op\": \"fit_all\", \"args\": { \"margin\": 0.03 } }\n  ]\n}"
       },
       {
@@ -1597,7 +1714,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Check before you render",
-        "text": "Two GETs save a render: a frame at the moment you care about, and the full storyboard. Both are read routes — send your key.",
+        "text": "Two GETs save a render: a frame at the moment you care about, and the full storyboard. Both are read routes. Send your key.",
         "language": "SHELL",
         "code": "curl -H \"Authorization: Bearer $KEY\" \"$BASE/api/projects/$ID/frame?t=3&width=640\" -o frame.png\ncurl -H \"Authorization: Bearer $KEY\" \"$BASE/api/projects/$ID/storyboard?count=6\" -o sheet.png",
         "links": [
@@ -2072,7 +2189,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Apply to edit",
-        "text": "Every set of blocks begins with the green **When Apply is pressed** block. Press **▶ Apply to edit** in the header, or on a saved set in the Tools panel, and the blocks below it run.\n\n- **Preview** lists exactly what would change, one line per change, without touching your edit. Apply from the preview when it looks right.\n- **Work on** sits on the green block and picks which clips `$selection` means: the selected clips, every clip, the clips under the playhead, all video and image clips, all text clips or all shapes. A set of blocks that fades every title works without selecting anything.\n- If something is wrong the error bar at the bottom explains what and jumps to the block. Applying is disabled until errors are fixed.\n- Ctrl+Z in the editor undoes an apply in one step.",
+        "text": "Every set of blocks begins with the green **When Apply is pressed** block. Press **Apply to edit** in the header, or on a saved set in the Tools panel, and the blocks below it run.\n\n- **Preview** lists exactly what would change, one line per change, without touching your edit. Apply from the preview when it looks right.\n- **Work on** sits on the green block and picks which clips `$selection` means: the selected clips, every clip, the clips under the playhead, all video and image clips, all text clips or all shapes. A set of blocks that fades every title works without selecting anything.\n- If something is wrong the error bar at the bottom explains what and jumps to the block. Applying is disabled until errors are fixed.\n- Ctrl+Z in the editor undoes an apply in one step.",
         "callouts": [
           {
             "kind": "tip",
@@ -2086,7 +2203,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "The block studio",
-        "text": "Open any blocks (or create new ones) and the studio takes over the screen. Blocks live in the palette on the left. The narrow rail of coloured dots picks a **category** — Create, Edit, Animate, Text, Style, Clips, Timing, Values and Flow — and the palette shows that category's blocks. Drag them onto the canvas. Connect a block's bottom dot to the next block's top dot to say \"then do this\": the line snaps in place and that becomes the run order. Everything starts at the green block and follows the lines.\n\nCreating your first blocks with **New blocks** opens a short tutorial: name them, meet the block menu, change the text of the Add title block, press Apply to edit, and find them again in the Blocks panel. The 🎓 Tutorial button in the header replays it any time.\n\nEvery field on a block has a small dot on its left. Clip and frame blocks plug into clip and time fields; **Values** blocks plug into any field. Drag a 📝 Text, 🔢 Number or 🔘 Yes / No block next to a block, type the value, and drag from its dot into the field — the connected value wins over whatever is typed in the field itself. Number blocks that don't hold a number turn red, and an unplugged value block gets a nudge to connect it.\n\n### Editing clips you already have\n\nThe **Edit** group is for everything that changes an existing clip. **Move**, **Set size** and **Rotate** transform a clip; **Flip upside down** and **Mirror** flip it; **Line up** and **Snap to grid** tidy a whole selection — place them in a tidy row or column at fixed frame spots, or spread them evenly across the frame. Colour and mood come from **Colour look**, **Brightness**, **Contrast**, **Colour strength** and **Blur**. Timing and sound: **Change speed**, **Set duration**, **Volume**, **Mute**, **Fade sound in/out**. Layering is real stacking order: **Forwards/Backwards one layer** and **Bring to front / Send to back** change a clip's z (higher draws on top, in both the preview and the render), and **Move to track** moves it between the overlay, video and audio tracks. **Crop** trims a picture or video in from the sides — the layer keeps its box with transparent padding where pixels were cut, so the preview and the export match. **Copy with offset** duplicates a clip and nudges the copy sideways — perfect for shadows and rows — and **Change words** rewrites a text clip while keeping its font, colour and size. Motion blocks also take an **easing** pick (the default, \"preset\", keeps each move's own built-in easing).\n\n### Animating anything\n\n**Animate a property** is the keyframe block: pick a property (position, size, rotation, opacity, colour filters, reveal, volume), a **from** and a **to** value, a duration, a delay and an easing — including bounce and elastic, which the studio converts into keyframe curves for you. Ready-made variants cover the popular moves (slide in, rise up, drop, zoom, spin, fade), and **Draw on** uncovers shapes and videos left to right. Expression blocks like **Pulsing glow** and **Parallax float** animate forever with small formulas of time.\n\n### Text effects\n\nText clips can be revealed over time: **Typewriter** types them on character by character, **Reveal word by word** and **Reveal line by line** show them progressively, and **Colour cycle** steps the colour through a rainbow. All of them preview in the editor and export to video. **Stop text effects** turns them off.\n\nControl blocks (Repeat, For each clip, Function) have a second dot on their right side: connect blocks there to fill their body.",
+        "text": "Open any blocks (or create new ones) and the studio takes over the screen. Blocks live in the palette on the left. The narrow rail of coloured dots picks a **category**: Create, Edit, Animate, Text, Style, Clips, Timing, Values and Flow. The palette shows that category's blocks. Drag them onto the canvas. Connect a block's bottom dot to the next block's top dot to say \"then do this\": the line snaps in place and that becomes the run order. Everything starts at the green block and follows the lines.\n\nCreating your first blocks with **New blocks** opens a short tutorial: name them, meet the block menu, change the text of the Add title block, press Apply to edit, and find them again in the Blocks panel. The Tutorial button in the header replays it any time.\n\nEvery field on a block has a small dot on its left. Clip and frame blocks plug into clip and time fields; **Values** blocks plug into any field. Drag a Text, Number or Yes / No block next to a block, type the value, and drag from its dot into the field. The connected value wins over whatever is typed in the field itself. Number blocks that don't hold a number turn red, and an unplugged value block gets a nudge to connect it.\n\n### Editing clips you already have\n\nThe **Edit** group is for everything that changes an existing clip. **Move**, **Set size** and **Rotate** transform a clip; **Flip upside down** and **Mirror** flip it; **Line up** and **Snap to grid** tidy a whole selection, place them in a tidy row or column at fixed frame spots, or spread them evenly across the frame. Colour and mood come from **Colour look**, **Brightness**, **Contrast**, **Colour strength** and **Blur**. Timing and sound: **Change speed**, **Set duration**, **Volume**, **Mute**, **Fade sound in/out**. Layering is real stacking order: **Forwards/Backwards one layer** and **Bring to front / Send to back** change a clip's z (higher draws on top, in both the preview and the render), and **Move to track** moves it between the overlay, video and audio tracks. **Crop** trims a picture or video in from the sides. The layer keeps its box with transparent padding where pixels were cut, so the preview and the export match. **Copy with offset** duplicates a clip and nudges the copy sideways, perfect for shadows and rows, and **Change words** rewrites a text clip while keeping its font, colour and size. Motion blocks also take an **easing** pick (the default, \"preset\", keeps each move's own built-in easing).\n\n### Animating anything\n\n**Animate a property** is the keyframe block: pick a property (position, size, rotation, opacity, colour filters, reveal, volume), a **from** and a **to** value, a duration, a delay and an easing, including bounce and elastic. The studio converts into keyframe curves for you. Ready-made variants cover the popular moves (slide in, rise up, drop, zoom, spin, fade), and **Draw on** uncovers shapes and videos left to right. Expression blocks like **Pulsing glow** and **Parallax float** animate forever with small formulas of time.\n\n### Text effects\n\nText clips can be revealed over time: **Typewriter** types them on character by character, **Reveal word by word** and **Reveal line by line** show them progressively, and **Colour cycle** steps the colour through a rainbow. All of them preview in the editor and export to video. **Stop text effects** turns them off.\n\nControl blocks (Repeat, For each clip, Function) have a second dot on their right side: connect blocks there to fill their body.",
         "rows": [
           [
             "Block family",
@@ -2106,7 +2223,7 @@ export const DOC_PAGES: DocPage[] = [
           ],
           [
             "Animate",
-            "friendly from-to moves — fade in or out, slide in, rise up, drop down, zoom, spin, draw on — plus animate any property yourself, and expression-driven floats, glows and orbits"
+            "friendly from-to moves (fade in or out, slide in, rise up, drop down, zoom, spin, draw on), plus animate any property yourself, and expression-driven floats, glows and orbits"
           ],
           [
             "Text",
@@ -2126,7 +2243,7 @@ export const DOC_PAGES: DocPage[] = [
           ],
           [
             "Values",
-            "little typed blocks — Text, Number, Yes / No — that plug into any block's field, so arguments can be wired instead of typed"
+            "little typed blocks, Text, Number and Yes / No, that plug into any block's field, so arguments can be wired instead of typed"
           ],
           [
             "Flow",
@@ -2164,11 +2281,11 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Clips and frames",
-        "text": "Two special blocks plug your project straight into your blocks.\n\n- **Import clips** lists every clip in the timeline — add one and it becomes a clip block on the canvas.\n- **Add frame** adds a frame block: a frame number that knows the project fps, so it shows the real seconds it stands for.\n\nConnect a clip block's right dot into a block's **clip** field (a purple dot on its left edge) to make that block act on that clip. Connect a frame block into a **time** field and it becomes that many seconds. One connection per field — dragging a new one replaces the old."
+        "text": "Two special blocks plug your project straight into your blocks.\n\n- **Import clips** lists every clip in the timeline, add one and it becomes a clip block on the canvas.\n- **Add frame** adds a frame block: a frame number that knows the project fps, so it shows the real seconds it stands for.\n\nConnect a clip block's right dot into a block's **clip** field (a purple dot on its left edge) to make that block act on that clip. Connect a frame block into a **time** field and it becomes that many seconds. One connection per field, dragging a new one replaces the old."
       },
       {
         "title": "Errors, live",
-        "text": "The studio checks the graph as you edit. Problems turn the block red and collect in the error panel at the bottom of the screen: click a message to jump to the block. A missing green block, a block with two blocks after it, a loop that never ends, a function that calls itself, a clip that no longer exists — all are caught before anything runs. Disconnected blocks only get a warning, and applying with errors is disabled until they are fixed. Failures while applying land in the same panel."
+        "text": "The studio checks the graph as you edit. Problems turn the block red and collect in the error panel at the bottom of the screen: click a message to jump to the block. A missing green block, a block with two blocks after it, a loop that never ends, a function that calls itself, a clip that no longer exists. All are caught before anything runs. Disconnected blocks only get a warning, and applying with errors is disabled until they are fixed. Failures while applying land in the same panel."
       },
       {
         "title": "Templates",
@@ -2202,11 +2319,11 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Blocks ↔ code",
-        "text": "Switching to the Code tab converts the graph into readable, commented JavaScript that uses the `vf` helper — chains become sequential calls, Repeat becomes a `for` loop, For-each-clip becomes a filtered `vf.clips` loop, functions become `const name = (index, count, clipId) => …`, and clip/frame connections become arguments. The blocks now run as that code (they are kept, so you can switch back). The conversion is faithful: the generated code produces the same operations the blocks would, resolved at run time against the live playhead and selection. Invalid graphs stay in Blocks with an error instead of converting."
+        "text": "Switching to the Code tab converts the graph into readable, commented JavaScript that uses the `vf` helper. Chains become sequential calls, Repeat becomes a `for` loop, For-each-clip becomes a filtered `vf.clips` loop, functions become `const name = (index, count, clipId) => …`, and clip/frame connections become arguments. The blocks now run as that code (they are kept, so you can switch back). The conversion is faithful: the generated code produces the same operations the blocks would, resolved at run time against the live playhead and selection. Invalid graphs stay in Blocks with an error instead of converting."
       },
       {
         "title": "Code scripts",
-        "text": "A script is the body of a JavaScript function. It receives one argument, `vf`, and returns one operation or an array of them. The Code tab is a real editor: line numbers, tab-key support, and a reference panel listing every `vf` helper — click an example to insert it at the cursor. The `$templates` the blocks use (like `$playhead`) are listed with their code equivalents (`vf.playhead`). When a run fails, the error shows inline above the code with the offending line highlighted in the gutter, as well as in the error console.",
+        "text": "A script is the body of a JavaScript function. It receives one argument, `vf`, and returns one operation or an array of them. The Code tab is a real editor: line numbers, tab-key support, and a reference panel listing every `vf` helper. Click an example to insert it at the cursor. The `$templates` the blocks use (like `$playhead`) are listed with their code equivalents (`vf.playhead`). When a run fails, the error shows inline above the code with the offending line highlighted in the gutter, as well as in the error console.",
         "language": "JS",
         "code": "// vf has the playhead, selection and every clip\nconst ops = [];\nfor (const id of vf.selection) {\n  ops.push(vf.animate(id, { rotation: \"wiggle(2, 4)\" }));\n}\nops.push(vf.markers(120, 8));\nreturn ops;",
         "rows": [
@@ -2254,7 +2371,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Safety and limits",
-        "text": "Scripts run as ordinary JavaScript in your own browser page — there is no sandbox, so only run scripts you wrote or trust. The server still validates every operation a tool produces and rejects anything invalid, atomically. Both blocks and scripts may produce at most 100 operations, matching the batch limit. Because blocks and scripts are just operations, they respect scopes, undo, dry runs and everything else in the operation catalog.",
+        "text": "Scripts run as ordinary JavaScript in your own browser page. There is no sandbox, so only run scripts you wrote or trust. The server still validates every operation a tool produces and rejects anything invalid, atomically. Both blocks and scripts may produce at most 100 operations, matching the batch limit. Because blocks and scripts are just operations, they respect scopes, undo, dry runs and everything else in the operation catalog.",
         "callouts": [
           {
             "kind": "warning",
@@ -2264,7 +2381,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Where they live",
-        "text": "Your library syncs to your account (or API key), so it follows you between browsers — `GET/PUT/DELETE /api/tools/:id` — with the browser's local copy as the offline fallback. Share one with the 🔗 Share button: a compact `VFT1:` code anyone can import. Animations you save in the Animator are stored in this browser for the project. The Code tab's **Export as standalone script** downloads a single `.mjs` that runs the same code against the API — set `VF_API_KEY` and pass a project id (`--dry-run` previews the change summary) — handy for agents and cron jobs. The studio speaks Spanish too: the 🌐 button switches every block label and description (remembered per browser).",
+        "text": "Your library syncs to your account (or API key), so it follows you between browsers (`GET/PUT/DELETE /api/tools/:id`), with the browser's local copy as the offline fallback. Share one with the Share button: a compact `VFT1:` code anyone can import. Animations you save in the Animator are stored in this browser for the project. The Code tab's **Export as standalone script** downloads a single `.mjs` that runs the same code against the API. Set `VF_API_KEY` and pass a project id (`--dry-run` previews the change summary), which is handy for agents and cron jobs. The studio speaks Spanish too: the language button switches every block label and description (remembered per browser).",
         "links": [
           {
             "label": "Animator",
@@ -2287,6 +2404,152 @@ export const DOC_PAGES: DocPage[] = [
     ],
     "updated": "2026-10-17T08:48:53Z",
     "added": "2026-10-15T22:35:29+01:00"
+  },
+  {
+    "slug": "keyboard-shortcuts",
+    "group": "Studio",
+    "title": "Keyboard shortcuts",
+    "description": "Every keyboard shortcut in the Studio, generated from the same list the editor uses.",
+    "sections": [
+      {
+        "title": "The full list",
+        "text": "Press the question mark key inside the Studio to open this list as a sheet, or Ctrl+K to search commands by name. On macOS, use Cmd in place of Ctrl.",
+        "rows": [
+          [
+            "Keys",
+            "Action"
+          ],
+          [
+            "Space",
+            "Play or pause (playback)"
+          ],
+          [
+            "Left",
+            "Back one frame (playback)"
+          ],
+          [
+            "Right",
+            "Forward one frame (playback)"
+          ],
+          [
+            "Shift + Left",
+            "Back one second (playback)"
+          ],
+          [
+            "Shift + Right",
+            "Forward one second (playback)"
+          ],
+          [
+            "Home",
+            "Jump to start (playback)"
+          ],
+          [
+            "End",
+            "Jump to end (playback)"
+          ],
+          [
+            "S",
+            "Split at the playhead (editing)"
+          ],
+          [
+            "[",
+            "Trim the start to the playhead (editing)"
+          ],
+          [
+            "]",
+            "Trim the end to the playhead (editing)"
+          ],
+          [
+            "Delete",
+            "Delete the selection (editing)"
+          ],
+          [
+            "Shift + Delete",
+            "Ripple delete (editing)"
+          ],
+          [
+            "Ctrl + D",
+            "Duplicate (editing)"
+          ],
+          [
+            "Ctrl + C",
+            "Copy (editing)"
+          ],
+          [
+            "Ctrl + V",
+            "Paste at the playhead (editing)"
+          ],
+          [
+            "Ctrl + Z",
+            "Undo (editing)"
+          ],
+          [
+            "Ctrl + Shift + Z",
+            "Redo (editing)"
+          ],
+          [
+            "Ctrl + A",
+            "Select every clip (selection)"
+          ],
+          [
+            "Shift + Click",
+            "Add to the selection (selection)"
+          ],
+          [
+            "Esc",
+            "Clear the selection (selection)"
+          ],
+          [
+            "M",
+            "Add a marker at the playhead (timeline)"
+          ],
+          [
+            "+",
+            "Zoom in (timeline)"
+          ],
+          [
+            "-",
+            "Zoom out (timeline)"
+          ],
+          [
+            "Ctrl + Wheel",
+            "Zoom with the mouse wheel (timeline)"
+          ],
+          [
+            "Ctrl + K",
+            "Open the command palette (studio)"
+          ],
+          [
+            "?",
+            "Show this shortcut sheet (studio)"
+          ],
+          [
+            "Ctrl + S",
+            "Save now (studio)"
+          ]
+        ],
+        "callouts": [
+          {
+            "kind": "note",
+            "text": "This table is generated from the shortcut list in the Studio source, so it cannot drift from what the editor does."
+          }
+        ]
+      },
+      {
+        "title": "Where to go next",
+        "text": "",
+        "links": [
+          {
+            "label": "Studio tour",
+            "slug": "studio-tour"
+          },
+          {
+            "label": "Using the editor",
+            "slug": "editor"
+          }
+        ]
+      }
+    ]
   },
   {
     "slug": "agent-workflow",
@@ -2916,7 +3179,7 @@ export const DOC_PAGES: DocPage[] = [
     "sections": [
       {
         "title": "Ways to help",
-        "text": "There are two kinds of contributor, and the rules are strict so that pull requests are small, true and easy to review.\n\n- **Community contributors may only change the docs.** Your pull request must touch nothing outside the `docs/` folder, and it needs a description that says which page, what was wrong and how you checked it. Anything else fails the contribution rules check and is closed by a maintainer. See `CONTRIBUTING.md` in the repository root for the full policy.\n- **Bugs and ideas:** open an issue with what you did, what you expected and what happened. Add the browser and the project JSON if you can. Do not fix code yourself; a maintainer will pick it up.\n- **Maintainers** (the repository owner) may change anything — code, presets, templates and blocks — using the recipes further down this page.",
+        "text": "There are two kinds of contributor, and the rules are strict so that pull requests are small, true and easy to review.\n\n- **Community contributors may only change the docs.** Your pull request must touch nothing outside the `docs/` folder, and it needs a description that says which page, what was wrong and how you checked it. Anything else fails the contribution rules check and is closed by a maintainer. See `CONTRIBUTING.md` in the repository root for the full policy.\n- **Bugs and ideas:** open an issue with what you did, what you expected and what happened. Add the browser and the project JSON if you can. Do not fix code yourself; a maintainer will pick it up.\n- **Maintainers** (the repository owner) may change anything, code, presets, templates and blocks, using the recipes further down this page.",
         "callouts": [
           {
             "kind": "warning",
@@ -3088,23 +3351,23 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Uploads and media",
-        "text": "**Upload fails with \"probe\" or \"unsupported\".** Every file is probed once on upload. Video and audio need a codec FFmpeg can decode: MP4/H.264, MOV, WebM and MP3/WAV/AAC/M4A are the safe choices. A zero-byte or partially uploaded file also fails here — check the file plays locally first.\n\n**The thumbnail or waveform never appears.** Thumbnails are made straight after upload; if the file is still uploading elsewhere or the disk is full, they are skipped. Re-upload the file once the underlying problem is fixed.\n\n**Media plays in the browser but not in the export.** The browser plays many codecs FFmpeg's default build cannot decode. Re-encode the source with `ffmpeg -i input -c:v libx264 -c:a aac output.mp4` and swap the asset."
+        "text": "**Upload fails with \"probe\" or \"unsupported\".** Every file is probed once on upload. Video and audio need a codec FFmpeg can decode: MP4/H.264, MOV, WebM and MP3/WAV/AAC/M4A are the safe choices. A zero-byte or partially uploaded file also fails here. Check the file plays locally first.\n\n**The thumbnail or waveform never appears.** Thumbnails are made straight after upload; if the file is still uploading elsewhere or the disk is full, they are skipped. Re-upload the file once the underlying problem is fixed.\n\n**Media plays in the browser but not in the export.** The browser plays many codecs FFmpeg's default build cannot decode. Re-encode the source with `ffmpeg -i input -c:v libx264 -c:a aac output.mp4` and swap the asset."
       },
       {
         "title": "Renders",
-        "text": "**A render stays queued.** Renders run one at a time by default and need disk space in `data/renders`. Check the server logs for the FFmpeg error line; the most common causes are a full disk, a missing binary and a clip whose asset was deleted.\n\n**The render looks different from the preview.** Report it with the project ID — preview and export share the same engine, so a mismatch is a bug, not a tuning knob. Before reporting, check the project still validates with `POST /api/projects/:id/timeline/validate`.\n\n**Renders are slow.** Render time scales with clip count, effects and resolution. Render at 720p while composing, and switch the project resolution up for the final pass. `GET /api/renders/:id` reports progress so you can poll instead of guessing."
+        "text": "**A render stays queued.** Renders run one at a time by default and need disk space in `data/renders`. Check the server logs for the FFmpeg error line; the most common causes are a full disk, a missing binary and a clip whose asset was deleted.\n\n**The render looks different from the preview.** Report it with the project ID. Preview and export share the same engine, so a mismatch is a bug, not a tuning knob. Before reporting, check the project still validates with `POST /api/projects/:id/timeline/validate`.\n\n**Renders are slow.** Render time scales with clip count, effects and resolution. Render at 720p while composing, and switch the project resolution up for the final pass. `GET /api/renders/:id` reports progress so you can poll instead of guessing."
       },
       {
         "title": "Keys and sign-in",
-        "text": "**401 from the hosted deployment.** Keys are issued per deployment: a key from your local server never works on the hosted one, and the reverse. Create a key on the deployment you are calling.\n\n**403 with a scope error.** The key's scope is too small: read keys cannot upload or edit, write keys cannot manage other keys. The error names the missing scope; recreate the key with it or use an admin key.\n\n**Sessions signed out after a restart.** Sessions live in SQLite, so restarts keep them. If everyone is signed out, the SQLite file changed or was restored from a different backup — sign in again.\n\n**First account: \"owner key required\".** That is by design. Use the key from `data/OWNER_KEY.txt` (or `VIDEOFORGE_BOOTSTRAP_KEY`) for the first account only."
+        "text": "**401 from the hosted deployment.** Keys are issued per deployment: a key from your local server never works on the hosted one, and the reverse. Create a key on the deployment you are calling.\n\n**403 with a scope error.** The key's scope is too small: read keys cannot upload or edit, write keys cannot manage other keys. The error names the missing scope; recreate the key with it or use an admin key.\n\n**Sessions signed out after a restart.** Sessions live in SQLite, so restarts keep them. If everyone is signed out, the SQLite file changed or was restored from a different backup. Sign in again.\n\n**First account: \"owner key required\".** That is by design. Use the key from `data/OWNER_KEY.txt` (or `VIDEOFORGE_BOOTSTRAP_KEY`) for the first account only."
       },
       {
         "title": "API and agents",
-        "text": "**409 on a timeline edit.** The batch carried `expectedUpdatedAt` and another edit landed first — the write is refused so nothing is clobbered. GET the project, read the fresh `updatedAt`, and send it with the next batch — the atomic batches page explains the pattern.\n\n**An operation name is rejected.** Operation names come from `GET /api/capabilities`; never invent one. The validation error names the closest known operation if there is a typo.\n\n**dryRun says OK but the real batch fails.** dryRun validates the timeline shape; it cannot catch a missing asset or a key restriction such as `allowUpload: false`. Run the real batch and read the error body."
+        "text": "**409 on a timeline edit.** The batch carried `expectedUpdatedAt` and another edit landed first. The write is refused so nothing is clobbered. GET the project, read the fresh `updatedAt`, and send it with the next batch. The atomic batches page explains the pattern.\n\n**An operation name is rejected.** Operation names come from `GET /api/capabilities`; never invent one. The validation error names the closest known operation if there is a typo.\n\n**dryRun says OK but the real batch fails.** dryRun validates the timeline shape; it cannot catch a missing asset or a key restriction such as `allowUpload: false`. Run the real batch and read the error body."
       },
       {
         "title": "Self-hosting",
-        "text": "**The frontend cannot reach the API.** If the frontend is hosted separately, `VITE_API_BASE` must be set at build time to the API origin, and `CORS_ORIGIN` on the backend must allow the frontend origin. The frontend alone cannot render video — FFmpeg must stay with the API.\n\n**Data directories.** `data/` (SQLite), `data/media` (uploads) and `data/renders` (exports) hold everything. Back them up together, restore them together, and never serve them statically. The Storage & durability page covers backups and the optional MongoDB store.",
+        "text": "**The frontend cannot reach the API.** If the frontend is hosted separately, `VITE_API_BASE` must be set at build time to the API origin, and `CORS_ORIGIN` on the backend must allow the frontend origin. The frontend alone cannot render video, FFmpeg must stay with the API.\n\n**Data directories.** `data/` (SQLite), `data/media` (uploads) and `data/renders` (exports) hold everything. Back them up together, restore them together, and never serve them statically. The Storage & durability page covers backups and the optional MongoDB store.",
         "links": [
           {
             "label": "Storage & durability",
@@ -3140,19 +3403,19 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Studio",
-        "text": "**Where does my project go?** Autosave writes it to the server as you work; the timeline is the single source of truth for Studio, API and renders alike.\n\n**What is the difference between the three tracks?** Video is full-frame footage and images, overlay is picture-in-picture clips, titles and shapes stacked by z-order, audio is music and voice-over.\n\n**Can I undo everything?** Yes — undo and redo cover drops, deletes, pastes, drags and quick typing, in Studio and in the block studio.\n\n**How do I export?** Export renders an MP4 with FFmpeg server-side. Queue it from Export, watch progress, then download the finished file."
+        "text": "**Where does my project go?** Autosave writes it to the server as you work; the timeline is the single source of truth for Studio, API and renders alike.\n\n**What is the difference between the three tracks?** Video is full-frame footage and images, overlay is picture-in-picture clips, titles and shapes stacked by z-order, audio is music and voice-over.\n\n**Can I undo everything?** Yes, undo and redo cover drops, deletes, pastes, drags and quick typing, in Studio and in the block studio.\n\n**How do I export?** Export renders an MP4 with FFmpeg server-side. Queue it from Export, watch progress, then download the finished file."
       },
       {
         "title": "Motion graphics",
-        "text": "**What is a motion preset?** A ready-made entrance, exit, attention or camera move applied to a clip — animate one thing or stagger many.\n\n**What are keyframes and formulas?** Keyframes set a property at moments in time with easing between them; formulas (expressions) drive a property with code of time. Both preview live and both render in FFmpeg.\n\n**What does the Animator do?** It poses clips together as a rig and bakes the result into ordinary keyframes — so preview and export need nothing new."
+        "text": "**What is a motion preset?** A ready-made entrance, exit, attention or camera move applied to a clip, animate one thing or stagger many.\n\n**What are keyframes and formulas?** Keyframes set a property at moments in time with easing between them; formulas (expressions) drive a property with code of time. Both preview live and both render in FFmpeg.\n\n**What does the Animator do?** It poses clips together as a rig and bakes the result into ordinary keyframes, so preview and export need nothing new."
       },
       {
         "title": "API and agents",
-        "text": "**How do agents authenticate?** With scoped API keys: `Authorization: Bearer <key>`. Scopes are read, write or admin, with per-key restrictions for expiry, projects, rate, uploads, rendering and deletion.\n\n**How do I make several edits safely?** Send them as one atomic batch to `/api/projects/:id/timeline/ops` with `dryRun: true` first, then for real with `expectedUpdatedAt` so a stale write fails with 409 instead of clobbering.\n\n**Can I see what I built before rendering?** Yes: `GET /frame?t=1.5` returns a composed PNG, `GET /state?t=1.5` returns the animated values, and `GET /storyboard` returns a contact sheet.\n\n**Is there an OpenAPI file?** Yes — an OpenAPI description generated from the operation list is served at [the OpenAPI description](https://homekidchud.github.io/videoforge/openapi.json) and linked from the HTTP API reference."
+        "text": "**How do agents authenticate?** With scoped API keys: `Authorization: Bearer <key>`. Scopes are read, write or admin, with per-key restrictions for expiry, projects, rate, uploads, rendering and deletion.\n\n**How do I make several edits safely?** Send them as one atomic batch to `/api/projects/:id/timeline/ops` with `dryRun: true` first, then for real with `expectedUpdatedAt` so a stale write fails with 409 instead of clobbering.\n\n**Can I see what I built before rendering?** Yes: `GET /frame?t=1.5` returns a composed PNG, `GET /state?t=1.5` returns the animated values, and `GET /storyboard` returns a contact sheet.\n\n**Is there an OpenAPI file?** Yes. An OpenAPI description generated from the operation list is served at [the OpenAPI description](https://homekidchud.github.io/videoforge/openapi.json) and linked from the HTTP API reference."
       },
       {
         "title": "Self-hosting",
-        "text": "**Can I host the frontend separately from the API?** Yes. Build the frontend with `VITE_API_BASE`, set `CORS_ORIGIN` on the backend, and keep FFmpeg with the API — the frontend cannot render video on its own.\n\n**How do I back up?** Back up the `data` directory (SQLite, `data/media`, `data/renders`) together. The Storage & durability page covers the backup recipes and the optional MongoDB store.",
+        "text": "**Can I host the frontend separately from the API?** Yes. Build the frontend with `VITE_API_BASE`, set `CORS_ORIGIN` on the backend, and keep FFmpeg with the API. The frontend cannot render video on its own.\n\n**How do I back up?** Back up the `data` directory (SQLite, `data/media`, `data/renders`) together. The Storage & durability page covers the backup recipes and the optional MongoDB store.",
         "links": [
           {
             "label": "Troubleshooting",
@@ -3964,14 +4227,14 @@ export const DOC_PAGES: DocPage[] = [
       "doing": 0,
       "todo": 43
     },
-    "updated": "2026-10-17T18:00:49Z",
+    "updated": "2026-10-17T18:48:19Z",
     "added": "2026-10-16T00:27:26Z"
   }
 ];
 
 export const CONTRIBUTORS: { name: string; commits: number }[] = [
   {
-    "commits": 69,
+    "commits": 70,
     "name": "HomekidChud"
   },
   {

@@ -11,7 +11,7 @@ There are two kinds of contributor, and the rules are strict so that pull reques
 
 - **Community contributors may only change the docs.** Your pull request must touch nothing outside the `docs/` folder, and it needs a description that says which page, what was wrong and how you checked it. Anything else fails the contribution rules check and is closed by a maintainer. See `CONTRIBUTING.md` in the repository root for the full policy.
 - **Bugs and ideas:** open an issue with what you did, what you expected and what happened. Add the browser and the project JSON if you can. Do not fix code yourself; a maintainer will pick it up.
-- **Maintainers** (the repository owner) may change anything — code, presets, templates and blocks — using the recipes further down this page.
+- **Maintainers** (the repository owner) may change anything, code, presets, templates and blocks, using the recipes further down this page.
 
 > [!WARNING] Nonsense is rejected. A docs change must describe something you actually tried in a running Studio, written in your own words. AI-pasted filler, drive-by refactors, dependency bumps and mass rewrites of pages are closed without review.
 

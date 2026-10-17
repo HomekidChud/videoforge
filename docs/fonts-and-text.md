@@ -2,7 +2,7 @@
 title: Fonts & text
 group: Motion graphics
 order: 11
-description: A large font catalog, bold, alignment, line height, letter spacing and uppercase — with a fit engine that knows every family.
+description: A large font catalog, bold, alignment, line height, letter spacing and uppercase, with a fit engine that knows every family.
 ---
 
 ## A catalog of families

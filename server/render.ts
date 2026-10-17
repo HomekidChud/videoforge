@@ -471,9 +471,19 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     maps.push("-map", "[aout]");
   } else maps.push("-an");
 
+  // A long edit produces a filter graph larger than the operating system allows for one argument
+  // (spawn E2BIG), so big graphs are handed to FFmpeg as a script file instead.
+  const graph = filters.join(";");
+  let graphArgs = ["-filter_complex", graph];
+  if (graph.length > 20000) {
+    const graphFile = path.join(tmpDir, `${jobId}_graph.txt`);
+    fs.writeFileSync(graphFile, graph);
+    tempFiles.push(graphFile);
+    graphArgs = ["-filter_complex_script", graphFile];
+  }
   const args = [
     "-y", "-hide_banner", ...inputs,
-    "-filter_complex", filters.join(";"),
+    ...graphArgs,
     ...(options.frameAt === undefined ? maps : ["-map","[vout]","-ss",String(options.frameAt),"-frames:v","1"]),
     ...(options.frameAt === undefined ? ["-t", String(f(total)),
     "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",

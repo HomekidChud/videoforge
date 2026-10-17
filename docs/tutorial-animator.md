@@ -7,6 +7,8 @@ description: Rig a figure in the Animator, pose it, key the poses and bake the r
 
 ## What you will make
 
+{{video:animator}}
+
 A waving figure: the ready-made stick figure rigged in the Animator, with one arm keyed to wave twice in under three seconds, eased so it swings naturally. You pose, key and play inside the Animator, then press **Apply to edit** and the whole motion lands on your timeline as ordinary keyframes.
 
 It takes about ten minutes. Because the result is plain keyframes, the preview, the FFmpeg export and the API all agree with no new renderer.
@@ -15,7 +17,7 @@ It takes about ten minutes. Because the result is plain keyframes, the preview, 
 
 ## Put something on the timeline
 
-Open the Studio and click **Stick figure** in the Animator, or add a couple of shapes first: an ellipse for a head and two rectangles for arms work well. For this tutorial, open the Animator with the **Animator** button in the top bar and press **Stick figure**. Ten shapes land on the timeline, already rigged.
+Open the Animator and click **Stick figure**, or add a couple of shapes first: an ellipse for a head and two rectangles for arms work well. For this tutorial, open the **More** menu (the three dots at the top right), choose **Animator** and press **Stick figure**. You can also press Ctrl+K and type Animator. Ten shapes land on the timeline, already rigged.
 
 ## Meet the rig
 
@@ -25,7 +27,7 @@ Open a part's **Joint & parent** row to see where its joint sits. Put the joint 
 
 ## Pose and key
 
-Drag the playhead to `0.0`. Nothing to key yet — this is the rest pose.
+Drag the playhead to `0.0`. Nothing to key yet. This is the rest pose.
 
 Drag the playhead to `0.3`. Now pose the forearm: drag it on the stage, or type into its **Pose** fields. Set **Turn** to `-60` so the forearm swings out. Each change writes a keyframe at the playhead, and a first key at the start pins the resting value so nothing jumps.
 
@@ -37,7 +39,7 @@ Two keys are a wave, but a stiff one. Select the second key and set its **Easing
 
 ## Play it back
 
-Press play in the Animator. The figure waves twice and settles. Scrub the playhead to check individual poses. If a key lands in the wrong place, drag the diamond — it snaps to frames.
+Press play in the Animator. The figure waves twice and settles. Scrub the playhead to check individual poses. If a key lands in the wrong place, drag the diamond. It snaps to frames.
 
 Useful keys while you work:
 
@@ -54,7 +56,7 @@ Nothing is lost by baking. The animation stays with this project in your browser
 
 ## Build the same thing with the API
 
-The Animator's result is one `rig_bake` operation. Send this to `POST /api/projects/:id/timeline/ops` with a write key and the same wave lands on the timeline — parts, joints and keyframes included.
+The Animator's result is one `rig_bake` operation. Send this to `POST /api/projects/:id/timeline/ops` with a write key and the same wave lands on the timeline, parts, joints and keyframes included.
 
 ```json
 {
@@ -66,7 +68,7 @@ The Animator's result is one `rig_bake` operation. Send this to `POST /api/proje
 }
 ```
 
-The forearm is parented to the upper arm with a joint above it, and only its rotation is keyed — the same rig you posed by hand.
+The forearm is parented to the upper arm with a joint above it, and only its rotation is keyed. It is the same rig you posed by hand.
 
 ## Where to go next
 

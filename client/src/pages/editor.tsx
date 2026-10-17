@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Clapperboard, Play, Pause, SkipBack, SkipForward, Scissors, Undo2, Redo2, Magnet, Plus, Upload, Type, Film, Music2, Image as ImageIcon, Download, Check, AlertCircle, Loader2, FolderOpen, FilePlus2, Trash2, Share2, X, Lock, Globe, ChevronDown, Eye, Sparkles } from "lucide-react";
+import { Clapperboard, Play, Pause, SkipBack, SkipForward, Scissors, Undo2, Redo2, Magnet, Plus, Upload, Type, Film, Music2, Image as ImageIcon, Download, Check, AlertCircle, Loader2, FolderOpen, FilePlus2, Trash2, Share2, X, Lock, Globe, ChevronDown, Eye, Sparkles, Search, MoreHorizontal, Keyboard, GraduationCap, Layers, Music, Wand2, Blocks, Shapes, Code2, Settings2, SlidersHorizontal, Mic } from "lucide-react";
+import { prefs, PRESETS, type Preset, type Mode } from "@/lib/studio-prefs";
+import { SHORTCUTS, shortcutFor } from "@shared/shortcuts";
+import ForgeCommandPalette, { type PaletteCommand } from "@/components/forge-command-palette";
+import ForgeShortcuts from "@/components/forge-shortcuts";
+import ForgeTour from "@/components/forge-tour";
 import { clipDuration, clipEnd, normalizeClip, normalizeTimeline, timelineDuration, type Clip, type Timeline } from "@shared/timeline";
 import { ANIMATABLE, clamp, valueAt, type AnimationProperty, type Keyframe } from "@shared/animation";
 import { TITLE_PRESETS, motionPreset } from "@shared/presets";
@@ -11,7 +16,7 @@ import { EMPTY_TIMELINE, clampClipPatch, duplicateClip, newClip, rippleDelete, r
 import { ForgeNav } from "@/components/forge-shell";
 import ForgePreview from "@/components/forge-preview";
 import ForgeTimeline, { type TimelineGesture } from "@/components/forge-timeline";
-import { ClipInspector, MultiInspector, ProjectInspector } from "@/components/forge-inspector";
+import { InspectorShell, ClipInspector, MultiInspector, ProjectInspector } from "@/components/forge-inspector";
 import { setTransition, incomingTransition, TRANSITIONS } from "@shared/transitions";
 import { type Peer } from "@/components/forge-presence";
 import ForgeEffects, { type Effect } from "@/components/forge-effects";
@@ -187,7 +192,7 @@ export default function EditorPage() {
   // Local browser save-data: a debounced snapshot of the working copy (including the
   // unsaved timeline, selection, playhead, zoom and panel) so a tab close or
   // an offline moment does not take your project with you. This is NOT cloud
-  // storage — the server DB and the save manifest on the persistent disk are the
+  // storage. The server DB and the save manifest on the persistent disk are the
   // durable source of truth. This is just the scratchpad so nothing is lost on a
   // refresh. Debounced at 300ms so keystrokes do not thrash localStorage.
   useEffect(() => {
@@ -219,7 +224,7 @@ export default function EditorPage() {
     didRestoreDraft.current = true;
     const draft = readLocalSave(null);
     if (draft && draft.timeline.clips.length > 0) {
-      loadDocument(draft.timeline, null, draft.name || "Untitled project", "private");
+      loadDocument(draft.timeline, draft.projectId ?? null, draft.name || "Untitled project", "private");
       setPps(draft.pps || 64);
       setPanel((draft.panel as "media" | "effects" | "graphics" | "projects" | "tools" | "blocks") || "media");
       setSel(draft.selection ?? []);
@@ -492,13 +497,101 @@ export default function EditorPage() {
   const [workspace, setWorkspace] = useState<"edit" | "animate">("edit");
   const [focusedKey,setFocusedKey]=useState<{clipId:string;property:AnimationProperty;time:number}|undefined>();
   const [libraryOpen, setLibraryOpen] = useState(true), [inspectorOpen, setInspectorOpen] = useState(true);
-  const [libraryWidth, setLibraryWidth] = useState(264), [inspectorWidth, setInspectorWidth] = useState(300), [timelineHeight, setTimelineHeight] = useState(300);
+  const [libraryWidth, setLibraryWidth] = useState(312), [inspectorWidth, setInspectorWidth] = useState(316), [timelineHeight, setTimelineHeight] = useState(300);
   const [viewportWidth,setViewportWidth]=useState(window.innerWidth);
   useEffect(()=>{
-    const fitPanels=()=>{const w=window.innerWidth;setViewportWidth(w);if(w<=860)return;setLibraryWidth(v=>Math.min(v,Math.max(220,Math.floor(w*.3))));setInspectorWidth(v=>Math.min(v,Math.max(260,Math.floor(w*.34))));};
+    const fitPanels=()=>{const w=window.innerWidth;setViewportWidth(w);if(w<=860)return;setLibraryWidth(v=>Math.min(v,Math.max(268,Math.floor(w*.3))));setInspectorWidth(v=>Math.min(v,Math.max(260,Math.floor(w*.34))));};
     window.addEventListener("resize",fitPanels);return()=>window.removeEventListener("resize",fitPanels);
   },[]);
   const [mobilePanel, setMobilePanel] = useState<"timeline" | "library" | "inspector">("timeline");
+
+  // ---------------------------------------------------------------- workspaces, modes, palette
+  const [preset, setPresetState] = useState<Preset>(prefs.preset);
+  const [mode, setModeState] = useState<Mode>(prefs.mode);
+  const advanced = mode === "advanced";
+  const [paletteOpen, setPaletteOpen] = useState(false), [sheetOpen, setSheetOpen] = useState(false), [tourOpen, setTourOpen] = useState(false);
+  const [collapsedLanes, setCollapsedLanes] = useState<string[]>([]);
+  const toggleLane = useCallback((id: string) => setCollapsedLanes((c) => (c.includes(id) ? c.filter((x) => x !== id) : [...c, id])), []);
+  const applyPreset = useCallback((p: Preset) => {
+    setPresetState(p); prefs.setPreset(p); setCollapsedLanes([]);
+    setWorkspace(p === "animate" ? "animate" : "edit");
+    setLibraryOpen(p !== "animate"); setInspectorOpen(true);
+    if (p === "edit") { setPanel("media"); setTimelineHeight(300); }
+    else if (p === "animate") setTimelineHeight((h) => Math.max(h, 400));
+    else if (p === "graphics") { setPanel("graphics"); setTimelineHeight(300); }
+    else if (p === "audio") { setPanel("media"); setTimelineHeight(360); setCollapsedLanes(["overlay"]); }
+    else if (p === "blocks") setPanel("blocks");
+  }, []);
+  const setMode = useCallback((m: Mode) => {
+    setModeState(m); prefs.setMode(m);
+    if (m === "simple") { setPanel((cur) => (cur === "blocks" || cur === "tools" ? "media" : cur)); if (preset === "blocks") applyPreset("edit"); }
+  }, [preset, applyPreset]);
+  useEffect(() => { if (!prefs.toured() && !new URLSearchParams(location.search).has("notour")) { const t = setTimeout(() => setTourOpen(true), 900); return () => clearTimeout(t); } }, []);
+  const closeTour = () => { setTourOpen(false); prefs.setToured(true); };
+  const importInput = useRef<HTMLInputElement>(null);
+  const openImport = () => { setPanel("media"); setLibraryOpen(true); setTimeout(() => importInput.current?.click(), 0); };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPaletteOpen((v) => !v); return; }
+      const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) || el.isContentEditable;
+      if (!typing && e.key === "?" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setSheetOpen((v) => !v); }
+    };
+    window.addEventListener("keydown", onKey); return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  const moreRef = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const h = (e: MouseEvent) => { const d = moreRef.current; if (d?.open && !d.contains(e.target as Node)) d.open = false; };
+    document.addEventListener("pointerdown", h); return () => document.removeEventListener("pointerdown", h);
+  }, []);
+  const commands: PaletteCommand[] = (() => {
+    const sc = (id: string) => shortcutFor(id);
+    const show = (p: typeof panel) => () => { setPanel(p); setLibraryOpen(true); };
+    const list: PaletteCommand[] = [
+      { id: "add-title", group: "Create", label: "Add a title", run: () => addTitle(), disabled: readOnly },
+      { id: "import", group: "Create", label: "Import media", keywords: "upload video audio image", run: openImport, disabled: readOnly },
+      { id: "add-marker", group: "Create", label: "Add a marker at the playhead", shortcut: sc("marker"), run: addMarker, disabled: readOnly },
+      { id: "split", group: "Edit", label: "Split at the playhead", shortcut: sc("split"), run: split, disabled: readOnly || !timeline.clips.length },
+      { id: "duplicate", group: "Edit", label: "Duplicate the selection", shortcut: sc("duplicate"), run: duplicate, disabled: readOnly || !selectedIds.length },
+      { id: "delete", group: "Edit", label: "Delete the selection", shortcut: sc("delete"), run: () => remove(false), disabled: readOnly || !selectedIds.length },
+      { id: "ripple", group: "Edit", label: "Ripple delete the selection", shortcut: sc("ripple"), run: () => remove(true), disabled: readOnly || !selectedIds.length },
+      { id: "undo", group: "Edit", label: "Undo", shortcut: sc("undo"), run: undo, disabled: readOnly || !past.current.length },
+      { id: "redo", group: "Edit", label: "Redo", shortcut: sc("redo"), run: redo, disabled: readOnly || !future.current.length },
+      { id: "select-all", group: "Edit", label: "Select every clip", shortcut: sc("select-all"), run: () => onSelectMany(tlRef.current.clips.map((c) => c.id)), disabled: !timeline.clips.length },
+      { id: "fit-all", group: "Edit", label: "Fit every layer inside the frame", run: fitAll, disabled: readOnly || !timeline.clips.length },
+      { id: "play", group: "Playback", label: playing ? "Pause" : "Play", shortcut: sc("play"), run: togglePlay, disabled: !duration },
+      { id: "to-start", group: "Playback", label: "Jump to the start", shortcut: sc("start"), run: () => seek(0) },
+      { id: "to-end", group: "Playback", label: "Jump to the end", shortcut: sc("end"), run: () => seek(duration) },
+      { id: "export", group: "Project", label: "Export as MP4", run: () => startRender.mutate(), disabled: !timeline.clips.length || startRender.isPending },
+      { id: "save", group: "Project", label: "Save now", shortcut: sc("save"), run: () => { void saveNow(); } },
+      { id: "new-project", group: "Project", label: "New project", run: newProject, disabled: readOnly },
+      { id: "project-settings", group: "Project", label: "Project settings and sharing", run: () => { setSelectedId(null); setInspectorOpen(true); setMobilePanel("inspector"); } },
+      { id: "drafts", group: "Project", label: "Local drafts", run: () => setUiPanel("drafts") },
+      { id: "panel-media", group: "Panels", label: "Open Media", run: show("media") },
+      { id: "panel-effects", group: "Panels", label: "Open Effects", run: show("effects") },
+      { id: "panel-graphics", group: "Panels", label: "Open Graphics", run: show("graphics") },
+      { id: "panel-projects", group: "Panels", label: "Open Projects", run: show("projects") },
+      { id: "toggle-library", group: "Panels", label: libraryOpen ? "Hide the library" : "Show the library", run: () => setLibraryOpen((v) => !v) },
+      { id: "toggle-inspector", group: "Panels", label: inspectorOpen ? "Hide the inspector" : "Show the inspector", run: () => setInspectorOpen((v) => !v) },
+      { id: "reset-layout", group: "Panels", label: "Reset the layout", run: () => { setLibraryOpen(true); setInspectorOpen(true); setLibraryWidth(312); setInspectorWidth(316); setTimelineHeight(300); setCollapsedLanes([]); } },
+      ...PRESETS.filter((p) => advanced || p.id !== "blocks").map((p): PaletteCommand => ({ id: `workspace-${p.id}`, group: "Workspaces", label: `${p.label} workspace`, keywords: p.hint, run: () => applyPreset(p.id) })),
+      { id: "snapping", group: "Timeline", label: snapping ? "Turn snapping off" : "Turn snapping on", run: () => setSnapping((v) => !v) },
+      { id: "zoom-in", group: "Timeline", label: "Zoom the timeline in", shortcut: sc("zoom-in"), run: () => setPps((p) => Math.min(260, Math.round(p * 1.25))) },
+      { id: "zoom-out", group: "Timeline", label: "Zoom the timeline out", shortcut: sc("zoom-out"), run: () => setPps((p) => Math.max(8, Math.round(p * 0.8))) },
+      { id: "fit-timeline", group: "Timeline", label: "Fit the timeline to the window", run: fitTimeline },
+      { id: "mode", group: "Studio", label: advanced ? "Switch to Simple mode" : "Switch to Advanced mode", keywords: "simple advanced tools", run: () => setMode(advanced ? "simple" : "advanced") },
+      { id: "shortcuts", group: "Studio", label: "Keyboard shortcuts", shortcut: sc("shortcuts"), run: () => setSheetOpen(true) },
+      { id: "tour", group: "Studio", label: "Take the Studio tour", run: () => setTourOpen(true) },
+      { id: "docs", group: "Studio", label: "Open the documentation", run: () => { location.hash = "#/docs/introduction"; } },
+    ];
+    if (advanced) list.push(
+      { id: "animator", group: "Advanced tools", label: "Open the Animator", keywords: "rig pose", run: () => setAnimatorOpen(true) },
+      { id: "panel-blocks", group: "Advanced tools", label: "Open the block studio", keywords: "blocks scripts", run: show("blocks") },
+      { id: "panel-tools", group: "Advanced tools", label: "Open Tools (scripts)", run: show("tools") },
+      { id: "composition", group: "Advanced tools", label: "Composition JSON", run: () => setCompositionOpen(true) },
+    );
+    return list;
+  })();
 
   const render = renderQ.data, renderUrl = render?.status === "done" && renderJobId ? mediaUrl(renderJobId, `/api/renders/${renderJobId}/download`) : "";
   const saveLabel = { empty: "Not saved yet", saved: "All changes saved", dirty: "Unsaved changes", saving: "Saving…", error: "Save failed", readonly: "Read-only key" }[saveState];
@@ -511,6 +604,9 @@ export default function EditorPage() {
 
   return <div className="forge-app studio" onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragOver(true); } }} onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }} onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); setDragOver(false); importFiles(e.dataTransfer.files); } }}>
     <ForgeNav active="editor" />
+    <ForgeCommandPalette open={paletteOpen} commands={commands} onClose={() => setPaletteOpen(false)} />
+    <ForgeShortcuts open={sheetOpen} onClose={() => setSheetOpen(false)} />
+    <ForgeTour open={tourOpen} onClose={closeTour} />
     <div className="studio-bar">
       <div className="project-title"><input aria-label="Project name" className="title-input" value={projectName} disabled={readOnly} maxLength={200} onChange={(e) => setProjectName(e.target.value)} data-testid="input-project-title" />
         <span className={`save-state ${saveState}`} role="status" data-testid="text-save-state" title={saveError}>{saveState === "saving" ? <Loader2 size={13} className="spin" /> : saveState === "error" ? <AlertCircle size={13} /> : saveState === "saved" ? <Check size={13} /> : null}{saveLabel}</span>
@@ -518,32 +614,38 @@ export default function EditorPage() {
         {peers.length > 0 && <div className="presence-bar" data-testid="presence-bar" aria-label="People in this project">{peers.map((p) => <button key={p.cid} className={`peer-avatar ${followId === p.cid ? "following" : ""}`} style={{ background: p.color }} title={followId === p.cid ? `Stop following ${p.name}` : `Follow ${p.name}`} aria-pressed={followId === p.cid} onClick={() => (followId === p.cid ? stopFollow() : setFollowId(p.cid))} data-testid={`follow-${p.cid}`}>{p.name.slice(0, 1).toUpperCase()}</button>)}
           {followed && <span className="follow-chip" style={{ borderColor: followed.color }} data-testid="follow-chip">Following {followed.name}<button className="ghost-link" onClick={stopFollow}>Stop</button></span>}</div>}
         {watchers > 0 && <span className="watch-badge" title="A master admin is watching this project live. They cannot edit it."><Eye size={13} />{watchers} watching</span>}</div>
+      <div className="preset-switch" role="tablist" aria-label="Workspace">
+        {PRESETS.filter((x) => advanced || x.id !== "blocks").map((x) => <button key={x.id} role="tab" aria-selected={preset === x.id} className={preset === x.id ? "active" : ""} title={x.hint} onClick={() => applyPreset(x.id)} data-testid={`workspace-${x.id}`}>{x.label}</button>)}
+      </div>
       <div className="studio-actions">
-        <div className="workspace-switch" aria-label="Workspace">
-          <button className={workspace==="edit"?"active":""} aria-pressed={workspace==="edit"} onClick={()=>setWorkspace("edit")} data-testid="workspace-edit">Edit</button>
-          <button className={workspace==="animate"?"active":""} aria-pressed={workspace==="animate"} onClick={()=>{setWorkspace("animate");setTimelineHeight(h=>Math.max(h,400));}} data-testid="workspace-animate"><Sparkles size={13}/>Animate</button>
-        </div>
-        <button className="secondary-btn animator-open" onClick={()=>setAnimatorOpen(true)} title="Animator: pose clips, text and shapes like rigs and key them on a timeline" data-testid="button-animator"><Clapperboard size={14}/><span className="hide-sm">Animator</span></button>
-        <details className="studio-tools"><summary data-testid="button-studio-tools">Tools<ChevronDown size={13}/></summary><div className="studio-tools-menu">
-          <button onClick={()=>setCompositionOpen(true)} data-testid="button-composition">Composition JSON</button>
-          <button aria-pressed={libraryOpen} onClick={()=>setLibraryOpen(v=>!v)} data-testid="toggle-library">{libraryOpen?"Hide":"Show"} library</button>
-          <button aria-pressed={inspectorOpen} onClick={()=>setInspectorOpen(v=>!v)} data-testid="toggle-inspector">{inspectorOpen?"Hide":"Show"} inspector</button>
-          <button onClick={()=>{setLibraryOpen(true);setInspectorOpen(true);setLibraryWidth(264);setInspectorWidth(300);setTimelineHeight(300);}} data-testid="reset-workspace">Reset layout</button>
-          <button className="mobile-tool" disabled={!future.current.length||readOnly} onClick={redo} data-testid="mobile-redo">Redo</button>
-          <button className="mobile-tool" aria-pressed={snapping} onClick={()=>setSnapping(v=>!v)} data-testid="mobile-snapping">Snapping: {snapping?"on":"off"}</button>
-          <button className="mobile-tool" disabled={readOnly} onClick={()=>addTitle()} data-testid="mobile-add-title">Add title</button>
-          <a href="#/docs/introduction">Documentation</a><a href="#/platform">Developer platform</a>
-          {canPublish&&<a href="#/live">Live monitor</a>}
-          <button onClick={()=>setUiPanel(v=>v===null?"drafts":null)} data-testid="drafts-toggle">Local drafts</button>
-        </div></details>
-        {selectedIds.length>1&&<button className="secondary-btn hide-sm" disabled={readOnly} onClick={()=>{try{const next=applyTimelineOp(tlRef.current,{op:"stagger_clips",args:{clipIds:selectedIds,delay:.15,start:timeRef.current}},id=>byId.get(id));mutate(()=>next);toast("Selection staggered by 0.15s");}catch(e:any){toast(e.message,"error");}}} data-testid="button-stagger">Stagger</button>}
+        <button className="palette-trigger hide-sm" onClick={() => setPaletteOpen(true)} data-testid="button-palette" aria-label="Open the command palette"><Search size={14} /><span>Search commands</span><kbd>Ctrl</kbd><kbd>K</kbd></button>
         <button className="icon-btn" onClick={undo} disabled={!past.current.length || readOnly} aria-label="Undo" title="Undo (Ctrl+Z)" data-testid="button-undo"><Undo2 size={17} /></button>
-        <button className="icon-btn mobile-hide-action" onClick={redo} disabled={!future.current.length || readOnly} aria-label="Redo" title="Redo (Ctrl+Shift+Z)"><Redo2 size={17} /></button>
+        <button className="icon-btn mobile-hide-action" onClick={redo} disabled={!future.current.length || readOnly} aria-label="Redo" title="Redo (Ctrl+Shift+Z)" data-testid="button-redo"><Redo2 size={17} /></button>
         <span className="divider" />
-        <button className={`icon-btn mobile-hide-action ${snapping ? "active accent" : ""}`} aria-pressed={snapping} onClick={() => setSnapping(!snapping)} aria-label="Toggle snapping" title="Snapping"><Magnet size={17} /></button>
         <div className="menu-wrap hide-sm"><button className="secondary-btn" onClick={() => addTitle()} disabled={readOnly} data-testid="button-add-title"><Type size={15} />Add title</button><button className="icon-btn menu-caret" aria-label="Title styles" aria-expanded={titleMenu} disabled={readOnly} onClick={() => setTitleMenu(!titleMenu)} data-testid="button-title-menu"><ChevronDown size={14} /></button>{titleMenu && <div className="menu-pop" role="menu">{TITLE_PRESETS.map((p) => <button key={p.id} role="menuitem" onClick={() => addTitle(p)} data-testid={`title-${p.id}`}>{p.label}</button>)}</div>}</div>
         <button className="secondary-btn hide-sm" onClick={() => {setSelectedId(null);setInspectorOpen(true);setMobilePanel("inspector");}} title="Project settings and sharing" data-testid="button-project-settings"><Share2 size={15} />Project</button>
         <button className="primary-btn" onClick={() => startRender.mutate()} disabled={!timeline.clips.length || startRender.isPending || (readOnly && false)} data-testid="button-export">{startRender.isPending ? <Loader2 size={15} className="spin" /> : <Download size={15} />}Export</button>
+        <details className="studio-tools" ref={moreRef}><summary data-testid="button-studio-tools" aria-label="More options" title="More options"><MoreHorizontal size={18} /></summary><div className="studio-tools-menu" onClick={(e) => { if ((e.target as HTMLElement).closest("button,a") && moreRef.current) moreRef.current.open = false; }}>
+          <h5>Tools</h5>
+          {advanced && <button onClick={() => setAnimatorOpen(true)} data-testid="button-animator" title="Pose clips, text and shapes like rigs and key them on a timeline"><Clapperboard size={15} />Animator</button>}
+          {advanced && <button onClick={() => setCompositionOpen(true)} data-testid="button-composition"><Code2 size={15} />Composition JSON</button>}
+          <button aria-pressed={snapping} onClick={() => setSnapping((v) => !v)} data-testid="toggle-snapping"><Magnet size={15} />Snapping: {snapping ? "on" : "off"}</button>
+          {selectedIds.length > 1 && <button disabled={readOnly} onClick={() => { try { const next = applyTimelineOp(tlRef.current, { op: "stagger_clips", args: { clipIds: selectedIds, delay: .15, start: timeRef.current } }, id => byId.get(id)); mutate(() => next); toast("Selection staggered by 0.15s"); } catch (e: any) { toast(e.message, "error"); } }} data-testid="button-stagger"><Layers size={15} />Stagger selection</button>}
+          <h5>Layout</h5>
+          <button aria-pressed={libraryOpen} onClick={() => setLibraryOpen(v => !v)} data-testid="toggle-library">{libraryOpen ? "Hide" : "Show"} library</button>
+          <button aria-pressed={inspectorOpen} onClick={() => setInspectorOpen(v => !v)} data-testid="toggle-inspector">{inspectorOpen ? "Hide" : "Show"} inspector</button>
+          <button onClick={() => { setLibraryOpen(true); setInspectorOpen(true); setLibraryWidth(312); setInspectorWidth(316); setTimelineHeight(300); setCollapsedLanes([]); }} data-testid="reset-workspace">Reset layout</button>
+          <button onClick={() => setMode(advanced ? "simple" : "advanced")} data-testid="toggle-mode"><SlidersHorizontal size={15} />{advanced ? "Switch to Simple mode" : "Switch to Advanced mode"}</button>
+          <button className="mobile-tool" disabled={!future.current.length || readOnly} onClick={redo} data-testid="mobile-redo">Redo</button>
+          <button className="mobile-tool" aria-pressed={snapping} onClick={() => setSnapping(v => !v)} data-testid="mobile-snapping">Snapping: {snapping ? "on" : "off"}</button>
+          <button className="mobile-tool" disabled={readOnly} onClick={() => addTitle()} data-testid="mobile-add-title">Add title</button>
+          <h5>Help</h5>
+          <button onClick={() => setSheetOpen(true)} data-testid="button-shortcuts"><Keyboard size={15} />Keyboard shortcuts<kbd>?</kbd></button>
+          <button onClick={() => setTourOpen(true)} data-testid="button-tour"><GraduationCap size={15} />Studio tour</button>
+          <a href="#/docs/introduction">Documentation</a><a href="#/platform">Developer platform</a>
+          {canPublish && <a href="#/live">Live monitor</a>}
+          <button onClick={() => setUiPanel(v => v === null ? "drafts" : null)} data-testid="drafts-toggle">Local drafts</button>
+        </div></details>
       </div></div>
 
     <div className="mobile-workspace-tabs" aria-label="Editor panels">
@@ -552,13 +654,19 @@ export default function EditorPage() {
     <div className={`studio-grid workspace-${workspace} ${libraryOpen?"":"library-collapsed"} ${inspectorOpen?"":"inspector-collapsed"} mobile-show-${mobilePanel}`}
       style={{"--library-width":`${libraryOpen?libraryWidth:0}px`,"--inspector-width":`${inspectorOpen?inspectorWidth:0}px`,"--timeline-height":`${timelineHeight}px`} as React.CSSProperties}>
       <aside className="library" aria-label="Library">
-        <div className="panel-tabs"><button className={panel === "media" ? "active" : ""} onClick={() => setPanel("media")}>Media</button><button className={panel === "effects" ? "active" : ""} onClick={() => setPanel("effects")} data-testid="tab-effects">Effects</button><button className={panel === "blocks" ? "active" : ""} onClick={() => setPanel("blocks")} data-testid="tab-blocks">Blocks</button><button className={panel === "graphics" ? "active" : ""} onClick={() => setPanel("graphics")} data-testid="tab-graphics">Graphics</button><button className={panel === "tools" ? "active" : ""} onClick={() => setPanel("tools")} data-testid="tab-tools">Tools</button><button className={panel === "projects" ? "active" : ""} onClick={() => setPanel("projects")}>Projects</button></div>
+        <nav className="dock" aria-label="Tools">
+          {([["media", "Media", Film], ["effects", "Effects", Wand2], ["graphics", "Graphics", Shapes], ["blocks", "Blocks", Blocks], ["tools", "Tools", Code2], ["projects", "Projects", FolderOpen]] as const).filter(([id]) => advanced || (id !== "blocks" && id !== "tools")).map(([id, label, Icon]) => (
+            <button key={id} className={`dock-btn ${panel === id ? "active" : ""}`} aria-label={label} aria-pressed={panel === id} onClick={() => setPanel(id)} data-testid={`tab-${id}`}><Icon size={19} /><span className="dock-tip" role="tooltip">{label}</span></button>
+          ))}
+        </nav>
+        <div className="library-main">
+        <header className="library-head"><h3>{({ media: "Media", effects: "Effects", graphics: "Graphics", blocks: "Blocks", tools: "Tools", projects: "Projects" } as const)[panel]}</h3><p>{({ media: "Footage, music and images for this project.", effects: "Drag onto a clip, or click to apply.", graphics: "Titles, shapes and ready made layouts.", blocks: "Build repeatable edits from blocks.", tools: "Run scripts against the timeline.", projects: "Everything you have saved." } as const)[panel]}</p></header>
         {/* Distinct keys: switching Tools → Blocks must remount ForgeTools so its
             open-the-studio effect runs. Without a key, React reuses the Tools
             instance and the Blocks tab just shows the tool library list. */}
         {panel === "blocks" ? <ForgeTools key="blocks" disabled={readOnly} onRun={(ops) => runOps(ops)} onError={(m) => toast(m, "error")} onNote={(m) => toast(m)} getCtx={getToolCtx} studio autoOpen onExitStudio={() => setPanel(lastPanelRef.current)} onOpenAnimator={() => setAnimatorOpen(true)} /> : panel === "tools" ? <ForgeTools key="tools" disabled={readOnly} onRun={(ops) => runOps(ops)} onError={(m) => toast(m, "error")} onNote={(m) => toast(m)} getCtx={getToolCtx} studio={false}  onOpenAnimator={() => setAnimatorOpen(true)} /> : panel === "graphics" ? <ForgeGraphics disabled={readOnly} onApply={op=>{if(readOnly)return;try{const t=tlRef.current,next=applyGraphics(t,op,timeRef.current),ids=next.clips.filter(c=>!t.clips.some(o=>o.id===c.id)).map(c=>c.id);mutate(()=>next);setSel(ids);toast(`Added ${ids.length} editable graphics clip${ids.length===1?"":"s"}`);}catch(e:any){toast(e.message,"error");}}}/> : panel === "effects" ? <ForgeEffects disabled={readOnly} onApply={(e) => applyEffect(e)} /> : panel === "media" ? <>
-          <label className={`dropzone ${readOnly ? "disabled" : ""}`} data-testid="button-upload">{upload ? <><Loader2 className="spin" size={18} /><span>Uploading {Math.round(upload.pct * 100)}%</span><i style={{ width: `${upload.pct * 100}%` }} /></> : <><Upload size={19} /><b>Import media</b><span>Video, audio or images — or drop files anywhere</span></>}
-            <input type="file" multiple accept="video/*,audio/*,image/*" disabled={readOnly || !!upload} onChange={(e) => { if (e.target.files?.length) importFiles(e.target.files); e.target.value = ""; }} /></label>
+          <label className={`dropzone ${readOnly ? "disabled" : ""}`} data-testid="button-upload">{upload ? <><Loader2 className="spin" size={18} /><span>Uploading {Math.round(upload.pct * 100)}%</span><i style={{ width: `${upload.pct * 100}%` }} /></> : <><Upload size={19} /><b>Import media</b><span>Video, audio or images. You can also drop files anywhere.</span></>}
+            <input ref={importInput} type="file" multiple accept="video/*,audio/*,image/*" disabled={readOnly || !!upload} onChange={(e) => { if (e.target.files?.length) importFiles(e.target.files); e.target.value = ""; }} /></label>
           <div className="asset-list">
             {assetsQ.isLoading && Array.from({ length: 3 }, (_, i) => <div key={i} className="asset-card skeleton" />)}
             {assetsQ.error && <p className="error-box">{assetsQ.error.message}</p>}
@@ -570,23 +678,24 @@ export default function EditorPage() {
           <button className="secondary-btn full" onClick={newProject} disabled={readOnly}><FilePlus2 size={15} />New project</button>
           {(projectsQ.data?.projects ?? []).map((p) => <div className={`project-card ${p.id === projectId ? "current" : ""}`} key={p.id}><button onClick={() => openProject(p)} data-testid={`button-load-project-${p.id}`}><FolderOpen size={16} /><span><b>{p.name}</b><small className="muted">{p.timeline.clips.length} clips · {p.visibility === "public" ? "Public" : "Private"}</small></span>{p.visibility === "public" ? <Globe size={14} /> : <Lock size={14} />}</button><button className="icon-btn danger" disabled={readOnly} aria-label={`Delete ${p.name}`} onClick={() => { if (confirm(`Delete “${p.name}”? This cannot be undone.`)) deleteProject.mutate(p.id); }}><Trash2 size={14} /></button></div>)}
           {!projectsQ.isLoading && !projectsQ.data?.projects.length && <div className="library-empty"><FolderOpen size={24} /><b>No saved projects</b><p>Projects save automatically as you edit.</p></div>}</div>}
+        </div>
       </aside>
-      {libraryOpen&&<div className="library-divider"><WorkspaceDivider axis="horizontal" label="Library width" value={libraryWidth} min={220} max={Math.min(400,Math.max(220,viewportWidth-(inspectorOpen?inspectorWidth:0)-272))} onChange={setLibraryWidth}/></div>}
+      {libraryOpen&&<div className="library-divider"><WorkspaceDivider axis="horizontal" label="Library width" value={libraryWidth} min={268} max={Math.min(460,Math.max(268,viewportWidth-(inspectorOpen?inspectorWidth:0)-272))} onChange={setLibraryWidth}/></div>}
 
-      <main className="monitor"><div className="monitor-heading"><span>Program <span className="muted">/ {projectName}</span></span><span className="monitor-hint">{workspace==="animate"?"Animate selected clip below":"Click an object to select · Shift to multi-select"}</span></div><ForgePreview timeline={timeline} assets={assets} time={time} playing={playing} selectedId={selectedId} readOnly={readOnly} gesture={gesture} mediaUrl={mediaUrl} peers={peers} onCursor={onCursor} onSelect={onSelect} onError={(m) => toast(m, "error")} onValues={(id, v, live) => setValues(id, v, live)} onDropEffect={(effect) => applyEffect(effect)} />
+      <main className="monitor"><div className="monitor-heading"><span>Program <span className="muted">/ {projectName}</span></span><span className="monitor-hint">{workspace==="animate"?"Animate selected clip below":"Click an object to select · Shift to multi-select"}</span></div><ForgePreview emptyActions={readOnly ? undefined : <><button className="primary-btn" onClick={openImport} data-testid="empty-import"><Upload size={15} />Import media</button><button className="secondary-btn" onClick={() => addTitle()} data-testid="empty-title"><Type size={15} />Add a title</button></>} timeline={timeline} assets={assets} time={time} playing={playing} selectedId={selectedId} readOnly={readOnly} gesture={gesture} mediaUrl={mediaUrl} peers={peers} onCursor={onCursor} onSelect={onSelect} onError={(m) => toast(m, "error")} onValues={(id, v, live) => setValues(id, v, live)} onDropEffect={(effect) => applyEffect(effect)} />
         <div className="transport"><button className="icon-btn" aria-label="Jump to start" onClick={() => seek(0)}><SkipBack size={17} /></button><button className="play-btn" onClick={togglePlay} disabled={!duration} aria-label={playing ? "Pause" : "Play"} data-testid="button-play">{playing ? <Pause size={20} /> : <Play size={20} />}</button><button className="icon-btn" aria-label="Jump to end" onClick={() => seek(duration)}><SkipForward size={17} /></button>
           <span className="mono time-big">{timecode(time, timeline.fps)}</span><div className="flex-spacer" /><button className="secondary-btn" onClick={split} disabled={readOnly || !timeline.clips.length} title="Split at playhead (S)"><Scissors size={15} />Split</button></div></main>
 
-      <aside className="inspector" aria-label="Inspector">{selectedIds.length > 1 ? <MultiInspector clips={timeline.clips.filter((c) => selectedIds.includes(c.id))} readOnly={readOnly} onPatch={(p) => patchClips(selectedIds, p)} onDuplicate={duplicate} onDelete={() => remove(false)} onRippleDelete={() => remove(true)} onAlign={alignClips} onTransitions={transitionSelected} onClear={() => setSel([])} />
+      <aside className="inspector" aria-label="Inspector"><InspectorShell advanced={advanced}>{selectedIds.length > 1 ? <MultiInspector clips={timeline.clips.filter((c) => selectedIds.includes(c.id))} readOnly={readOnly} onPatch={(p) => patchClips(selectedIds, p)} onDuplicate={duplicate} onDelete={() => remove(false)} onRippleDelete={() => remove(true)} onAlign={alignClips} onTransitions={transitionSelected} onClear={() => setSel([])} />
         : selected ? <ClipInspector canvas={timeline.resolution} transition={incomingTransition(timeline, selected)} onTransition={(type, d) => applyTransition(selected.id, type, d)} key={selected.id} clip={selected} asset={byId.get(selected.assetId)} readOnly={readOnly} gesture={gesture} time={time} fps={timeline.fps} patch={(p, live) => patchClip(selected.id, p, live)} setValues={(v, live) => setValues(selected.id, v, live)} toggleKey={(p) => toggleKey(selected.id, p)} seek={seek} onSplit={split} onDuplicate={duplicate} onDelete={() => remove(false)} />
-        : <ProjectInspector fitIssues={fitIssues} onFitAll={fitAll} name={projectName} onName={setProjectName} timeline={timeline} setProject={setProjectSettings} readOnly={readOnly} canPublish={canPublish} projectId={projectId} visibility={visibility} onVisibility={toggleVisibility} onCopyLink={copyPublicLink} seek={seek} addMarker={addMarker} removeMarker={removeMarker} />}</aside>
+        : <ProjectInspector fitIssues={fitIssues} onFitAll={fitAll} name={projectName} onName={setProjectName} timeline={timeline} setProject={setProjectSettings} readOnly={readOnly} canPublish={canPublish} projectId={projectId} visibility={visibility} onVisibility={toggleVisibility} onCopyLink={copyPublicLink} seek={seek} addMarker={addMarker} removeMarker={removeMarker} />}</InspectorShell></aside>
       {inspectorOpen&&<div className="inspector-divider"><WorkspaceDivider axis="horizontal" label="Inspector width" value={inspectorWidth} min={260} max={Math.min(440,Math.max(260,viewportWidth-(libraryOpen?libraryWidth:0)-272))} onChange={setInspectorWidth}/></div>}
       <div className="timeline-divider"><WorkspaceDivider axis="vertical" label="Timeline height" value={timelineHeight} min={180} max={480} onChange={setTimelineHeight}/></div>
 
       <section className="timeline-panel" aria-label="Timeline">
         <div className="sequence-heading"><b>Sequence</b><span className="muted">{timeline.clips.length} clips · {timeline.fps} fps</span><div className="flex-spacer"/><span className="muted">{selectedIds.length?`${selectedIds.length} selected`:"S split · M marker · Space play"}</span></div>
         <div className="sequence-workspace"><div className="sequence-timeline">
-        <ForgeTimeline animationMode={workspace==="animate"} onKeyframeFocus={(clipId,property,time)=>setFocusedKey({clipId,property,time})} timeline={timeline} assets={assets} selectedId={selectedId} selectedIds={selectedIds} peers={peers} follow={!!followId} onSelectMany={onSelectMany} onCursor={onCursor} time={time} playing={playing} pps={pps} snapping={snapping} readOnly={readOnly} mediaUrl={mediaUrl} onTrack={setTrack} onFit={fitTimeline} onAddMarker={addMarker} onSelect={onSelect} onSeek={seek} onZoom={setPps} gesture={gesture} onDropAsset={(id, track, start) => { const a = byId.get(id); if (a) addAsset(a, track, start); }} onDropEffect={(effect, target) => applyEffect(effect, target)} onDropFiles={(files, track, start) => importFiles(files, { track, start })} onMoveMarker={moveMarker} />
+        <ForgeTimeline collapsed={collapsedLanes} onToggleLane={toggleLane} animationMode={workspace==="animate"} onKeyframeFocus={(clipId,property,time)=>setFocusedKey({clipId,property,time})} timeline={timeline} assets={assets} selectedId={selectedId} selectedIds={selectedIds} peers={peers} follow={!!followId} onSelectMany={onSelectMany} onCursor={onCursor} time={time} playing={playing} pps={pps} snapping={snapping} readOnly={readOnly} mediaUrl={mediaUrl} onTrack={setTrack} onFit={fitTimeline} onAddMarker={addMarker} onSelect={onSelect} onSeek={seek} onZoom={setPps} gesture={gesture} onDropAsset={(id, track, start) => { const a = byId.get(id); if (a) addAsset(a, track, start); }} onDropEffect={(effect, target) => applyEffect(effect, target)} onDropFiles={(files, track, start) => importFiles(files, { track, start })} onMoveMarker={moveMarker} />
         </div>{workspace==="animate"&&<aside className="animation-workspace" aria-label="Animation workspace" data-testid="animation-workspace"><div className="animation-heading"><b>Animation</b><span className="muted">{selected?.label??selected?.text??"Select a clip"}</span></div>
           {selected?<ForgeMotion key={selected.id} clip={selected} focusKey={focusedKey?.clipId===selected.id?focusedKey:undefined} time={time} fps={timeline.fps} audioOnly={selected.track==="audio"} readOnly={readOnly} patch={(p,live)=>patchClip(selected.id,p,live)} seek={seek} gesture={gesture}/>:<div className="animation-empty"><Sparkles size={22}/><b>Give your story motion</b><p>Select a clip in the canvas or timeline to edit property keyframes, easing and motion presets.</p></div>}
         </aside>}</div>
@@ -601,7 +710,7 @@ export default function EditorPage() {
     {dragOver && <div className="drop-overlay"><Upload size={36} /><h2>Drop to import</h2><p>Video, audio and images are added to your media library.</p></div>}
     {draftsPanelOpen && <div className="export-panel" role="dialog" aria-label="Local drafts">
       <div className="modal-head"><h3>Local drafts</h3><button className="icon-btn" aria-label="Close drafts panel" onClick={()=>setUiPanel(null)}><X size={16} /></button></div>
-      <p className="muted" style={{margin:"0 16px"}}>Drafts saved on this device for tab crashes and refreshes. They are not cloud saves — the server DB is the durable copy.</p>
+      <p className="muted" style={{margin:"0 16px"}}>Drafts saved on this device for tab crashes and refreshes. They are not cloud saves. The server DB is the durable copy.</p>
       <div style={{padding:"8px 16px"}}>
         {draftsWithoutCurrent.length === 0 && <div className="library-empty"><FolderOpen size={22} /><b>No local drafts</b><p>Unsaved edits are kept on this device if the tab is closed or refreshed.</p></div>}
         {draftsWithoutCurrent.map((d) => <div key={d.key} className="project-card" data-testid={`draft-${d.key}`}>

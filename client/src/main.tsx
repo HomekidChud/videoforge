@@ -5,6 +5,8 @@ import "./index.css";
 import "./forge.css";
 import "./studio.css";
 import "./animator.css";
+import "./tokens.css";
+import "./studio-chrome.css";
 
 if (!window.location.hash) {
   window.location.hash = "#/";

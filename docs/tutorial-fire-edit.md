@@ -7,6 +7,8 @@ description: Turn one clip into a finished edit: trim to the beat, warm it up, a
 
 ## What you will make
 
+{{video:fire}}
+
 A fifteen second edit from a single clip: two trimmed cuts joined with a dissolve, a warm colour look over everything, a headline that springs in, a floating badge and a lower third that arrives late. You upload a clip (a screen recording works just as well as camera footage), cut it in the editor, dress it with motion graphics and export an MP4.
 
 It takes about twenty minutes. Every layer is a normal clip, so you can retime and restyle anything afterwards.
@@ -33,7 +35,7 @@ Two cuts of the same source back to back is the fastest way to build rhythm from
 
 ## Warm the whole edit up
 
-Select both clips — shift-click the second one — and open the **Edit** tab in the inspector. Under colour, set the **look** to **Warm**. Fire edits live in warm tones: everything shifts toward amber, and the highlights roll off gently.
+Select both clips, shift-click the second one, and open the **Edit** tab in the inspector. Under colour, set the **look** to **Warm**. Fire edits live in warm tones: everything shifts toward amber, and the highlights roll off gently.
 
 If your footage is dark, raise **Brightness** a little. If it is flat, raise **Contrast** and **Colour strength**.
 
@@ -47,17 +49,17 @@ Open the **Motion** tab, expand Motion presets and click **Spring** with a Durat
 
 Open the **Graphics** tab and click **ellipse**. Set Shape width to 7% and height to 12% so it reads as a circle on 16:9, fill it orange `#f6a447`, and set Vertical to 68%, low on the frame.
 
-In the Motion tab, expand **Animate with code** and under Looping recipe choose **Float**, then click **Apply recipe**. The badge bobs gently for the whole edit — a formula, not keyframes, so it loops at any length.
+In the Motion tab, expand **Animate with code** and under Looping recipe choose **Float**, then click **Apply recipe**. The badge bobs gently for the whole edit. It runs from a formula rather than keyframes, so it loops at any length.
 
 ## Add the lower third
 
 In the **Graphics** tab, find the lower third template card. Set the title to your name, the subtitle to `Cut · graded · exported`, and the accent colour to the same orange. Set Start to `2` and Duration to `4`.
 
-Hover the card to preview its animation, then click **Add to timeline**. It lands at the playhead, already selected — drag it or set its start until it sits where you want.
+Hover the card to preview its animation, then click **Add to timeline**. It lands at the playhead, already selected. Drag it or set its start until it sits where you want.
 
 ## Join the cuts with a dissolve
 
-Open the **Effects** tab and look under **Transitions**. Drag **Dissolve** onto the second clip — the one that follows the first — or select the second clip and choose Dissolve in the inspector. Set its duration to about `0.5`.
+Open the **Effects** tab and look under **Transitions**. Drag **Dissolve** onto the second clip, the one that follows the first, or select the second clip and choose Dissolve in the inspector. Set its duration to about `0.5`.
 
 The transition overlaps the two cuts and moves later video up, so the edit stays tight. It plays in the preview and survives the FFmpeg export.
 
@@ -71,7 +73,7 @@ When you are happy, click **Export** in the top bar, choose MP4, and start the r
 
 ## Build the same thing with the API
 
-Everything you did in the editor is operations. This batch assumes the clip is uploaded and its asset id is `clip-1` — replace it with the id from `GET /api/media`. Send the ops to `POST /api/projects/:id/timeline/ops` with a write key, then enqueue a render with `POST /api/renders`.
+Everything you did in the editor is operations. This batch assumes the clip is uploaded and its asset id is `clip-1`. Replace it with the id from `GET /api/media`. Send the ops to `POST /api/projects/:id/timeline/ops` with a write key, then enqueue a render with `POST /api/renders`.
 
 ```json
 {

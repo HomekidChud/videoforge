@@ -1,3 +1,4 @@
+import DocVideo from "@/components/doc-video";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, ArrowRight, ArrowUp, ArrowUpRight, Bot, Check, ChevronRight, Clapperboard, Clock, Info, Lightbulb, Link2, Menu, Search, ThumbsDown, ThumbsUp, TriangleAlert, Wrench, X } from "lucide-react";
 import { useLocation } from "wouter";
@@ -80,7 +81,7 @@ function TaskItem({ task, status }: { task: DocTask; status: TaskFilter["status"
   if (!visible) return null;
   return <li className={`todo-item ${task.status}`} data-testid={`todo-item-${task.status}`}>
     <label>
-      <input type="checkbox" readOnly checked={task.status === "done"} aria-label={`${task.text}${task.status === "doing" ? " — in progress" : ""}`} data-testid="todo-checkbox" />
+      <input type="checkbox" readOnly checked={task.status === "done"} aria-label={`${task.text}${task.status === "doing" ? ", in progress" : ""}`} data-testid="todo-checkbox" />
       <span className="todo-text"><Inline text={task.text} /></span>
     </label>
     {task.priority && <span className={`todo-pri ${task.priority.toLowerCase()}`}>{task.priority}</span>}
@@ -101,7 +102,7 @@ function TaskList({ tasks, stats, filter }: { tasks: DocTask[]; stats?: { done: 
       <span className="todo-count">{done} of {total} done</span>
     </div>
     <ul>{shown.map((t, i) => <TaskItem key={`${t.text.slice(0, 40)}${i}`} task={t} status={filter.status} />)}</ul>
-    {!shown.some((t) => filter.status === "all" || (filter.status === "open" ? t.status !== "done" : filter.status === "doing" ? t.status === "doing" : t.status === "done")) && shown.length > 0 && <p className="todo-none">No items match the status filter — showing every priority.</p>}
+    {!shown.some((t) => filter.status === "all" || (filter.status === "open" ? t.status !== "done" : filter.status === "doing" ? t.status === "doing" : t.status === "done")) && shown.length > 0 && <p className="todo-none">No items match the status filter, showing every priority.</p>}
     {shown.length === 0 && <p className="todo-none">No items match this filter.</p>}
   </div>;
 }
@@ -134,7 +135,7 @@ function RoleCards() {
   const roles = [
     { Icon: Clapperboard, title: "Studio user", text: "Cut footage, build motion graphics and export an MP4 in the browser.", href: "#/docs/motion-graphics-tutorial", cta: "Take the tutorial" },
     { Icon: Bot, title: "Agent builder", text: "Drive the same timeline over HTTP: scoped keys, atomic batches, renders.", href: "#/docs/agent-workflow", cta: "See the workflow" },
-    { Icon: Wrench, title: "Contributor", text: "Add a preset, template, operation or block — every table is generated and tested.", href: "#/docs/contribute", cta: "Start contributing" },
+    { Icon: Wrench, title: "Contributor", text: "Add a preset, template, operation or block. Every table is generated and tested.", href: "#/docs/contribute", cta: "Start contributing" },
   ] as const;
   return <div className="role-cards" data-testid="role-cards">{roles.map((r) => <a key={r.title} className="role-card" href={r.href}><r.Icon size={20} aria-hidden="true" /><b>{r.title}</b><p>{r.text}</p><span>{r.cta} <ArrowRight size={15} /></span></a>)}</div>;
 }
@@ -153,7 +154,7 @@ function StatusPanel() {
     <div>
       <b>{state === "checking" ? "Checking the hosted API…" : state === "up" ? "Hosted API is up" : "Could not verify the hosted API from this browser"}</b>
       {state === "up" && ms !== null && <p>Answered the health check in {ms} ms.</p>}
-      {state === "down" && <p>A blocked or failed request looks the same from here — the deployment may be asleep, the browser may have blocked the cross-origin check, or the network may be down. Retry in a minute, or <a href="#/docs/self-hosting">run your own</a>.</p>}
+      {state === "down" && <p>A blocked or failed request looks the same from here. The deployment may be asleep, the browser may have blocked the cross-origin check, or the network may be down. Retry in a minute, or <a href="#/docs/self-hosting">run your own</a>.</p>}
       <p className="status-note">Checked live from your browser against <code>{HOSTED}</code>. The health endpoint is public; everything else needs a key issued by that deployment.</p>
     </div>
   </div>;
@@ -321,12 +322,7 @@ export default function ApiDocsPage({ params }: { params?: { slug: string } }) {
               <button className="doc-anchor" aria-label={`Copy link to ${s.title}`} title="Copy link to this section" onClick={() => copyLink(id)}><Link2 size={15} /></button>
             </h2>
             <div className="doc-section-body" id={`${id}-body`} {...({ inert: shut ? "" : undefined } as Record<string, string | undefined>)}><div>
-              {s.video && <figure className="doc-video" data-testid={`doc-video-${s.video}`}>
-                <video controls preload="none" playsInline poster={`videos/${s.video}.png`} src={`videos/${s.video}.mp4`} aria-label={`Recording of the step: ${s.title}`}>
-                  <track kind="captions" src={`videos/${s.video}.vtt`} srcLang="en" default />
-                </video>
-                <figcaption>Watch the step, or follow the text below.</figcaption>
-              </figure>}
+              {s.video && <DocVideo name={s.video} title={s.title} />}
               {s.text && <DocText text={s.text} page={current} />}
               {s.tasks && <TaskList tasks={s.tasks} stats={s.taskStats} filter={filter} />}
               {s.callouts?.map((c, i) => { const { label, Icon } = CALLOUT[c.kind]; return <aside key={i} className={`doc-callout ${c.kind}`} role="note"><Icon size={17} aria-hidden="true" /><div><b>{label}</b><p><Inline text={c.text} /></p></div></aside>; })}

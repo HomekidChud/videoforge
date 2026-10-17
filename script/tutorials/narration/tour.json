@@ -1,0 +1,17 @@
+{
+  "id": "tour",
+  "doc": "studio-tour",
+  "title": "Studio tour",
+  "subtitle": "A guided look at the VideoForge editor",
+  "next": "Next: the Motion graphics tutorial",
+  "sections": [
+    { "id": "intro", "title": "Introduction", "say": "This tour introduces the VideoForge Studio. In about three minutes, it covers the tool dock, the workspaces, the timeline, the inspector, the command palette and the keyboard shortcuts. You will know where everything lives before you start your first project." },
+    { "id": "dock", "title": "The tool dock", "say": "The tool dock runs down the left edge. Each icon opens a panel. Media holds your footage, Effects holds motion presets and transitions, and Graphics holds titles, shapes and templates. Hover over any icon to see its name, and select it to open the panel." },
+    { "id": "workspaces", "title": "Workspaces", "say": "The workspace switcher sits at the top of the screen. Each workspace arranges the panels for one kind of work. Edit is the default. Animate hides the library and enlarges the timeline for keyframes. Graphics opens the graphics panel, and Audio gives the timeline more height. The Studio remembers your choice." },
+    { "id": "timeline", "title": "The timeline", "say": "The timeline holds three tracks: graphics, video and audio. Titles and shapes sit on the graphics track. Select a clip and press S to split it at the playhead, or drag its edges to trim. Use the arrow beside a track name to collapse it, and the overview strip above the ruler to move around a long edit." },
+    { "id": "inspector", "title": "The inspector", "say": "The inspector on the right shows the settings for whatever is selected. Use the search box at the top to find a setting by name, for example opacity. Advanced mode shows every section. Simple mode hides the rarely used ones, and you can switch between the two from the More menu." },
+    { "id": "palette", "title": "The command palette", "say": "To run any action without hunting through menus, press Control and K. Type part of a command, such as split or export, and press Enter. The palette lists the keyboard shortcut next to each command, and it remembers the commands you used most recently." },
+    { "id": "shortcuts", "title": "Keyboard shortcuts", "say": "Press the question mark key at any time to open the full list of keyboard shortcuts. They are grouped by task: playback, editing, selection, the timeline and the Studio itself. Learning five or six of them makes editing considerably faster." },
+    { "id": "outro", "title": "Summary", "say": "That completes the tour. You now know the dock, the workspaces, the timeline, the inspector and the command palette. Continue with the Motion graphics tutorial, which builds a complete animated intro from nothing." }
+  ]
+}

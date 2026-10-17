@@ -49,7 +49,7 @@ export default function ApiKeyPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || res.statusText);
-      // the session cookie is set — go in
+      // the session cookie is set, go in
       window.location.hash = "#/editor";
       window.location.reload();
     } catch (err) {
@@ -82,8 +82,8 @@ export default function ApiKeyPage() {
   return <div className="forge-app auth-page">
     <header className="share-head"><ForgeLogo /><a className="ghost-link" href="#/api-docs">API reference</a></header>
     <main className="auth-grid">
-      <section className="auth-copy"><div className="eyebrow">VIDEO PRODUCTION, PROGRAMMABLE</div><h1>Cut, compose and render — from the browser or your code.</h1><p>One workspace for a full timeline editor and an API with scoped, revocable keys. Share finished videos publicly while keeping footage and credentials private.</p>
-        <ul className="feature-list"><li><ShieldCheck size={18} /> Accounts that stay signed in across restarts</li><li><Terminal size={18} /> The editor uses the same API you do</li><li><Server size={18} /> Self-hosted — your footage stays on your server</li></ul></section>
+      <section className="auth-copy"><div className="eyebrow">VIDEO PRODUCTION, PROGRAMMABLE</div><h1>Cut, compose and render, from the browser or your code.</h1><p>One workspace for a full timeline editor and an API with scoped, revocable keys. Share finished videos publicly while keeping footage and credentials private.</p>
+        <ul className="feature-list"><li><ShieldCheck size={18} /> Accounts that stay signed in across restarts</li><li><Terminal size={18} /> The editor uses the same API you do</li><li><Server size={18} /> Self-hosted, so your footage stays on your server</li></ul></section>
       <section className="auth-card">
         {meQ.data && (
           <div className="notice" style={{ marginBottom: 16 }} data-testid="already-signed-in">
@@ -109,9 +109,9 @@ export default function ApiKeyPage() {
             )}
             {config.google && <div className="auth-or"><span>or with your email</span></div>}
             {firstRun ? (
-              <p className="muted">This workspace has no accounts yet — the first one becomes its admin. Create yours below (you'll need the owner API key from <span className="mono">data/OWNER_KEY.txt</span> or <span className="mono">VIDEOFORGE_BOOTSTRAP_KEY</span>).</p>
+              <p className="muted">This workspace has no accounts yet. The first one becomes its admin. Create yours below (you'll need the owner API key from <span className="mono">data/OWNER_KEY.txt</span> or <span className="mono">VIDEOFORGE_BOOTSTRAP_KEY</span>).</p>
             ) : mode === "create" && !config.accountsOpen ? (
-              <p className="muted">This workspace needs an admin to create accounts — ask them to add you from the Developer platform.</p>
+              <p className="muted">This workspace needs an admin to create accounts. Ask them to add you from the Developer platform.</p>
             ) : null}
             <form onSubmit={submitEmail}>
               {mode === "create" && (
@@ -131,7 +131,7 @@ export default function ApiKeyPage() {
             </form>
             {!firstRun && (config.accountsOpen || mode === "signin") && (
               <button className="ghost-link" onClick={() => { setMode((m) => (m === "create" ? "signin" : "create")); setError(""); }} data-testid="toggle-signin-mode">
-                {mode === "create" ? "I already have an account — sign in" : config.accountsOpen ? "New here? Create an account" : ""}
+                {mode === "create" ? "I already have an account" : config.accountsOpen ? "New here? Create an account" : ""}
               </button>
             )}
           </>

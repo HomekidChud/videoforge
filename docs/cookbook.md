@@ -35,7 +35,7 @@ Give a list of clips the same entrance with a delay between them: title bars tha
 
 ## Cut out the dead air
 
-Split at the boring moment, then ripple the rest closed — no gap left behind. The split's response lists the new right-hand clip's id in `createdClipIds`; use it in the second batch.
+Split at the boring moment, then ripple the rest closed. No gap left behind. The split's response lists the new right-hand clip's id in `createdClipIds`; use it in the second batch.
 
 ```json
 {
@@ -79,7 +79,7 @@ Text wraps and shrinks to fit its box; give it a background and place it once.
 
 ## Everything inside the frame
 
-One call refits every clip that crosses the edges — media, text and shapes alike, with a margin.
+One call refits every clip that crosses the edges (media, text and shapes alike), with a margin.
 
 ```json
 {
@@ -104,7 +104,7 @@ Drive any property with a formula of time, then bake it into editable keyframes 
 
 ## Check before you render
 
-Two GETs save a render: a frame at the moment you care about, and the full storyboard. Both are read routes — send your key.
+Two GETs save a render: a frame at the moment you care about, and the full storyboard. Both are read routes. Send your key.
 
 ```shell
 curl -H "Authorization: Bearer $KEY" "$BASE/api/projects/$ID/frame?t=3&width=640" -o frame.png

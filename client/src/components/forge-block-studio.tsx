@@ -6,6 +6,7 @@ import {
   type Connection, type Edge, type EdgeProps, type Node, type NodeChange, type NodeProps, type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { Hash, ToggleLeft, Puzzle, Code2, Film, Timer, Cable, AlignVerticalDistributeCenter, GraduationCap, Languages, Sparkles, Link2, Undo2, Redo2, Clapperboard, Eye, Play, X, Info, Square, Music2, Type as TypeIcon } from "lucide-react";
 import {
   BLOCK_GROUPS, BLOCK_LIBRARY, BLOCK_MAP, OP_IDS, OP_PARAMS, blocksToGraph, connectableParamKeys, nodeParamKeys, HIDDEN_BLOCKS,
   codeErrorLine, compileGraph, graphToCode, validateGraph, runTool, TEMPLATE_DOCS, VF_HELPERS, APPLY_SCOPES, graphScope, type ApplyScope,
@@ -28,9 +29,9 @@ type StudioProps = {
   onRun: (ops: TimelineOp[]) => void;
   /** Opens the clip Animator from the studio header. */
   onOpenAnimator?: () => void;
-  /** True when the script was just created with "New blocks" — opens the tutorial. */
+  /** True when the script was just created with "New blocks", opens the tutorial. */
   fresh?: boolean;
-  /** False when opened from a place that only edits code — hides the Blocks tab. */
+  /** False when opened from a place that only edits code, hides the Blocks tab. */
   allowBlocks?: boolean;
 };
 
@@ -66,19 +67,19 @@ const TUTORIAL_STEPS = [
   {
     section: 0,
     title: "Build your first blocks",
-    body: "This tour builds a small set of blocks that adds a title to your edit. It has three parts — you are in the first. Press Next to follow along, or Skip if you already know the studio. You can replay this any time with the 🎓 Tutorial button.",
+    body: "This tour builds a small set of blocks that adds a title to your edit. It has three parts. You are in the first. Press Next to follow along, or Skip if you already know the studio. You can replay this any time with the Tutorial button.",
     target: '[data-testid="bs-name"]',
   },
   {
     section: 0,
     title: "1. Name your blocks",
-    body: "Every set of blocks needs a name. Click the name box at the top and type one — try “My first title”.",
+    body: "Every set of blocks needs a name. Click the name box at the top and type one, try “My first title”.",
     target: '[data-testid="bs-name"]',
   },
   {
     section: 0,
     title: "2. The block menu",
-    body: "The left side is the block menu. The coloured dots pick a category — Create, Animate, Flow and more — and the list next to it shows that category's blocks. Drag any block from the list onto the canvas to use it.",
+    body: "The left side is the block menu. The coloured dots pick a category such as Create, Animate or Flow, and the list next to it shows that category's blocks. Drag any block from the list onto the canvas to use it.",
     target: '[data-testid="bs-cat-rail"]',
   },
   {
@@ -90,25 +91,25 @@ const TUTORIAL_STEPS = [
   {
     section: 0,
     title: "4. Edit a block",
-    body: "Click the “Add title” block on the canvas and change its text — type anything you like. Each block shows its own fields right on it, and the little line under the title explains what the block does.",
+    body: "Click the “Add title” block on the canvas and change its text, type anything you like. Each block shows its own fields right on it, and the little line under the title explains what the block does.",
     target: '[data-testid="bs-canvas"]',
   },
   {
     section: 0,
     title: "5. Apply it to your edit",
-    body: "Press the green ▶ Apply to edit button. Everything the blocks describe lands on your timeline as one step you can undo. Not sure yet? 👁 Preview lists what would change without touching your edit. If something is wrong, the bar at the bottom of the canvas explains what and clicks to the block.",
+    body: "Press the green Apply to edit button. Everything the blocks describe lands on your timeline as one step you can undo. Not sure yet? 👁 Preview lists what would change without touching your edit. If something is wrong, the bar at the bottom of the canvas explains what and clicks to the block.",
     target: '[data-testid="bs-run"]',
   },
   {
     section: 1,
     title: "6. Two kinds of wires",
-    body: "Green-to-top wires are the run order — they say what happens after what. The small coloured dots beside a block's fields are different: they are sockets where clips, frames and value blocks plug in. Hover a block and its dots appear; drag from a dot into a field to fill it.",
+    body: "Green-to-top wires are the run order. They say what happens after what. The small coloured dots beside a block's fields are different: they are sockets where clips, frames and value blocks plug in. Hover a block and its dots appear; drag from a dot into a field to fill it.",
     target: '[data-testid="bs-canvas"]',
   },
   {
     section: 1,
     title: "7. Bring in your clips",
-    body: "The 🎬 Import clips button lists every clip in your project — click one and it becomes a blue clip block. 🖼 Add frame makes a time block. Drag from a clip block's right-side dot into a Clip field, or a frame block into a Start field, instead of typing IDs.",
+    body: "The Import clips button lists every clip in your project, click one and it becomes a blue clip block. Add frame makes a time block. Drag from a clip block's right-side dot into a Clip field, or a frame block into a Start field, instead of typing IDs.",
     target: '[data-testid="bs-import"]',
   },
   {
@@ -120,19 +121,19 @@ const TUTORIAL_STEPS = [
   {
     section: 2,
     title: "9. Undo and tidy up",
-    body: "Made a mistake? Ctrl+Z undoes it (Ctrl+Shift+Z redoes) — the studio keeps its own history. And if the canvas gets messy, the 🧹 Tidy button lines every block up in a neat column — you can undo that too.",
+    body: "Made a mistake? Ctrl+Z undoes it (Ctrl+Shift+Z redoes). The studio keeps its own history. And if the canvas gets messy, the Tidy button lines every block up in a neat column. You can undo that too.",
     target: '[data-testid="bs-undo"]',
   },
   {
     section: 2,
     title: "10. Ready-made recipes",
-    body: "The ✨ Presets button opens example recipes — connected groups of blocks for titles, zooms and more. Click one and its blocks land on the canvas already wired; take them apart and make them yours. Nothing changes until you press ▶ Apply to edit.",
+    body: "The Presets button opens example recipes, connected groups of blocks for titles, zooms and more. Click one and its blocks land on the canvas already wired. Take them apart and make them yours. Nothing changes until you press Apply to edit.",
     target: '[data-testid="bs-presets"]',
   },
   {
     section: 2,
     title: "11. Save and find it later",
-    body: "Press ✕ to close — that saves your blocks to your account. Open it again from the Blocks panel (Open in studio), or press the Blocks tab to jump straight back into your latest tool. Curious about code? The Code tab shows the JavaScript your blocks make.",
+    body: "Press the X to close. That saves your blocks to your account. Open it again from the Blocks panel (Open in studio), or press the Blocks tab to jump straight back into your latest tool. Curious about code? The Code tab shows the JavaScript your blocks make.",
     target: '[data-testid="bs-close"]',
   },
 ];
@@ -175,7 +176,7 @@ function ParamField({ param, value, onChange, disabled, connect, connected }: { 
   );
 }
 
-/** A saved object shows up as friendly property rows — name on the left, value you can type. */
+/** A saved object shows up as friendly property rows, name on the left, value you can type. */
 function JsonMapField({ value, onChange, disabled, testId }: { value: Record<string, unknown>; onChange: (v: unknown) => void; disabled: boolean; testId: string }) {
   const [newKey, setNewKey] = useState("");
   const rows = Object.keys(value);
@@ -204,7 +205,7 @@ function JsonMapField({ value, onChange, disabled, testId }: { value: Record<str
           <input className="bs-json-val" disabled={disabled} aria-label={`${k} value`} data-testid={`${testId}-row-${k}`}
             value={typeof value[k] === "object" && value[k] !== null ? JSON.stringify(value[k]) : String(value[k] ?? "")}
             onChange={(e) => setRow(k, parseVal(k, e.target.value))} />
-          <button type="button" className="bs-json-del" disabled={disabled} aria-label={`Remove ${k}`} onClick={() => removeRow(k)}>✕</button>
+          <button type="button" className="bs-json-del" disabled={disabled} aria-label={`Remove ${k}`} onClick={() => removeRow(k)}><X size={12} /></button>
         </div>
       ))}
       <div className="bs-json-row bs-json-add">
@@ -228,7 +229,7 @@ function NodeShell({ children, tone = "default", hasError, hasWarning, title, ic
       <div className="bs-node-head">
         <span className="bs-node-icon">{icon}</span>
         <b>{title}</b>
-        {onDelete ? <button className="bs-node-delete" aria-label="Delete block" onClick={onDelete}>✕</button> : null}
+        {onDelete ? <button className="bs-node-delete" aria-label="Delete block" onClick={onDelete}><X size={12} /></button> : null}
       </div>
       {children}
       <NextHandle />
@@ -241,7 +242,7 @@ function StartNode({ data }: NodeProps) {
   const scope = APPLY_SCOPES.some((x) => x.id === node.args?.scope) ? (node.args!.scope as ApplyScope) : "selection";
   return (
     <div className="bs-node bs-node-start">
-      <div className="bs-node-head"><span className="bs-node-icon">▶</span><b>When Apply is pressed</b></div>
+      <div className="bs-node-head"><span className="bs-node-icon"><Play size={13} /></span><b>When Apply is pressed</b></div>
       <p className="bs-hint">The green button runs everything below on your edit, as one step you can undo.</p>
       <label className="bs-start-scope">
         <span>Work on</span>
@@ -301,7 +302,7 @@ function RepeatNode({ data }: NodeProps) {
         <input className="bs-count" data-testid="bs-repeat-count" type="text" inputMode="numeric" aria-label="Repeat count" value={node.count ?? 3}
           onChange={(e) => (data as any).__update(node.id, { count: Number(e.target.value) || 0 })} disabled={(data as any).__readOnly} />
         <span>{trUI(lang, "flow-times", "times")}</span>
-        <button className="bs-node-delete" aria-label="Delete block" onClick={() => (data as any).__delete(node.id)}>✕</button>
+        <button className="bs-node-delete" aria-label="Delete block" onClick={() => (data as any).__delete(node.id)}><X size={12} /></button>
       </div>
       <p className="bs-hint">Connect blocks to the right side to repeat them.</p>
       <NextHandle />
@@ -333,7 +334,7 @@ function EachClipNode({ data }: NodeProps) {
           <input className="bs-name" type="text" aria-label="Text to find" placeholder="words to find" value={select.slice(9)}
             onChange={(e) => setSelect(`contains:${e.target.value}`)} disabled={(data as any).__readOnly} />
         ) : null}
-        <button className="bs-node-delete" aria-label="Delete block" onClick={() => (data as any).__delete(node.id)}>✕</button>
+        <button className="bs-node-delete" aria-label="Delete block" onClick={() => (data as any).__delete(node.id)}><X size={12} /></button>
       </div>
       <p className="bs-hint">Use <code>$clipId</code> inside, or connect a clip into a field.</p>
       <NextHandle />
@@ -352,7 +353,7 @@ function FunctionNode({ data }: NodeProps) {
         <span className="bs-node-icon">ƒ</span><b>{trUI(useContext(LangContext), "flow-function", "Function")}</b>
         <input className="bs-name" type="text" aria-label="Function name" placeholder="name" value={node.name ?? ""}
           onChange={(e) => (data as any).__update(node.id, { name: e.target.value })} disabled={(data as any).__readOnly} />
-        <button className="bs-node-delete" aria-label="Delete block" onClick={() => (data as any).__delete(node.id)}>✕</button>
+        <button className="bs-node-delete" aria-label="Delete block" onClick={() => (data as any).__delete(node.id)}><X size={12} /></button>
       </div>
       <p className="bs-hint">Connect blocks to the right to define what it does.</p>
       <NextHandle />
@@ -374,7 +375,7 @@ function CallNode({ data }: NodeProps) {
           <option value="">choose…</option>
           {d.functionNames.map((n) => <option key={n} value={n}>{n}</option>)}
         </select>
-        <button className="bs-node-delete" aria-label="Delete block" onClick={() => (data as any).__delete(node.id)}>✕</button>
+        <button className="bs-node-delete" aria-label="Delete block" onClick={() => (data as any).__delete(node.id)}><X size={12} /></button>
       </div>
       <NextHandle />
     </div>
@@ -389,7 +390,7 @@ function CommentNode({ data }: NodeProps) {
       <span className="bs-node-icon">💬</span>
       <input className="bs-comment" type="text" aria-label="Note" placeholder="A note for future you" value={node.text ?? ""}
         onChange={(e) => (data as any).__update(node.id, { text: e.target.value })} disabled={(data as any).__readOnly} />
-      <button className="bs-node-delete" aria-label="Delete block" onClick={() => (data as any).__delete(node.id)}>✕</button>
+      <button className="bs-node-delete" aria-label="Delete block" onClick={() => (data as any).__delete(node.id)}><X size={12} /></button>
     </div>
   );
 }
@@ -401,9 +402,9 @@ function ClipNode({ data }: NodeProps) {
   return (
     <div className={`bs-node bs-node-clip${d.hasError ? " bs-node-error" : ""}`}>
       <div className="bs-node-head">
-        <span className="bs-node-icon">{node.select === "media" ? "🎬" : node.select === "shape" ? "◼" : node.select === "audio" ? "🎵" : "T"}</span>
+        <span className="bs-node-icon">{node.select === "media" ? <Film size={13} /> : node.select === "shape" ? <Square size={13} /> : node.select === "audio" ? <Music2 size={13} /> : <TypeIcon size={13} />}</span>
         <b>{node.text || node.clipId}</b>
-        <button className="bs-node-delete" aria-label="Delete block" onClick={() => (data as any).__delete(node.id)}>✕</button>
+        <button className="bs-node-delete" aria-label="Delete block" onClick={() => (data as any).__delete(node.id)}><X size={12} /></button>
       </div>
       <p className="bs-hint">{node.select ?? "clip"} · {node.clipId}</p>
       <Handle type="source" position={Position.Right} id="clip" className="bs-handle bs-handle-clip" />
@@ -418,10 +419,10 @@ function FrameNode({ data }: NodeProps) {
   return (
     <div className={`bs-node bs-node-frame${d.hasError ? " bs-node-error" : ""}`}>
       <div className="bs-node-head">
-        <span className="bs-node-icon">🖼</span><b>Frame</b>
+        <span className="bs-node-icon"><Timer size={13} /></span><b>Frame</b>
         <input className="bs-count" data-testid="bs-frame-input" type="text" inputMode="numeric" aria-label="Frame number" value={node.frame ?? 0}
           onChange={(e) => (data as any).__update(node.id, { frame: Number(e.target.value) || 0 })} disabled={(data as any).__readOnly} />
-        <button className="bs-node-delete" aria-label="Delete block" onClick={() => (data as any).__delete(node.id)}>✕</button>
+        <button className="bs-node-delete" aria-label="Delete block" onClick={() => (data as any).__delete(node.id)}><X size={12} /></button>
       </div>
       <p className="bs-hint">{Number(node.frame) || 0} ÷ {d.fps} fps = <b>{seconds.toFixed(2)}s</b></p>
       <button className="bs-mini" onClick={() => (data as any).__update(node.id, { frame: Math.round((data as any).__ctx.playhead * d.fps) })} disabled={(data as any).__readOnly}>Use playhead</button>
@@ -439,9 +440,9 @@ function ValueNode({ data }: NodeProps) {
   return (
     <div className={`bs-node bs-node-value${d.hasError ? " bs-node-error" : ""}`} data-testid={`bs-value-node-${node.id}`}>
       <div className="bs-node-head">
-        <span className="bs-node-icon">{node.valueType === "number" ? "🔢" : node.valueType === "yesno" ? "🔘" : "📝"}</span>
+        <span className="bs-node-icon">{node.valueType === "number" ? <Hash size={13} /> : node.valueType === "yesno" ? <ToggleLeft size={13} /> : <TypeIcon size={13} />}</span>
         <b>{node.valueType === "number" ? trUI(useContext(LangContext), "value-number", "Number") : node.valueType === "yesno" ? trUI(useContext(LangContext), "value-yesno", "Yes / No") : trUI(useContext(LangContext), "value-text", "Text")}</b>
-        <button className="bs-node-delete" aria-label="Delete block" onClick={() => (data as any).__delete(node.id)}>✕</button>
+        <button className="bs-node-delete" aria-label="Delete block" onClick={() => (data as any).__delete(node.id)}><X size={12} /></button>
       </div>
       {node.valueType === "yesno" ? (
         <div className="bs-value-row">
@@ -460,7 +461,7 @@ function ValueNode({ data }: NodeProps) {
   );
 }
 
-/** An edge with a little ✕ at its middle — click the edge to see it, click ✕ to remove it. */
+/** An edge with a small remove button at its middle. */
 function SnapEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, markerEnd, style, data, selected }: EdgeProps) {
   const [path, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, borderRadius: 14 });
   return (
@@ -469,7 +470,7 @@ function SnapEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targ
       <EdgeLabelRenderer>
         <button className={`bs-edge-delete${selected ? " selected" : ""}`} data-testid={`bs-edge-delete-${id}`} aria-label="Remove this connection"
           style={{ position: "absolute", transform: `translate(${labelX - 10}px, ${labelY - 10}px)` }}
-          onClick={() => (data as any)?.onDelete?.(id)}>✕</button>
+          onClick={() => (data as any)?.onDelete?.(id)}><X size={12} /></button>
       </EdgeLabelRenderer>
     </>
   );
@@ -521,15 +522,15 @@ function CodeTab({ tool, ctx, readOnly, onChange, runError, notice, onDismissNot
     <div className="bs-code-wrap" data-testid="bs-code-panel">
       {notice && (
         <div className="bs-notice" data-testid="bs-converted-notice">
-          <span>💡 Blocks were converted to code — these blocks now run as code. Switch back to Blocks any time; your blocks are kept.</span>
-          <button className="bs-notice-close" aria-label="Dismiss" onClick={onDismissNotice} data-testid="bs-notice-close">✕</button>
+          <span><Info size={14} aria-hidden="true" /> Blocks were converted to code. These blocks now run as code. Switch back to Blocks any time; your blocks are kept.</span>
+          <button className="bs-notice-close" aria-label="Dismiss" onClick={onDismissNotice} data-testid="bs-notice-close"><X size={12} /></button>
         </div>
       )}
       <div className="bs-code-main-row">
         <div className="bs-editor-col">
           {runError && (
             <div className="bs-inline-error" data-testid="bs-inline-error">
-              <span>✕</span>
+              <span><X size={12} /></span>
               <span>Run failed: {runError}</span>
               {errLine ? <button className="bs-inline-error-jump" onClick={() => {
                 const el = ta.current; if (!el) return;
@@ -553,7 +554,7 @@ function CodeTab({ tool, ctx, readOnly, onChange, runError, notice, onDismissNot
           </div>
         </div>
         <div className="bs-code-side" data-testid="bs-code-ref">
-          <p className="bs-ref-title">vf helpers — click to insert</p>
+          <p className="bs-ref-title">vf helpers, click to insert</p>
           <button className="bs-ref-export" onClick={exportScript} data-testid="bs-export-script" title="Download these blocks as a standalone script that runs against the API">⬇ Export as standalone script</button>
           {VF_HELPERS.map((h) => (
             <button key={h.name} className="bs-ref-item" onClick={() => insert(h.example)} disabled={readOnly} title={h.description} data-testid={`bs-ref-${h.name}`}>
@@ -569,7 +570,7 @@ function CodeTab({ tool, ctx, readOnly, onChange, runError, notice, onDismissNot
             ))}
             <div>Arithmetic works in block fields: <code>"$playhead + $index * 0.4"</code>. In code, write it in JavaScript.</div>
           </div>
-          <p className="bs-hint">Return an array of operations. Code runs in your browser, unsandboxed — only run code you trust.</p>
+          <p className="bs-hint">Return an array of operations. Code runs in your browser, unsandboxed. Only run code you trust.</p>
         </div>
       </div>
     </div>
@@ -684,7 +685,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, onOpenAnimator,
   const errorIds = useMemo(() => new Set(issues.filter((i) => i.level === "error" && i.nodeId).map((i) => i.nodeId)), [issues]);
   const warnIds = useMemo(() => new Set(issues.filter((i) => i.level === "warning" && i.nodeId).map((i) => i.nodeId)), [issues]);
   const functionNames = useMemo(() => graph.nodes.filter((n) => n.type === "function" && n.name).map((n) => n.name!), [graph]);
-  /** Which param sockets already have something plugged in — those dots stay visible. */
+  /** Which param sockets already have something plugged in. Those dots stay visible. */
   const connectedParams = useMemo(() => {
     const map = new Map<string, Set<string>>();
     for (const e of graph.edges) {
@@ -740,7 +741,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, onOpenAnimator,
     }
     if (c.sourceHandle === "clip" || c.sourceHandle === "time") {
       if (!c.targetHandle?.startsWith("param:")) return false;
-      // A clip only fits clip fields, a frame only fits time fields — of that block's operation.
+      // A clip only fits clip fields, a frame only fits time fields, of that block's operation.
       const key = c.targetHandle.slice(6);
       const target = graph.nodes.find((n) => n.id === c.target);
       const op = (target?.op ?? (target?.block ? BLOCK_MAP.get(target.block)?.op : undefined)) ?? ""; // an advanced node follows its chosen op, not the compat block's
@@ -968,7 +969,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, onOpenAnimator,
     const frag = preset.build();
     const maxX = graph.nodes.reduce((m, n) => Math.max(m, n.position?.x ?? 0), 60);
     // Lay the fragment out with height-aware spacing so its blocks never stack on
-    // each other — the same rule the Tidy button uses for the whole canvas.
+    // each other. The same rule the Tidy button uses for the whole canvas.
     const fragById = new Map(frag.nodes.map((n) => [n.id, n]));
     const fragNext = (id: string) => frag.edges.find((e) => e.source === id && e.sourceHandle === "next")?.target;
     const placed = new Set<string>();
@@ -1012,7 +1013,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, onOpenAnimator,
   /** Switching Blocks → Code converts the graph into readable code the tool now runs. */
   const switchToCode = useCallback(() => {
     if (tab === "code" || readOnly) return;
-    if (tool.mode === "code") { setTab("code"); return; } // already a code tool — nothing to convert
+    if (tool.mode === "code") { setTab("code"); return; } // already a code tool. Nothing to convert
     try {
       compileGraph(graph, ctx); // validates before converting; invalid graphs stay in Blocks
       setTab("code");
@@ -1037,7 +1038,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, onOpenAnimator,
     <div className="bs-errors" data-testid="bs-errors">
       <div className="bs-errors-head">
         <button className={`bs-error-toggle${errorCount ? " has-errors" : ""}`} onClick={() => setShowErrors((s) => !s)} data-testid="bs-error-toggle">
-          {errorCount > 0 ? `✕ ${errorCount} error${errorCount === 1 ? "" : "s"}` : `⚠ ${warnCount} notice${warnCount === 1 ? "" : "s"}`}
+          {errorCount > 0 ? `${errorCount} error${errorCount === 1 ? "" : "s"}` : `${warnCount} notice${warnCount === 1 ? "" : "s"}`}
         </button>
         <span className="bs-errors-hint">{showErrors ? "Click a message to jump to the block" : "Click to show details"}</span>
       </div>
@@ -1045,11 +1046,11 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, onOpenAnimator,
         <div className="bs-errors-list">
           {issues.map((issue, i) => (
             <button key={i} className={`bs-error-row ${issue.level}`} onClick={() => issue.nodeId && focusNode(issue.nodeId)}>
-              <span>{issue.level === "error" ? "✕" : "⚠"}</span>
+              <span>{issue.level === "error" ? "Error" : "Note"}</span>
               {issue.message}
             </button>
           ))}
-          {runError && <div className="bs-error-row error"><span>✕</span>Run failed: {runError}</div>}
+          {runError && <div className="bs-error-row error"><span><X size={12} /></span>Run failed: {runError}</div>}
         </div>
       )}
     </div>
@@ -1061,54 +1062,54 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, onOpenAnimator,
       <header className="bs-header">
         <input className="bs-title" aria-label="Name" value={tool.name} onChange={(e) => onChange({ ...tool, name: e.target.value })} disabled={readOnly} data-testid="bs-name" />
         <div className="bs-tabs" role="tablist" aria-label="Editing mode">
-          {allowBlocks && <button role="tab" aria-selected={tab === "blocks"} className={tab === "blocks" ? "active" : ""} onClick={switchToBlocks} data-testid="bs-tab-blocks">🧩 Blocks</button>}
-          <button role="tab" aria-selected={tab === "code"} className={tab === "code" ? "active" : ""} onClick={switchToCode} data-testid="bs-tab-code">{"</>"} Code</button>
+          {allowBlocks && <button role="tab" aria-selected={tab === "blocks"} className={tab === "blocks" ? "active" : ""} onClick={switchToBlocks} data-testid="bs-tab-blocks"><Puzzle size={14} aria-hidden="true" /> Blocks</button>}
+          <button role="tab" aria-selected={tab === "code"} className={tab === "code" ? "active" : ""} onClick={switchToCode} data-testid="bs-tab-code"><Code2 size={14} aria-hidden="true" /> Code</button>
         </div>
         <span className="bs-spacer" />
         {tab === "blocks" && (
-          <button className="bs-btn" onClick={() => setImportOpen((o) => !o)} disabled={readOnly} data-testid="bs-import" title="Bring clips from your project onto the canvas">🎬 <span className="bs-lbl">Import clips</span></button>
+          <button className="bs-btn" onClick={() => setImportOpen((o) => !o)} disabled={readOnly} data-testid="bs-import" title="Bring clips from your project onto the canvas"><Film size={14} aria-hidden="true" /> <span className="bs-lbl">Import clips</span></button>
         )}
         {tab === "blocks" && (
-          <button className="bs-btn" disabled={readOnly} onClick={() => addNode({ id: uid(), type: "frame", frame: Math.round(ctx.playhead * ctx.fps), position: freeSpot() })} data-testid="bs-add-frame" title="Add a frame (time) block">🖼 <span className="bs-lbl">Add frame</span></button>
+          <button className="bs-btn" disabled={readOnly} onClick={() => addNode({ id: uid(), type: "frame", frame: Math.round(ctx.playhead * ctx.fps), position: freeSpot() })} data-testid="bs-add-frame" title="Add a frame (time) block"><Timer size={14} aria-hidden="true" /> <span className="bs-lbl">Add frame</span></button>
         )}
         {tab === "blocks" && (
           <button className={`bs-btn${showHandles ? " bs-btn-on" : ""}`} onClick={() => setShowHandles((s) => !s)} disabled={readOnly}
-            aria-pressed={showHandles} data-testid="bs-handles" title="Show every field dot (they also appear on hover)">🔌 <span className="bs-lbl">Connectors</span></button>
+            aria-pressed={showHandles} data-testid="bs-handles" title="Show every field dot (they also appear on hover)"><Cable size={14} aria-hidden="true" /> <span className="bs-lbl">Connectors</span></button>
         )}
         {tab === "blocks" && (
-          <button className="bs-btn" onClick={tidy} disabled={readOnly} data-testid="bs-tidy" title="Line the blocks up neatly — undoable">🧹 <span className="bs-lbl">Tidy</span></button>
+          <button className="bs-btn" onClick={tidy} disabled={readOnly} data-testid="bs-tidy" title="Line the blocks up neatly, undoable"><AlignVerticalDistributeCenter size={14} aria-hidden="true" /> <span className="bs-lbl">Tidy</span></button>
         )}
         {tab === "blocks" && (
-          <button className="bs-btn" onClick={() => setTutorialStep(0)} disabled={readOnly} data-testid="bs-tutorial-open" title="Show the studio tutorial">🎓 <span className="bs-lbl">Tutorial</span></button>
+          <button className="bs-btn" onClick={() => setTutorialStep(0)} disabled={readOnly} data-testid="bs-tutorial-open" title="Show the studio tutorial"><GraduationCap size={14} aria-hidden="true" /> <span className="bs-lbl">Tutorial</span></button>
         )}
         {tab === "blocks" && (
-          <button className="bs-btn" onClick={() => { const next: BlockLang = lang === "es" ? "en" : "es"; setLang(next); saveLang(next, window.localStorage); }} data-testid="bs-lang" title="Switch language / Cambiar idioma">🌐 {lang === "es" ? "ES" : "EN"}</button>
+          <button className="bs-btn" onClick={() => { const next: BlockLang = lang === "es" ? "en" : "es"; setLang(next); saveLang(next, window.localStorage); }} data-testid="bs-lang" title="Switch language / Cambiar idioma"><Languages size={14} aria-hidden="true" /> {lang === "es" ? "ES" : "EN"}</button>
         )}
         {tab === "blocks" && (
-          <button className="bs-btn bs-btn-presets" onClick={() => setPresetsOpen((o) => !o)} disabled={readOnly} data-testid="bs-presets" title="Ready-made recipes of connected blocks">✨ Presets</button>
+          <button className="bs-btn bs-btn-presets" onClick={() => setPresetsOpen((o) => !o)} disabled={readOnly} data-testid="bs-presets" title="Ready-made recipes of connected blocks"><Sparkles size={14} aria-hidden="true" /> Presets</button>
         )}
         <button className="bs-btn" onClick={async () => {
-          try { await navigator.clipboard.writeText(encodeTool({ ...tool, graph })); setShared("Block code copied — paste it into anyone's studio with Import"); }
-          catch { setShared("Couldn't reach the clipboard — try again"); }
+          try { await navigator.clipboard.writeText(encodeTool({ ...tool, graph })); setShared("Block code copied, paste it into anyone's studio with Import"); }
+          catch { setShared("Couldn't reach the clipboard, try again"); }
           setTimeout(() => setShared(""), 3500);
-        }} disabled={readOnly} data-testid="bs-share" title="Copy these blocks as a code you can share">🔗 <span className="bs-lbl">Share</span></button>
+        }} disabled={readOnly} data-testid="bs-share" title="Copy these blocks as a code you can share"><Link2 size={14} aria-hidden="true" /> <span className="bs-lbl">Share</span></button>
         {tab === "blocks" && <>
-          <button className="bs-btn" onClick={undo} disabled={readOnly || !canUndo} data-testid="bs-undo" title="Undo (Ctrl+Z)">↶</button>
-          <button className="bs-btn" onClick={redo} disabled={readOnly || !canRedo} data-testid="bs-redo" title="Redo (Ctrl+Shift+Z)">↷</button>
+          <button className="bs-btn" onClick={undo} disabled={readOnly || !canUndo} data-testid="bs-undo" title="Undo (Ctrl+Z)" aria-label="Undo"><Undo2 size={15} /></button>
+          <button className="bs-btn" onClick={redo} disabled={readOnly || !canRedo} data-testid="bs-redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"><Redo2 size={15} /></button>
         </>}
-        {onOpenAnimator && <button className="bs-btn" onClick={onOpenAnimator} data-testid="bs-open-animator" title="Open the Animator — pose and animate clips, text and shapes like rigs">🎞 Animator</button>}
-        <button className="bs-btn" onClick={showPreview} disabled={readOnly} data-testid="bs-preview" title="See what Apply would change, without changing anything">👁 Preview</button>
-        <button className="bs-btn bs-btn-run" onClick={run} disabled={readOnly} data-testid="bs-run" title="Apply these blocks to your edit — one undoable step">▶ Apply to edit</button>
-        <button className="bs-btn bs-btn-close" onClick={onClose} aria-label="Close studio" data-testid="bs-close">✕</button>
+        {onOpenAnimator && <button className="bs-btn" onClick={onOpenAnimator} data-testid="bs-open-animator" title="Open the Animator, pose and animate clips, text and shapes like rigs"><Clapperboard size={14} aria-hidden="true" /> Animator</button>}
+        <button className="bs-btn" onClick={showPreview} disabled={readOnly} data-testid="bs-preview" title="See what Apply would change, without changing anything"><Eye size={14} aria-hidden="true" /> Preview</button>
+        <button className="bs-btn bs-btn-run" onClick={run} disabled={readOnly} data-testid="bs-run" title="Apply these blocks to your edit, one undoable step"><Play size={13} aria-hidden="true" /> Apply to edit</button>
+        <button className="bs-btn bs-btn-close" onClick={onClose} aria-label="Close studio" data-testid="bs-close"><X size={12} /></button>
       </header>
       {preview && (
         <div className="bs-preview" role="dialog" aria-label="Preview of changes" data-testid="bs-preview-panel">
           <div className="bs-preview-head">
             <b>{preview.length === 0 ? "Nothing would change" : `${preview.length} change${preview.length === 1 ? "" : "s"} to your edit`}</b>
-            <button className="bs-notice-close" aria-label="Close preview" onClick={() => setPreview(null)}>✕</button>
+            <button className="bs-notice-close" aria-label="Close preview" onClick={() => setPreview(null)}><X size={12} /></button>
           </div>
           {preview.length === 0
-            ? <p className="bs-hint">Your blocks produced no changes. Check that the clips they work on exist — the green block’s “Work on” setting picks which clips are used.</p>
+            ? <p className="bs-hint">Your blocks produced no changes. Check that the clips they work on exist. The green block’s “Work on” setting picks which clips are used.</p>
             : <ol className="bs-preview-list">{preview.slice(0, 40).map((o, i) => {
                 const label = BLOCK_LIBRARY.find((b) => b.op === o.op)?.label ?? o.op.replace(/_/g, " ");
                 const detail = Object.entries(o.args ?? {}).filter(([, v]) => typeof v !== "object").slice(0, 3).map(([k, v]) => `${k}: ${String(v).slice(0, 24)}`).join(" · ");
@@ -1116,18 +1117,18 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, onOpenAnimator,
               })}</ol>}
           {preview.length > 40 && <p className="bs-hint">…and {preview.length - 40} more.</p>}
           <div className="bs-preview-actions">
-            <button className="bs-btn bs-btn-run" onClick={run} disabled={readOnly || preview.length === 0} data-testid="bs-preview-apply">▶ Apply to edit</button>
+            <button className="bs-btn bs-btn-run" onClick={run} disabled={readOnly || preview.length === 0} data-testid="bs-preview-apply"><Play size={13} aria-hidden="true" /> Apply to edit</button>
             <button className="bs-btn" onClick={() => setPreview(null)}>Not now</button>
           </div>
         </div>
       )}
-      {shared && <div className="bs-notice" data-testid="bs-share-notice"><span>🔗 {shared}</span><button className="bs-notice-close" aria-label="Dismiss" onClick={() => setShared("")}>✕</button></div>}
+      {shared && <div className="bs-notice" data-testid="bs-share-notice"><span><Link2 size={14} aria-hidden="true" /> {shared}</span><button className="bs-notice-close" aria-label="Dismiss" onClick={() => setShared("")}><X size={12} /></button></div>}
       {presetsOpen && tab === "blocks" && (
         <div className="bs-presets" data-testid="bs-presets-panel" role="dialog" aria-label="Presets">
           <div className="bs-presets-head">
-            <h3>✨ Presets</h3>
-            <p>Example recipes, ready to take apart. Click one and its blocks appear on the canvas, connected to the right blocks — you set them up with your own words, colours and clips. Nothing changes until you press ▶ Apply to edit.</p>
-            <button className="bs-notice-close" aria-label="Close presets" onClick={() => setPresetsOpen(false)}>✕</button>
+            <h3>Presets</h3>
+            <p>Example recipes, ready to take apart. Click one and its blocks appear on the canvas, connected to the right blocks. You set them up with your own words, colours and clips. Nothing changes until you press Apply to edit.</p>
+            <button className="bs-notice-close" aria-label="Close presets" onClick={() => setPresetsOpen(false)}><X size={12} /></button>
           </div>
           <div className="bs-presets-list">
             {TOOL_PRESETS.map((p) => (
@@ -1142,13 +1143,13 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, onOpenAnimator,
       )}
       {importOpen && (
         <div className="bs-import" data-testid="bs-import-panel">
-          <p>Clips in this project — add one, then connect it to a block.</p>
+          <p>Clips in this project. Add one, then connect it to a block.</p>
           <div className="bs-import-list">
             {ctx.clips.length === 0 && <p className="bs-hint">No clips yet. Add something to the timeline first.</p>}
             {ctx.clips.map((c) => (
               <button key={c.id} className="bs-import-row" disabled={readOnly}
                 onClick={() => { addNode({ id: uid(), type: "clipRef", clipId: c.id, text: c.label ?? "", select: c.kind, position: freeSpot() }); setImportOpen(false); }}>
-                <span>{c.kind === "media" ? "🎬" : c.kind === "shape" ? "◼" : c.kind === "audio" ? "🎵" : "T"}</span>
+                <span>{c.kind === "media" ? <Film size={13} /> : c.kind === "shape" ? <Square size={13} /> : c.kind === "audio" ? <Music2 size={13} /> : <TypeIcon size={13} />}</span>
                 <span className="bs-import-label">{c.label || c.id}</span>
                 <span className="bs-import-time">{c.start.toFixed(1)}s · {c.duration.toFixed(1)}s</span>
               </button>
@@ -1179,7 +1180,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, onOpenAnimator,
                   <div key={b.id} className={`bs-chip bs-group-${(b.group ?? "create").toLowerCase().replace(/\s+/g, "-")}`} draggable={!readOnly}
                     data-testid={`bs-chip-${b.id}`}
                     onDragStart={(e) => { e.dataTransfer.setData("application/videoforge-block", b.id); e.dataTransfer.effectAllowed = "move"; }}
-                    title={`${trGroup(lang, b.group ?? "")} — ${trDescription(lang, b)}`}><span className="bs-chip-group">{trGroup(lang, b.group ?? "")}</span>{trLabel(lang, b)}</div>
+                    title={`${trGroup(lang, b.group ?? "")}, ${trDescription(lang, b)}`}><span className="bs-chip-group">{trGroup(lang, b.group ?? "")}</span>{trLabel(lang, b)}</div>
                 ))}
                 {!BLOCK_LIBRARY.some((b) => !(HIDDEN_BLOCKS as readonly string[]).includes(b.id) && matchesSearch(lang, b, search)) && <p className="bs-hint">No blocks match that. Try “title”, “zoom” or “speed”.</p>}
               </div>
@@ -1203,9 +1204,9 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, onOpenAnimator,
               </div>
             ) : category === "Values" ? (
               <div className="bs-palette-group">
-                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "value-text"); }} title={trUI(lang, "value-text", "A piece of text to plug into a field")}>{trUI(lang, "value-text", "📝 Text")}</div>
-                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "value-number"); }} title={trUI(lang, "value-number", "A number to plug into a field")}>{trUI(lang, "value-number", "🔢 Number")}</div>
-                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "value-yesno"); }} title={trUI(lang, "value-yesno", "A yes or no to plug into a field")}>{trUI(lang, "value-yesno", "🔘 Yes / No")}</div>
+                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "value-text"); }} title={trUI(lang, "value-text", "A piece of text to plug into a field")}>{trUI(lang, "value-text", "Text")}</div>
+                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "value-number"); }} title={trUI(lang, "value-number", "A number to plug into a field")}>{trUI(lang, "value-number", "Number")}</div>
+                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "value-yesno"); }} title={trUI(lang, "value-yesno", "A yes or no to plug into a field")}>{trUI(lang, "value-yesno", "Yes / No")}</div>
                 <p className="bs-hint">Drag one next to a block, type your value, then drag from its dot into the block's field.</p>
               </div>
             ) : (
@@ -1220,7 +1221,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, onOpenAnimator,
             )}
             <div className="bs-palette-group">
               <h4 title={CATEGORY_HELP[category] ?? ""}>{CATEGORY_HELP[category] ?? `${category} blocks`}</h4>
-              <p className="bs-hint">Connect blocks top-to-bottom to run them in order — the green wires. A block's coloured field dots appear when you hover it: drag from a clip, frame or value block into one to fill that field. Bring clips and frames in with the buttons above.</p>
+              <p className="bs-hint">Connect blocks top to bottom to run them in order, shown as green wires. A block's coloured field dots appear when you hover it: drag from a clip, frame or value block into one to fill that field. Bring clips and frames in with the buttons above.</p>
             </div>
           </aside>
           <div className="bs-canvas-col">
@@ -1251,7 +1252,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, onOpenAnimator,
                   <span><i className="bs-dot bs-dot-run" /> run order</span>
                   <span><i className="bs-dot bs-dot-body" /> repeat body</span>
                   <span><i className="bs-dot bs-dot-link" /> clip / frame link</span>
-                  <span><i className="bs-dot bs-dot-param" /> field dot — hover a block</span>
+                  <span><i className="bs-dot bs-dot-param" /> field dot, hover a block</span>
                 </div>
               </Panel>
             </ReactFlow>

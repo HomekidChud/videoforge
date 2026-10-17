@@ -55,7 +55,7 @@ export function clampClipPatch(c:Clip,patch:Partial<Clip>,asset?:AssetDTO):Clip 
 // ---------------------------------------------------------------------------
 // Local browser save-data layer.
 //
-// This is the browser-local scratchpad ONLY. It is not cloud storage — the
+// This is the browser-local scratchpad ONLY. It is not cloud storage. The
 // durable source of truth is the server's SQLite database and the save
 // manifest on the persistent disk. This exists so that if you close the tab
 // or hit an offline moment, the working copy (including the unsaved timeline
@@ -80,8 +80,14 @@ const LOCAL_PREFIX = "vf.local.v1.";
 const keyOf = (projectId: string | null) => `${LOCAL_PREFIX}${projectId ?? "draft"}`;
 
 export function writeLocalSave(s: LocalSave) {
-  try { localStorage.setItem(keyOf(s.projectId), JSON.stringify(s)); }
-  catch { /* full or disabled — local drafts are best-effort, not required */ }
+  try {
+    const json = JSON.stringify(s);
+    localStorage.setItem(keyOf(s.projectId), json);
+    // The unnamed slot always points at the most recent working copy, so a reload resumes the project
+    // that is open now and not an older draft from before it received an id.
+    if (s.projectId) localStorage.setItem(keyOf(null), json);
+  }
+  catch { /* full or disabled, local drafts are best-effort, not required */ }
 }
 
 export function readLocalSave(projectId: string | null): LocalSave | null {
@@ -108,6 +114,7 @@ export function listLocalSaves(): { key: string; savedAt: number; projectId: str
       try {
         const parsed = JSON.parse(localStorage.getItem(k) ?? "") as LocalSave;
         if (!parsed?.timeline) continue;
+        if (k === keyOf(null) && parsed.projectId) continue; // pointer to the latest copy, listed under its own key
         out.push({ key: k.slice(LOCAL_PREFIX.length), savedAt: parsed.savedAt, projectId: parsed.projectId, name: parsed.name, saveState: parsed.saveState });
       } catch { /* skip broken entries */ }
     }

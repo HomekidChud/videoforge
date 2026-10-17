@@ -15,7 +15,7 @@ const tokenCache = new Map<string, TokenEntry>();
 const inflight = new Map<string, Promise<TokenEntry | null>>;
 // Last time we retried a failed fetch, to bound retry loops.
 const lastAttempt = new Map<string, number>();
-// Credential generation — bumped on every key change so stale in-flight
+// Credential generation, bumped on every key change so stale in-flight
 // requests from before a sign-out can't repopulate the cache.
 let credentialGeneration = 0;
 
@@ -70,7 +70,7 @@ export async function fetchMediaToken(resourceId: string): Promise<TokenEntry | 
     })
     .catch(() => null)
     .finally(() => {
-      // Only clear our own in-flight slot — a newer generation's request
+      // Only clear our own in-flight slot. A newer generation's request
       // would have replaced the map entry, so don't delete theirs.
       if (inflight.get(resourceId) === p) {
         inflight.delete(resourceId);
@@ -163,7 +163,7 @@ export function useMediaTokenLifecycle(resourceIds: (string | null | undefined)[
         }
       }
       // on failure: fetchMediaToken bounds its own retry via RETRY_MS, so
-      // do nothing more here — the lifecycle hook re-fires on next ids/credential change
+      // do nothing more here. The lifecycle hook re-fires on next ids/credential change
     }
 
     for (const id of ids) {
