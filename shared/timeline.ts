@@ -161,7 +161,7 @@ export function normalizeClip(raw: any): Clip {
   if (!assetId && !shape && ((typeof raw.reveal === "number" && raw.reveal < 1) || raw.keyframes?.reveal?.length || raw.expressions?.reveal)) throw new Error("reveal applies to media and shape clips; use opacity or position keyframes for text");
   const inPoint = round(num(raw.inPoint, 0, 86400, 0));
   const outPoint = round(Math.max(inPoint + MIN_CLIP, num(raw.outPoint, 0, 86400, inPoint + 5)));
-  // Speed steps: they define the whole timeline of the clip — the source window
+  // Speed steps: they define the whole timeline of the clip, the source window
   // must cover exactly what the steps play. Media clips only.
   let speedRamp: SpeedStep[] | undefined;
   if (raw.speedRamp !== undefined && raw.speedRamp !== null) {

@@ -42,7 +42,7 @@ export function log(message: string, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
-// CORS — a specific origin when CORS_ORIGIN is set; otherwise reflect the
+// CORS, a specific origin when CORS_ORIGIN is set; otherwise reflect the
 // request's Origin (needed for cookie sign-in: credentialed responses may not
 // use "*"). Same-origin requests have no Origin header and don't need CORS.
 app.use((req, res, next) => {

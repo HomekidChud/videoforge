@@ -1,7 +1,7 @@
 /**
  * Optional MongoDB configuration for VideoForge.
  *
- * MongoDB is NOT the application datastore — projects, media metadata and
+ * MongoDB is NOT the application datastore, projects, media metadata and
  * API keys stay in SQLite (see storage.ts). This module provides a configured,
  * verified MongoDB connection for anything that wants to use it (analytics,
  * exports, integrations), driven entirely by the environment:
@@ -18,7 +18,7 @@
  * - A failed connection never falls back to another store and never crashes
  *   the process: callers get a thrown error, and `npm run mongo:check`
  *   (or mongoHealth()) reports it.
- * - /api/health reports only whether MongoDB is CONFIGURED — it never pings
+ * - /api/health reports only whether MongoDB is CONFIGURED, it never pings
  *   the cluster, so an unreachable integration cannot delay or fail the
  *   liveness of an otherwise healthy app. Use `npm run mongo:check` to verify
  *   connectivity on demand.
@@ -68,7 +68,7 @@ async function getClient(): Promise<MongoClient> {
       .connect()
       .then(async (c) => {
         if (closed) {
-          // closeMongo() ran while this connection was pending — close it
+          // closeMongo() ran while this connection was pending, close it
           // (awaited, so closeMongo can rely on it) and never repopulate
           // the module state.
           await c.close().catch(() => undefined);
@@ -101,7 +101,7 @@ export function isMongoConnected(): boolean {
 
 /**
  * Verify the configured connection with a ping. Never throws; returns a
- * status object. Used by `npm run mongo:check` — deliberately NOT used by
+ * status object. Used by `npm run mongo:check`, deliberately NOT used by
  * /api/health, so liveness never depends on the optional integration.
  */
 export async function mongoHealth(): Promise<

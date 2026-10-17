@@ -1,7 +1,7 @@
 // ----------------------------------------------------------------------------
 // Localization for the block studio: Spanish labels and descriptions for every
 // palette block and group, picked from the browser's language (or a saved
-// choice). Block ids never change — only what kids read on screen.
+// choice). Block ids never change, only what kids read on screen.
 // ----------------------------------------------------------------------------
 
 import { BLOCK_LIBRARY, BLOCK_GROUPS, type FriendlyBlock } from "./custom-tools";
@@ -34,7 +34,7 @@ export function saveLang(lang: BlockLang, storage: Pick<Storage, "setItem">) {
   try { storage.setItem(LANG_STORAGE_KEY, lang); } catch { /* ignore */ }
 }
 
-/* Spanish translations. Keys are block ids and group names — anything missing
+/* Spanish translations. Keys are block ids and group names, anything missing
  * falls back to English, so a new block is never left without a label. */
 export const ES: { groups: Record<string, string>; blocks: Record<string, { label: string; description: string }> } = {
   groups: {
@@ -74,9 +74,9 @@ export const ES: { groups: Record<string, string>; blocks: Record<string, { labe
     "edit-rotate": { label: "Rotar", description: "Gira un clip, en grados." },
     "edit-flip": { label: "Voltear", description: "Voltea un clip de arriba abajo." },
     "edit-mirror": { label: "Espejo", description: "Voltea un clip de lado a lado, como un espejo." },
-    "edit-align": { label: "Alinear", description: "Alinea clips por sus bordes reales — entre ellos o con el borde del encuadre." },
+    "edit-align": { label: "Alinear", description: "Alinea clips por sus bordes reales, entre ellos o con el borde del encuadre." },
     "edit-snap": { label: "Ajustar a la rejilla", description: "Redondea las posiciones a una rejilla para que queden ordenadas." },
-    "edit-crop": { label: "Recortar", description: "Recorta una imagen o vídeo por los lados — como recortar una foto." },
+    "edit-crop": { label: "Recortar", description: "Recorta una imagen o vídeo por los lados, como recortar una foto." },
     "edit-opacity": { label: "Transparencia", description: "Fija cuán transparente es un clip (1 = sólido, 0 = invisible)." },
     "edit-filter": { label: "Look de color", description: "Da a un clip un look: blanco y negro, antiguo, vivo y más." },
     "edit-brightness": { label: "Brillo", description: "Hace un clip más claro o más oscuro." },
@@ -94,24 +94,24 @@ export const ES: { groups: Record<string, string>; blocks: Record<string, { labe
     "edit-back": { label: "Enviar al fondo", description: "Pone un clip abajo del todo de su pista." },
     "edit-layer-up": { label: "Subir una capa", description: "Sube un clip una capa, por encima del clip de arriba." },
     "edit-layer-down": { label: "Bajar una capa", description: "Baja un clip una capa, bajo el clip de abajo." },
-    "edit-copy-offset": { label: "Copiar con desplazamiento", description: "Copia un clip y mueve la copia a un lado — ideal para sombras y filas." },
+    "edit-copy-offset": { label: "Copiar con desplazamiento", description: "Copia un clip y mueve la copia a un lado, ideal para sombras y filas." },
     "edit-replace-text": { label: "Cambiar palabras", description: "Cambia lo que dice un clip de texto, manteniendo su fuente, color y tamaño." },
-    "motion-entrances": { label: "Mover un clip hacia dentro", description: "Anima un clip que ya tienes — fundido, deslizamiento, pop, balanceo y más." },
-    "motion-exits": { label: "Mover un clip hacia fuera", description: "Anima un clip para que se vaya — deslizar fuera, fundir fuera, encoger o girar." },
+    "motion-entrances": { label: "Mover un clip hacia dentro", description: "Anima un clip que ya tienes, fundido, deslizamiento, pop, balanceo y más." },
+    "motion-exits": { label: "Mover un clip hacia fuera", description: "Anima un clip para que se vaya, deslizar fuera, fundir fuera, encoger o girar." },
     "motion-attention": { label: "Llamar la atención", description: "Sacude, late o bambolea un clip para que la gente lo mire." },
     "motion-springy": { label: "Movimiento con muelle", description: "Movimientos elásticos con rebote que se pasan y se asientan." },
     "motion-camera": { label: "Movimiento de cámara", description: "Zooms y derivas lentas sobre un clip, como una cámara en movimiento." },
-    "rig-pose": { label: "Posar clips juntos", description: "Lleva varios clips a una pose a la vez — posición, tamaño, giro y transparencia — desde donde están ahora." },
+    "rig-pose": { label: "Posar clips juntos", description: "Lleva varios clips a una pose a la vez, posición, tamaño, giro y transparencia, desde donde están ahora." },
     "rig-follow": { label: "Hacer que un clip siga a otro", description: "Un clip acompaña el movimiento de otro, girando y cambiando de tamaño con él, como una mano en un brazo." },
     "rig-play": { label: "Reproducir una animación del Animador", description: "Aplica a tu edición una animación que guardaste en el Animador. Escribe su nombre." },
-    "animate-property": { label: "Animar una propiedad", description: "Cambia cualquier propiedad con el tiempo — posición, tamaño, giro, transparencia, color y más." },
+    "animate-property": { label: "Animar una propiedad", description: "Cambia cualquier propiedad con el tiempo, posición, tamaño, giro, transparencia, color y más." },
     "slide-in-left": { label: "Entrar desde la izquierda", description: "Desliza un clip desde el borde izquierdo." },
     "slide-in-right": { label: "Entrar desde la derecha", description: "Desliza un clip desde el borde derecho." },
     "rise-up": { label: "Subir flotando", description: "Eleva un clip hasta su sitio." },
     "drop-down": { label: "Bajar cayendo", description: "Deja caer un clip hasta su sitio." },
     "zoom-in": { label: "Acercar", description: "Agranda un clip de pequeño a su tamaño completo." },
     "spin-in": { label: "Entrar girando", description: "Enrosca un clip hasta su sitio." },
-    "fade-in-soft": { label: "Aparecer despacio", description: "Funde un clip durante un rato — ideal para subtítulos." },
+    "fade-in-soft": { label: "Aparecer despacio", description: "Funde un clip durante un rato, ideal para subtítulos." },
     "fade-out-soft": { label: "Desaparecer despacio", description: "Funde un clip fuera durante un rato." },
     "draw-on": { label: "Dibujar", description: "Descubre una forma o vídeo de izquierda a derecha, como si se dibujara." },
     "pulse-glow": { label: "Brillo pulsante", description: "Hace que un clip pulse suave de claro a oscuro, para siempre." },
@@ -122,7 +122,7 @@ export const ES: { groups: Record<string, string>; blocks: Record<string, { labe
     "color-cycle-text": { label: "Ciclo de colores", description: "Pasa un clip de texto por un arcoíris de colores con el tiempo." },
     "stop-text-effects": { label: "Parar efectos de texto", description: "Apaga la máquina de escribir y los efectos de color." },
     "speed-ramp": { label: "Peldaños de velocidad", description: "Cambia la velocidad de un clip con el tiempo: tramos rápidos, lentos y normales en un solo clip." },
-    "freeze-frame": { label: "Congelar fotograma", description: "Pausa un clip en un fotograma y lo mantiene — como pulsar pausa." },
+    "freeze-frame": { label: "Congelar fotograma", description: "Pausa un clip en un fotograma y lo mantiene, como pulsar pausa." },
     "speed-up": { label: "Acelerar", description: "Reproduce un clip más rápido (2 = doble velocidad)." },
     "slow-mo": { label: "Cámara lenta", description: "Reproduce un clip a cámara lenta (0.5 = mitad de velocidad)." },
     "reverse-motion": { label: "Reproducir al revés", description: "Invierte la animación de un clip, para que se reproduzca al revés." },
@@ -188,7 +188,7 @@ export function i18nCoverage(): { missing: string[]; stale: string[] } {
   return { missing, stale };
 }
 
-/** Group names for the language picker — used by tests to keep groups honest. */
+/** Group names for the language picker, used by tests to keep groups honest. */
 export function groupsFor(lang: BlockLang): string[] {
   return BLOCK_GROUPS.map((g) => trGroup(lang, g));
 }

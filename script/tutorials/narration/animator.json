@@ -5,13 +5,45 @@
   "subtitle": "Rig a figure, pose it and bake the motion onto your edit",
   "next": "Next: the Block coding tutorial",
   "sections": [
-    { "id": "intro", "title": "Introduction", "say": "This tutorial uses the Animator to make a figure wave. You will rig the ready made stick figure, pose one arm, set keyframes with easing, and then apply the motion to your timeline as ordinary keyframes. It takes about ten minutes." },
-    { "id": "open", "title": "Open the Animator", "say": "Open the More menu at the top right and choose Animator. The Animator opens over the Studio. Select Stick figure, and ten shapes are placed on the timeline, already rigged and ready to pose." },
-    { "id": "rig", "title": "Meet the rig", "say": "The rig list on the left shows every part of the figure. A part can hang from a parent and turn about a joint. Here, the forearm is parented to the upper arm, so rotating the upper arm carries the whole chain with it. Select the forearm to inspect its settings." },
-    { "id": "pose", "title": "Pose and key", "say": "Start at zero seconds, which is the rest pose. Move the playhead to zero point three seconds, and set the forearm's Turn value to minus sixty. A keyframe is written at the playhead. Then move to one second, and set Turn to forty, so the arm swings the other way." },
-    { "id": "ease", "title": "Ease the motion", "say": "Two keys make a wave, but a stiff one. Select the second key and set its easing to ease in and out. Then add another pair of keys, at one point seven seconds with a Turn of minus fifty, and at two point four seconds with a Turn of zero, so the arm settles back to rest." },
-    { "id": "play", "title": "Play it back", "say": "Press play in the Animator. The figure waves twice and settles. You can scrub the playhead to check individual poses, and drag any key diamond to retime it. Keys snap to frames." },
-    { "id": "apply", "title": "Apply to edit", "say": "When the motion is right, press Apply to edit. The Animator closes and the motion is baked onto the clips as ordinary keyframes. Open the Animate workspace and select the forearm to see its rotation curve, which you can adjust like any other keyframes." },
-    { "id": "outro", "title": "Summary", "say": "That completes the Animator tutorial. Because the result is plain keyframes, the preview, the FFmpeg export and the API all agree. The next tutorial covers block coding, which builds repeatable edits without writing code." }
+    {
+      "id": "intro",
+      "title": "Introduction",
+      "say": "This tutorial uses the Animator to make a figure wave. You will rig the ready made stick figure, pose one arm, set keyframes with easing, and then apply the motion to your timeline as ordinary keyframes. It takes about ten minutes."
+    },
+    {
+      "id": "open",
+      "title": "Open the Animator",
+      "say": "Open the More menu at the top right and choose Animator. The Animator opens over the Studio. Select Stick figure, and ten shapes are placed on the timeline, already rigged and ready to pose."
+    },
+    {
+      "id": "rig",
+      "title": "Meet the rig",
+      "say": "The rig list on the left shows every part of the figure. A part can hang from a parent and turn about a joint. Here, the forearm is parented to the upper arm, so rotating the upper arm carries the whole chain with it. Select the forearm to inspect its settings."
+    },
+    {
+      "id": "pose",
+      "title": "Pose and key",
+      "say": "Start at zero seconds, which is the rest pose. Move the playhead to zero point three seconds, and set the forearm's Turn value to minus sixty. A keyframe is written at the playhead. Then move to one second, and set Turn to forty, so the arm swings the other way."
+    },
+    {
+      "id": "ease",
+      "title": "Ease the motion",
+      "say": "Two keys make a wave, but a stiff one. Select the second key and set its easing to Ease, so the arm starts and finishes gently. Then add another pair of keys, at one point seven seconds with a Turn of minus fifty, and at two point four seconds with a Turn of zero, so the arm settles back to rest."
+    },
+    {
+      "id": "play",
+      "title": "Play it back",
+      "say": "Press play in the Animator. The figure waves twice and settles. You can scrub the playhead to check individual poses, and drag any key diamond to retime it. Keys snap to frames."
+    },
+    {
+      "id": "apply",
+      "title": "Apply to edit",
+      "say": "When the motion is right, press Apply to edit. The Animator closes and the motion is baked onto the clips as ordinary keyframes. Open the Animate workspace and select the forearm to see its rotation curve, which you can adjust like any other keyframes."
+    },
+    {
+      "id": "outro",
+      "title": "Summary",
+      "say": "That completes the Animator tutorial. Because the result is plain keyframes, the preview, the FFmpeg export and the API all agree. The next tutorial covers block coding, which builds repeatable edits without writing code."
+    }
   ]
 }

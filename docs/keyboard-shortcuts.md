@@ -17,5 +17,7 @@ Press the question mark key inside the Studio to open this list as a sheet, or C
 
 ## Where to go next
 
+Two pages cover the same ground in more depth.
+
 - [Studio tour](studio-tour)
 - [Using the editor](editor)

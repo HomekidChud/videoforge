@@ -1,0 +1,122 @@
+WEBVTT
+
+1
+00:00:00.500 --> 00:00:03.563
+This tour introduces the VideoForge Studio.
+
+2
+00:00:03.563 --> 00:00:13.609
+In about three minutes, it covers the tool dock, the workspaces, the timeline, the inspector, the command palette and the keyboard shortcuts.
+
+3
+00:00:13.609 --> 00:00:18.810
+You will know where everything lives before you start your first project.
+
+4
+00:00:19.560 --> 00:00:22.435
+The tool dock runs down the left edge.
+
+5
+00:00:22.435 --> 00:00:24.250
+Each icon opens a panel.
+
+6
+00:00:24.250 --> 00:00:33.330
+Media holds your footage, Effects holds motion presets and transitions, and Graphics holds titles, shapes and templates.
+
+7
+00:00:33.330 --> 00:00:38.550
+Hover over any icon to see its name, and select it to open the panel.
+
+8
+00:00:39.310 --> 00:00:42.934
+The workspace switcher sits at the top of the screen.
+
+9
+00:00:42.934 --> 00:00:46.764
+Each workspace arranges the panels for one kind of work.
+
+10
+00:00:46.764 --> 00:00:48.132
+Edit is the default.
+
+11
+00:00:48.132 --> 00:00:52.646
+Animate hides the library and enlarges the timeline for keyframes.
+
+12
+00:00:52.646 --> 00:00:57.844
+Graphics opens the graphics panel, and Audio gives the timeline more height.
+
+13
+00:00:57.844 --> 00:01:00.100
+The Studio remembers your choice.
+
+14
+00:01:00.850 --> 00:01:05.229
+The timeline holds three tracks: graphics, video and audio.
+
+15
+00:01:05.229 --> 00:01:08.496
+Titles and shapes sit on the graphics track.
+
+16
+00:01:08.496 --> 00:01:14.509
+Select a clip and press S to split it at the playhead, or drag its edges to trim.
+
+17
+00:01:14.509 --> 00:01:23.120
+Use the arrow beside a track name to collapse it, and the overview strip above the ruler to move around a long edit.
+
+18
+00:01:23.880 --> 00:01:28.353
+The inspector on the right shows the settings for whatever is selected.
+
+19
+00:01:28.353 --> 00:01:33.205
+Use the search box at the top to find a setting by name, for example opacity.
+
+20
+00:01:33.205 --> 00:01:35.347
+Advanced mode shows every section.
+
+21
+00:01:35.347 --> 00:01:41.270
+Simple mode hides the rarely used ones, and you can switch between the two from the More menu.
+
+22
+00:01:42.020 --> 00:01:46.772
+To run any action without hunting through menus, press Control and K.
+
+23
+00:01:46.772 --> 00:01:51.249
+Type part of a command, such as split or export, and press Enter.
+
+24
+00:01:51.249 --> 00:01:59.170
+The palette lists the keyboard shortcut next to each command, and it remembers the commands you used most recently.
+
+25
+00:01:59.920 --> 00:02:05.930
+Press the question mark key at any time to open the full list of keyboard shortcuts.
+
+26
+00:02:05.930 --> 00:02:12.442
+They are grouped by task: playback, editing, selection, the timeline and the Studio itself.
+
+27
+00:02:12.442 --> 00:02:16.950
+Learning five or six of them makes editing considerably faster.
+
+28
+00:02:17.700 --> 00:02:19.355
+That completes the tour.
+
+29
+00:02:19.355 --> 00:02:25.630
+You now know the dock, the workspaces, the timeline, the inspector and the command palette.
+
+30
+00:02:25.630 --> 00:02:32.250
+Continue with the Motion graphics tutorial, which builds a complete animated intro from nothing.
+

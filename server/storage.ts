@@ -29,7 +29,7 @@ function ensureDir(dir: string, label: string): void {
   } catch (e: any) {
     console.warn(
       `[storage] WARNING: cannot create the ${label} directory ${dir} (${e.code ?? e.message}). ` +
-      `Operations that write there will fail until this is fixed — check that the path ` +
+      `Operations that write there will fail until this is fixed, check that the path ` +
       `points inside a mounted, writable persistent disk.`
     );
   }
@@ -54,7 +54,7 @@ try {
   console.warn(
     `[storage] WARNING: cannot open the configured database at ${dbPath} (${e.code ?? e.message}). ` +
     `The server is booting on an IN-MEMORY database and WRITE REQUESTS ARE REJECTED (503) ` +
-    `until this is fixed — nothing can be saved. Point VIDEOFORGE_DB at a file inside ` +
+    `until this is fixed, nothing can be saved. Point VIDEOFORGE_DB at a file inside ` +
     `a mounted, writable persistent disk (e.g. /var/lib/<disk>/data.db).`
   );
   sqlite = new Database(":memory:");
@@ -71,7 +71,7 @@ export const db = drizzle(sqlite);
 // resurrect a project the user just deleted, or reactivate a key they revoked.
 // It is written continuously (as the DB changes) so the snapshot stays fresh,
 // and can be restored by hand via `npm run durable:restore` if a rebuild loses
-// the DB. It never contains a plaintext key — only hashes, same as the DB.
+// the DB. It never contains a plaintext key, only hashes, same as the DB.
 // Never back up a degraded (in-memory) database: the manifest must only ever
 // mirror the real configured database, and restoring a backup of a real DB
 // over an empty fallback would be the one way to corrupt it.

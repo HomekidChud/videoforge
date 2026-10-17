@@ -1,0 +1,80 @@
+[
+ {
+  "id": "intro",
+  "title": "Introduction",
+  "start": 0,
+  "end": 18.14
+ },
+ {
+  "id": "start",
+  "title": "Start the project",
+  "start": 18.14,
+  "end": 33.45
+ },
+ {
+  "id": "headline",
+  "title": "Add a headline",
+  "start": 33.45,
+  "end": 53.12
+ },
+ {
+  "id": "spring",
+  "title": "Make it spring in",
+  "start": 53.12,
+  "end": 70.02
+ },
+ {
+  "id": "bar",
+  "title": "Add an accent bar",
+  "start": 70.02,
+  "end": 96.13
+ },
+ {
+  "id": "tagline",
+  "title": "Add a tagline",
+  "start": 96.13,
+  "end": 118.71
+ },
+ {
+  "id": "badge",
+  "title": "Add a badge that keeps moving",
+  "start": 118.71,
+  "end": 138.39
+ },
+ {
+  "id": "lower-third",
+  "title": "Drop in a lower third",
+  "start": 138.39,
+  "end": 154.49
+ },
+ {
+  "id": "graph",
+  "title": "Tune the motion on a graph",
+  "start": 154.49,
+  "end": 172.07
+ },
+ {
+  "id": "fade",
+  "title": "Fade everything out",
+  "start": 172.07,
+  "end": 185.46
+ },
+ {
+  "id": "playback",
+  "title": "Check the fit and play it back",
+  "start": 185.46,
+  "end": 202.79
+ },
+ {
+  "id": "export",
+  "title": "Export your video",
+  "start": 202.79,
+  "end": 216.85
+ },
+ {
+  "id": "outro",
+  "title": "Summary",
+  "start": 216.85,
+  "end": 233.48
+ }
+]

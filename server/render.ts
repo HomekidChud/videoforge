@@ -116,6 +116,12 @@ function colorFilters(c: Clip): string[] {
 }
 
 
+/**
+ * A uniform opacity that changes over time. geq evaluates its expression for every pixel of every frame, which
+ * is slow at 1080p, so the per-frame gain is written to a command file and applied with sendcmd instead.
+ */
+let gainFilter: ((dur: number, gainAt: (t: number) => number) => string) | null = null;
+
 function transformFilters(c:Clip, width:number, height:number, dur:number, text=false):string[] {
   const chain:string[]=[];
   const dynamicScale=isAnimated(c,"scale"), rotation=!!c.rotation || isAnimated(c,"rotation");
@@ -127,7 +133,7 @@ function transformFilters(c:Clip, width:number, height:number, dur:number, text=
     if(c.fit==="cover") chain.push(`crop=${width}:${height}`);
     chain.push("format=yuva420p",`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black@0`);
     // Spatial crop: fractions of the padded layer box to keep, matching the preview's
-    // inset — the layer keeps its box, with transparent padding where pixels were cut.
+    // inset, the layer keeps its box, with transparent padding where pixels were cut.
     if(c.crop){
       const even=(n:number)=>Math.round(n/2)*2;
       const cw=even(width*c.crop.w),chh=even(height*c.crop.h),x0=even(width*c.crop.x),y0=even(height*c.crop.y);
@@ -142,7 +148,10 @@ function transformFilters(c:Clip, width:number, height:number, dur:number, text=
   if(dynamicScale) { const w=Math.ceil(width*maxScale/2)*2,h=Math.ceil(height*maxScale/2)*2; chain.push(`pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=black@0:eval=frame`); }
   if(c.flipX) chain.push("hflip"); if(c.flipY) chain.push("vflip");
   if(rotation) chain.push(`rotate=a='(${animationExpression(c,"rotation")})*PI/180':ow='ceil(hypot(iw,ih)/2)*2':oh=ow:c=black@0`);
-  if(isAnimated(c,"opacity")) chain.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*(${animationExpression(c,"opacity","T")})'`);
+  if(isAnimated(c,"opacity")) {
+    if(gainFilter) chain.push(gainFilter(dur,(t)=>valueAt(c,"opacity",t)));
+    else chain.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*(${animationExpression(c,"opacity","T")})'`);
+  }
   else if((c.opacity??1)<1) chain.push(`colorchannelmixer=aa=${f(c.opacity!)}`);
   if((c.fadeIn??0)>0) chain.push(`fade=t=in:st=0:d=${f(Math.min(c.fadeIn!,dur))}:alpha=1`);
   if((c.fadeOut??0)>0) chain.push(`fade=t=out:st=${f(Math.max(0,dur-c.fadeOut!))}:d=${f(Math.min(c.fadeOut!,dur))}:alpha=1`);
@@ -160,11 +169,22 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
   const tl = normalizeTimeline(rawTimeline);
   const W = options.width ? Math.round(options.width/2)*2 : tl.resolution.width, H = options.width ? Math.round(tl.resolution.height*W/tl.resolution.width/2)*2 : tl.resolution.height, fps = tl.fps;
   const total = Math.max(0.1, timelineDuration(tl));
-  if (!tl.clips.length || timelineDuration(tl) <= 0) throw new Error("Timeline is empty — add at least one clip before rendering.");
+  if (!tl.clips.length || timelineDuration(tl) <= 0) throw new Error("Timeline is empty, add at least one clip before rendering.");
 
   const inputs: string[] = [];
   const filters: string[] = [];
   const tempFiles: string[] = [];
+  let gainCount = 0;
+  gainFilter = (dur, gainAt) => {
+    const id = gainCount++, name = `gain${id}`;
+    const file = path.join(tmpDir, `${jobId}_gain${id}.txt`);
+    const steps = Math.ceil(dur * fps) + 1;
+    const lines: string[] = [];
+    for (let i = 0; i <= steps; i++) { const t = i / fps; lines.push(`${t.toFixed(4)} colorchannelmixer@${name} aa ${Math.min(1, Math.max(0, gainAt(Math.min(t, dur)))).toFixed(4)};`); }
+    fs.writeFileSync(file, lines.join("\n"));
+    tempFiles.push(file);
+    return `sendcmd=f=${file},colorchannelmixer@${name}=aa=${Math.min(1, Math.max(0, gainAt(0))).toFixed(4)}`;
+  };
   let inputCount = 0;
 
   const visual = tl.clips
@@ -212,7 +232,8 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     chain.push(...transformFilters(c,width,height,dur));
     const tr = incomingTransition(tl,c);
     if(tr) { const p=`min(1,max(0,T/${f(tr.duration)}))`, alpha=({dissolve:p,'wipe-left':`lte(X,W*(${p}))`,'wipe-right':`gte(X,W*(1-(${p})))`,'wipe-up':`gte(Y,H*(1-(${p})))`,'wipe-down':`lte(Y,H*(${p}))`,iris:`lte(hypot(X-W/2,Y-H/2),hypot(W/2,H/2)*(${p}))`,'barn-h':`lte(abs(X-W/2),W/2*(${p}))`,'barn-v':`lte(abs(Y-H/2),H/2*(${p}))`,diamond:`lte(abs(X-W/2)/W+abs(Y-H/2)/H,${p})`,'wipe-diagonal':`lte(X/W+Y/H,2*(${p}))`} as Record<string,string>)[tr.type];
-      chain.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*(${alpha})'`); }
+      if (tr.type === "dissolve" && gainFilter) chain.push(gainFilter(dur, (t) => Math.min(1, Math.max(0, t / tr.duration))));
+      else chain.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*(${alpha})'`); }
 
     chain.push(`setpts=PTS+${f(c.start)}/TB`);
     filters.push(`${entry}${chain.length ? "," + chain.join(",") : ""}[cv${layer}]`);
@@ -224,7 +245,7 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     layer++;
   }
 
-  // Overlay visuals — overlay-track media, shapes and text — share one stacking
+  // Overlay visuals, overlay-track media, shapes and text, share one stacking
   // order: z first (higher draws on top), then start. Video-track footage stays
   // beneath every overlay visual.
   const overlayEmitters: Array<{ z: number; start: number; emit: () => void }> = [];
@@ -252,7 +273,8 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     chain.push(...transformFilters(c,width,height,dur));
     const tr = incomingTransition(tl,c);
     if(tr) { const p=`min(1,max(0,T/${f(tr.duration)}))`, alpha=({dissolve:p,'wipe-left':`lte(X,W*(${p}))`,'wipe-right':`gte(X,W*(1-(${p})))`,'wipe-up':`gte(Y,H*(1-(${p})))`,'wipe-down':`lte(Y,H*(${p}))`,iris:`lte(hypot(X-W/2,Y-H/2),hypot(W/2,H/2)*(${p}))`,'barn-h':`lte(abs(X-W/2),W/2*(${p}))`,'barn-v':`lte(abs(Y-H/2),H/2*(${p}))`,diamond:`lte(abs(X-W/2)/W+abs(Y-H/2)/H,${p})`,'wipe-diagonal':`lte(X/W+Y/H,2*(${p}))`} as Record<string,string>)[tr.type];
-      chain.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*(${alpha})'`); }
+      if (tr.type === "dissolve" && gainFilter) chain.push(gainFilter(dur, (t) => Math.min(1, Math.max(0, t / tr.duration))));
+      else chain.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*(${alpha})'`); }
 
     chain.push(`setpts=PTS+${f(c.start)}/TB`);
     filters.push(`${entry}${chain.length ? "," + chain.join(",") : ""}[cv${layer}]`);
@@ -288,8 +310,10 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     };
     const alpha = `${outer}*(${hasStroke ? `if(${inner},${s.fill === "transparent" ? 0 : 255},255)` : s.fill === "transparent" ? 0 : 255})`;
     const label = `cg${layer}`, next = `base${layer + 1}`;
-    filters.push([`color=c=black@0:s=${w}x${h}:r=${fps}:d=${f(dur)}`, "format=rgba",
+    // The shape never changes between frames: draw one frame with geq, then repeat it for the clip's length.
+    filters.push([`color=c=black@0:s=${w}x${h}:r=${fps}:d=${f(1 / fps)}`, "format=rgba",
       `geq=r='${channel(0)}':g='${channel(1)}':b='${channel(2)}':a='${alpha}'`, "format=yuva420p",
+      `loop=loop=${Math.ceil(dur * fps)}:size=1:start=0`, `setpts=N/(${fps}*TB)`, `trim=duration=${f(dur)}`,
       ...colorFilters(c), ...transformFilters(c, w, h, dur, true), `setpts=PTS+${f(c.start)}/TB`].join(",") + `[${label}]`);
     filters.push(`[${current}][${label}]overlay=x='main_w*(${animationExpression(c,"x",`(t-${f(c.start)})`)})-overlay_w/2':y='main_h*(${animationExpression(c,"y",`(t-${f(c.start)})`)})-overlay_h/2':eof_action=pass:enable='gte(t,${f(c.start)})*lt(t,${f(c.start+dur)})':format=auto[${next}]`);
     current = next; layer++;
@@ -412,7 +436,7 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
         });
       });
     } else {
-      // Plain text: one drawtext per line — plus one per colour step when cycling, each in its time window.
+      // Plain text: one drawtext per line, plus one per colour step when cycling, each in its time window.
       lineFilters = [];
       const colors = cycle ? cycle.steps : [(c.textColor ?? "#ffffff")];
       files.forEach((file, j) => {

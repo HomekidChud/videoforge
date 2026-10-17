@@ -1,0 +1,150 @@
+WEBVTT
+
+1
+00:00:00.500 --> 00:00:04.106
+This tutorial turns one clip into a finished edit.
+
+2
+00:00:04.106 --> 00:00:15.287
+You will trim two cuts and join them with a dissolve, apply a warm colour look, add a headline, a floating badge and a lower third, and then export an MP4.
+
+3
+00:00:15.287 --> 00:00:17.450
+It takes about twenty minutes.
+
+4
+00:00:18.200 --> 00:00:20.433
+Begin by importing the clip.
+
+5
+00:00:20.433 --> 00:00:25.218
+Choose Import media in the Media panel and select your file.
+
+6
+00:00:25.218 --> 00:00:28.887
+Its length and thumbnail appear straight away.
+
+7
+00:00:28.887 --> 00:00:34.310
+Drag the clip onto the video track, then name the project Fire edit.
+
+8
+00:00:35.060 --> 00:00:37.928
+Watch the clip once and find its best moment.
+
+9
+00:00:37.928 --> 00:00:42.837
+Select the clip, and in the inspector under Timing, set Out to eight seconds.
+
+10
+00:00:42.837 --> 00:00:45.450
+The first cut now runs for eight seconds.
+
+11
+00:00:46.200 --> 00:00:50.199
+Duplicate the clip with the Duplicate button in the inspector.
+
+12
+00:00:50.199 --> 00:00:52.779
+Place the copy where the first cut ends.
+
+13
+00:00:52.779 --> 00:01:00.390
+Set its In point to eight seconds, so the second cut shows new footage, and trim it to about seven and a half seconds.
+
+14
+00:01:01.140 --> 00:01:05.183
+Select both clips and open the Edit tab in the inspector.
+
+15
+00:01:05.183 --> 00:01:07.666
+Under colour, set the look to Warm.
+
+16
+00:01:07.666 --> 00:01:12.420
+Everything shifts toward amber, and the highlights roll off gently.
+
+17
+00:01:12.420 --> 00:01:16.250
+If the footage is dark, raise the brightness a little.
+
+18
+00:01:17.000 --> 00:01:19.945
+Choose Add title and type Fire edit.
+
+19
+00:01:19.945 --> 00:01:27.228
+Set the size to ten percent, select a bold weight, and raise the title to twenty percent.
+
+20
+00:01:27.228 --> 00:01:34.510
+Extend its duration to fifteen seconds, then apply the Spring preset from the Motion tab.
+
+21
+00:01:38.740 --> 00:01:42.793
+Open the Graphics panel and insert an ellipse.
+
+22
+00:01:42.793 --> 00:01:49.665
+Size it as a small circle, fill it with orange, and place it low in the frame.
+
+23
+00:01:49.665 --> 00:01:56.890
+In the Motion tab, expand Animate with code, choose the Float recipe and apply it.
+
+24
+00:01:58.450 --> 00:02:00.944
+Move the playhead to two seconds.
+
+25
+00:02:00.944 --> 00:02:04.949
+In the Graphics panel, open the lower third template.
+
+26
+00:02:04.949 --> 00:02:12.280
+Enter a name and a supporting line, set the duration to four seconds, and add it to the timeline.
+
+27
+00:02:13.030 --> 00:02:16.413
+Open the Effects panel and find Transitions.
+
+28
+00:02:16.413 --> 00:02:19.719
+Select the second clip, and apply Dissolve.
+
+29
+00:02:19.719 --> 00:02:26.409
+The transition overlaps the two cuts and moves later video up, so the edit stays tight.
+
+30
+00:02:26.409 --> 00:02:30.100
+It plays in the preview and survives the export.
+
+31
+00:02:30.850 --> 00:02:33.695
+Play the whole edit once from the start.
+
+32
+00:02:33.695 --> 00:02:41.450
+The headline springs in, the badge floats, the lower third arrives at two seconds, and the two cuts dissolve.
+
+33
+00:02:41.450 --> 00:02:44.153
+When you are satisfied, select Export.
+
+34
+00:02:44.153 --> 00:02:50.840
+The render runs on the server with FFmpeg, and the finished MP4 downloads from the same panel.
+
+35
+00:02:51.590 --> 00:02:53.590
+That completes the fire edit.
+
+36
+00:02:53.590 --> 00:02:59.315
+Every layer is an ordinary clip, so anything can be retimed or restyled afterwards.
+
+37
+00:02:59.315 --> 00:03:06.420
+The documentation covers transitions, rendering and the API operations behind every step you performed.
+

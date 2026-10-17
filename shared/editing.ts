@@ -15,10 +15,10 @@ export function splitKeyframes(c:Clip, at:number) { return [sliceKeyframes(c,0,a
 /** A preset that animates a property takes over from any code expression on it. */
 function usePreset(c: Clip, preset: string, options: { duration?: number; delay?: number; strength?: number; easing?: string }) {
   const patch = motionPreset(c, preset, options);
-  // An explicit easing (anything but "preset") replaces the curves' own easings —
+  // An explicit easing (anything but "preset") replaces the curves' own easings -
   // except sampled curves (spring, bounce), whose shape lives in the samples.
   // The preset's patch carries over the clip's other curves unchanged (same array
-  // reference), so only curves whose array the preset replaced get the new easing —
+  // reference), so only curves whose array the preset replaced get the new easing -
   // and the expression cleanup below still recognises which properties it owns.
   const easing = typeof options.easing === "string" && options.easing && options.easing !== "preset" ? options.easing : undefined;
   if (easing && patch.keyframes) {
@@ -114,7 +114,7 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
         case "trim_clip": {
           const { clipId, inPoint, outPoint } = args || {};
           const c = find(clipId);
-          if (c.speedRamp?.length) throw new Error("this clip has speed steps — change its length with the Speed steps block");
+          if (c.speedRamp?.length) throw new Error("this clip has speed steps, change its length with the Speed steps block");
           const patch: Partial<Clip> = {};
           if (typeof inPoint === "number") patch.inPoint = Math.max(0, inPoint);
           if (typeof outPoint === "number") patch.outPoint = Math.max((patch.inPoint ?? c.inPoint) + 0.1, outPoint);
@@ -127,7 +127,7 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
           if (typeof start === "number") c.start = Math.max(0, start);
           if (["video", "overlay", "audio"].includes(track)) {
             // Text and shapes always render above video footage, so the video track
-            // is for pictures and footage — keep them on the overlay track.
+            // is for pictures and footage, keep them on the overlay track.
             if (track === "video" && (c.text || c.shape)) throw new Error("text and shapes stay on the overlay track");
             c.track = track;
           }
@@ -151,7 +151,7 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
           const { clipId, ...patch } = args || {};
           const c = find(clipId);
           const { id: _id, assetId: _asset, ...safe } = patch;
-          if (safe.crop !== undefined && !c.assetId) throw new Error("crop applies to picture and video clips — text and shapes cannot be cropped");
+          if (safe.crop !== undefined && !c.assetId) throw new Error("crop applies to picture and video clips, text and shapes cannot be cropped");
           // normalizeClip drops fields equal to their defaults, so replacing the
           // object (rather than merging) lets a patch reset a value to default.
           clips[clips.indexOf(c)] = patchWithAnimation(c, safe);
@@ -196,7 +196,7 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
           if (typeof assetId !== "string" || !assetId.trim()) throw new Error("assetId required");
           if (c.assetId === "") throw new Error("swap_asset only applies to media clips (assetId set); text and shape clips cannot become media");
           // Preserve clip identity, placement, style, and playback speed. Only the source
-          // and trim window change. Speed is NOT reset — the displayed duration follows
+          // and trim window change. Speed is NOT reset, the displayed duration follows
           // from (outPoint - inPoint) / speed exactly as before.
           const patch: Partial<Clip> = { assetId };
           if (typeof inPoint === "number") patch.inPoint = Math.max(0, inPoint);
@@ -223,8 +223,8 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
           }
           // Keyframes: default = proportionally stretch the original curves to the new
           // displayed duration (so a shortened clip still ends at its original final
-          // values). keepKeyframes:true preserves the original arrays verbatim — even
-          // beyond the new window — which normalization may then clamp.
+          // values). keepKeyframes:true preserves the original arrays verbatim, even
+          // beyond the new window, which normalization may then clamp.
           if (keepKeyframes === true) {
             clips[clips.indexOf(c)] = patchWithAnimation({ ...c, ...patch }, { keyframes: c.keyframes } as any);
           } else {
@@ -328,7 +328,7 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
           const c=find(args?.clipId), copy=JSON.parse(JSON.stringify(c));
           copy.id=args.newId??uid();
           copy.start=args.start??clipEnd(c);
-          // Optional position offset for the copy — shadows, rows, patterns.
+          // Optional position offset for the copy, shadows, rows, patterns.
           if (args.dx!==undefined) { const n=Number(args.dx); if(!Number.isFinite(n)) throw new Error("dx must be a number"); copy.x=Math.round((clipX(c)+n)*1000)/1000; }
           if (args.dy!==undefined) { const n=Number(args.dy); if(!Number.isFinite(n)) throw new Error("dy must be a number"); copy.y=Math.round((clipY(c)+n)*1000)/1000; }
           clips.push(copy); break;
@@ -357,13 +357,13 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
           break;
         }
         case "save_sticker": {
-          // The timeline does not change — the studio saves the clip as a sticker
+          // The timeline does not change, the studio saves the clip as a sticker
           // when the tool runs. Kept as a valid op so saved tools keep working.
           break;
         }
         case "align_clips": {
-          // Line clips up by their REAL edges — measured bounds, wrapped text
-          // included — against each other or flush with the frame.
+          // Line clips up by their REAL edges, measured bounds, wrapped text
+          // included, against each other or flush with the frame.
           if (!Array.isArray(args.clipIds) || !args.clipIds.length) throw new Error("clipIds required");
           const modes = ["left", "center", "right", "top", "middle", "bottom", "frame-left", "frame-right", "frame-top", "frame-bottom", "distribute-h", "distribute-v"];
           const mode = modes.includes(args.mode) ? args.mode : "left";
@@ -395,7 +395,7 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
         case "move_layer": {
           // True stacking order within a track: z is honoured by the preview and the renderer.
           // The clip moves exactly one position in the track's paint order (z, then start,
-          // then list order) — front/back jump to the ends — and the track's z ranks are
+          // then list order), front/back jump to the ends, and the track's z ranks are
           // renumbered 0..n-1 so the new order is exact, whatever the old ranks were.
           const c=find(args?.clipId);
           if (c.track === "audio") throw new Error("audio clips have no layers");

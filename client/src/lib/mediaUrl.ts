@@ -144,7 +144,7 @@ export function useMediaTokenLifecycle(resourceIds: (string | null | undefined)[
     let cancelled = false;
     const timers: ReturnType<typeof setTimeout>[] = [];
 
-    // fetch a token and schedule the NEXT renewal if we got one —
+    // fetch a token and schedule the NEXT renewal if we got one -
     // recursive so renewals chain until cancelled.
     async function renew(id: string, depth: number = 0) {
       if (cancelled) return;

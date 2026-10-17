@@ -27,7 +27,7 @@ import crypto from "node:crypto";
 const SYNC_DIR = path.resolve(process.env.VIDEOFORGE_SYNC_DIR ?? "data/restore");
 const MANIFEST = path.join(SYNC_DIR, "save_manifest.json");
 
-// The manifest is an optional backup — it must never be able to stop the
+// The manifest is an optional backup, it must never be able to stop the
 // server from booting. If the sync directory cannot be created (e.g. the
 // path is outside a mounted persistent disk and the sandbox user cannot
 // write there, as happens on Render when the disk is missing or mounted
@@ -65,7 +65,7 @@ function loadManifest(): SaveManifest {
 
 /** Write the manifest to disk. Never writes a value that includes a plaintext key. */
 export function saveManifest(manifest: Omit<SaveManifest, "updatedAt" | "version">): void {
-  if (!syncDirOk) return; // no writable sync directory — backup disabled, not fatal
+  if (!syncDirOk) return; // no writable sync directory, backup disabled, not fatal
   const full: SaveManifest = { ...manifest, version: 1, updatedAt: now() };
   const tmp = `${MANIFEST}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(full, null, 2), { mode: 0o600 });
@@ -74,7 +74,7 @@ export function saveManifest(manifest: Omit<SaveManifest, "updatedAt" | "version
 
 /**
  * Restore from the manifest. Reads every table, only writes what is missing.
- * Never overwrites newer rows — an existing project key is not clobbered if
+ * Never overwrites newer rows, an existing project key is not clobbered if
  * it is newer than the manifest. Returns true if anything was restored.
  * SAFETY: this is NOT called on boot. A manifest is a point-in-time backup
  * snapshot, and merging it blindly on every boot would resurrect projects

@@ -71,7 +71,7 @@ export type ToolContext = {
   duration: number;
   /** Ids of the selected clips. */
   selection: string[];
-  /** Every clip with its kind and timing — audio clips included, so tools can change volume.
+  /** Every clip with its kind and timing, audio clips included, so tools can change volume.
    *  `raw` carries the full clip, so the studio can save a clip as a sticker. */
   clips: { id: string; kind: "text" | "shape" | "media" | "audio"; start: number; duration: number; label?: string; color?: string; text?: string; raw?: Clip }[];
   /** Canvas size. */
@@ -257,7 +257,7 @@ function resolveValue(value: unknown, vars: ToolVars): unknown {
   apply("clipId", vars.clipId);
   apply("selection", vars.selection.join(","));
   // A template that is now arithmetic ("$playhead + $index * 0.4") is evaluated to a number.
-  // A tiny recursive-descent parser: numbers, + - * / and parentheses only — no Function, no globals.
+  // A tiny recursive-descent parser: numbers, + - * / and parentheses only, no Function, no globals.
   if (value.includes("$")) {
     const n = evalArithmetic(out);
     if (n !== undefined) return n;
@@ -370,7 +370,7 @@ export function convertOpArgs(op: string, args: Record<string, unknown>): Record
       if (Number.isFinite(n)) args[p.key] = n;
     }
     if (p.key === "clipIds") {
-      // Always an array — even empty — so blocks and converted code agree exactly.
+      // Always an array, even empty, so blocks and converted code agree exactly.
       const list = (args[p.key] as string).split(",").map((x) => x.trim()).filter(Boolean);
       args[p.key] = list;
     }
@@ -439,8 +439,8 @@ function elasticOut(t: number): number {
 }
 
 /**
- * Two keyframes from → to, or — for bounce/elastic, which the engine's bezier
- * easings cannot express — a sampled curve of linear keyframes that approximates
+ * Two keyframes from → to, or, for bounce/elastic, which the engine's bezier
+ * easings cannot express, a sampled curve of linear keyframes that approximates
  * the same motion. Used identically by blocks and by the vf code helper.
  */
 export function keyframesFromTo(from: number, to: number, duration: number, delay: number, easing: string): { time: number; value: number; easing?: string }[] {
@@ -581,7 +581,7 @@ export function makeCodeApi(ctx: ToolContext) {
     keyframes: (id: string, property: string, keyframes: unknown[]) => op({ op: "set_keyframes", args: { clipId: needId(id), property, keyframes } }),
     animate: (id: string, expressions: Record<string, string>) => op({ op: "animate_code", args: { clipId: needId(id), expressions } }),
     markers: (bpm = 120, count = 8) => op({ op: "add_beat_markers", args: { bpm, count } }),
-    /** Animate a property from one value to another — the friendly keyframe block as code. */
+    /** Animate a property from one value to another, the friendly keyframe block as code. */
     animateProperty: (id: string, property: string, from: number, to: number, opts: { duration?: number; delay?: number; easing?: string } = {}) =>
       op({ op: "set_keyframes", args: { clipId: needId(id), property, keyframes: keyframesFromTo(from, to, Math.max(0.01, opts.duration ?? 1), Math.max(0, opts.delay ?? 0), opts.easing ?? "ease-out") } }),
     /** Type text on (typewriter), or reveal it word by word / line by line. */
@@ -610,7 +610,7 @@ export const VF_HELPERS: VfHelperDoc[] = [
   { name: "vf.selection", signature: "vf.selection", description: "The ids of the clips you selected.", example: `const ops = [];\nfor (const id of vf.selection) ops.push(vf.motion(id, "spring"));\nreturn ops;` },
   { name: "vf.clips", signature: "vf.clips", description: "Every visual clip: id, kind, start and duration.", example: `const ops = [];\nfor (const c of vf.clips) if (c.kind === "text") ops.push(vf.update(c.id, { fontWeight: 700 }));\nreturn ops;` },
   { name: "vf.resolution", signature: "vf.resolution", description: "The canvas size: { width, height }.", example: `return [vf.addShape({ shape: { type: "ellipse", width: 0.3, height: 0.3, fill: "#f6a447" } })];` },
-  { name: "vf.fps", signature: "vf.fps", description: "The project's frames per second — handy with frame blocks.", example: `return [vf.addText({ text: "frame 30 = " + 30 / vf.fps + "s" })];` },
+  { name: "vf.fps", signature: "vf.fps", description: "The project's frames per second, handy with frame blocks.", example: `return [vf.addText({ text: "frame 30 = " + 30 / vf.fps + "s" })];` },
   { name: "vf.addText", signature: "vf.addText({ text, start?, duration?, ... })", description: "Adds a text clip. start defaults to the playhead.", example: `return [vf.addText({ text: "Hello", duration: 3 })];` },
   { name: "vf.addShape", signature: "vf.addShape({ shape, duration? })", description: "Adds a rectangle, ellipse or line.", example: `return [vf.addShape({ shape: { type: "rectangle", width: 0.3, height: 0.2, fill: "#4a8fd6" } })];` },
   { name: "vf.update", signature: "vf.update(id, patch)", description: "Changes any clip fields: position, colour, speed and more.", example: `return [vf.update("clip1", { x: 0.5, y: 0.4 })];` },
@@ -672,8 +672,8 @@ const P = {
 const PRESET_IDS: string[] = MOTION_PRESETS.map((p) => p.id);
 const presetOptions = (ids: string[]) => ({ key: "preset", label: "Move", type: "select", def: ids[0], options: ids } as ToolParam);
 const MOTION_GROUPS: { id: string; group: "Move in" | "Move out" | "Attention" | "Springy" | "Camera"; ids: string[]; label: string; description: string }[] = [
-  { id: "motion-entrances", group: "Move in", ids: ["fade", "slide-left", "slide-right", "rise", "drop", "pop", "zoom-out", "swing", "spin", "reveal"], label: "Move a clip in", description: "Animates a clip you already have — fade, slide, pop, swing and more." },
-  { id: "motion-exits", group: "Move out", ids: ["exit-left", "exit-right", "exit-up", "exit-down", "fade-out", "shrink-out", "spin-out", "pop-out", "reveal-out"], label: "Move a clip out", description: "Animates a clip away — slide out, fade out, shrink or spin." },
+  { id: "motion-entrances", group: "Move in", ids: ["fade", "slide-left", "slide-right", "rise", "drop", "pop", "zoom-out", "swing", "spin", "reveal"], label: "Move a clip in", description: "Animates a clip you already have, fade, slide, pop, swing and more." },
+  { id: "motion-exits", group: "Move out", ids: ["exit-left", "exit-right", "exit-up", "exit-down", "fade-out", "shrink-out", "spin-out", "pop-out", "reveal-out"], label: "Move a clip out", description: "Animates a clip away, slide out, fade out, shrink or spin." },
   { id: "motion-attention", group: "Attention", ids: ["pulse", "shake", "wobble", "tada", "heartbeat", "blink", "flash", "glitch"], label: "Get attention", description: "Shakes, pulses or wobbles a clip so people look at it." },
   { id: "motion-springy", group: "Springy", ids: ["spring", "whip", "rubber", "bounce-in"], label: "Springy move", description: "Bouncy, elastic moves that overshoot and settle." },
   { id: "motion-camera", group: "Camera", ids: ["zoom", "drift"], label: "Camera move", description: "Slow zooms and drifts on a clip, like a moving camera." },
@@ -746,13 +746,13 @@ export const BLOCK_LIBRARY: FriendlyBlock[] = [
   { id: "edit-mirror", label: "Mirror", group: "Edit", op: "update_clip", description: "Flips a clip side to side, like a mirror.",
     args: { flipX: true },
     params: [P.clipId, { key: "flipX", label: "Mirror", type: "select", def: "true", options: ["true", "false"] }] },
-  { id: "edit-align", label: "Line up", group: "Edit", op: "align_clips", description: "Lines clips up by their real edges — against each other or flush with the frame.",
+  { id: "edit-align", label: "Line up", group: "Edit", op: "align_clips", description: "Lines clips up by their real edges, against each other or flush with the frame.",
     args: { mode: "left" },
     params: [{ key: "clipIds", label: "Clips", type: "text", def: "$selection", placeholder: "$selection" }, { key: "mode", label: "How", type: "select", def: "left", options: ["left", "center", "right", "top", "middle", "bottom", "frame-left", "frame-right", "frame-top", "frame-bottom", "distribute-h", "distribute-v"] }] },
   { id: "edit-snap", label: "Snap to grid", group: "Edit", op: "snap_to_grid", description: "Rounds clip positions to a grid so they line up neatly.",
     args: { grid: 0.1 },
     params: [{ key: "clipIds", label: "Clips", type: "text", def: "$selection", placeholder: "$selection" }, { key: "grid", label: "Grid size", type: "number", def: 0.1, min: 0.02, max: 0.5, step: 0.01 }] },
-  { id: "edit-crop", label: "Crop", group: "Edit", op: "update_clip", description: "Trims a picture or video in from the sides — like cropping a photo.",
+  { id: "edit-crop", label: "Crop", group: "Edit", op: "update_clip", description: "Trims a picture or video in from the sides, like cropping a photo.",
     args: { __crop: true, trimLeft: 0.1, trimRight: 0, trimTop: 0, trimBottom: 0.1 },
     params: [P.clipId, { key: "trimLeft", label: "Trim left", type: "number", def: 0.1, min: 0, max: 0.45, step: 0.05 }, { key: "trimRight", label: "Trim right", type: "number", def: 0, min: 0, max: 0.45, step: 0.05 }, { key: "trimTop", label: "Trim top", type: "number", def: 0, min: 0, max: 0.45, step: 0.05 }, { key: "trimBottom", label: "Trim bottom", type: "number", def: 0.1, min: 0, max: 0.45, step: 0.05 }] },
   { id: "edit-opacity", label: "See-through", group: "Edit", op: "update_clip", description: "Sets how see-through a clip is (1 = solid, 0 = invisible).",
@@ -806,7 +806,7 @@ export const BLOCK_LIBRARY: FriendlyBlock[] = [
   { id: "edit-layer-down", label: "Backwards one layer", group: "Edit", op: "move_layer", description: "Lowers a clip one layer, under the clip beneath it.",
     args: { direction: "backward" },
     params: [P.clipId, { key: "direction", label: "Direction", type: "select", def: "backward", options: ["forward", "backward", "front", "back"] }] },
-  { id: "edit-copy-offset", label: "Copy with offset", group: "Edit", op: "duplicate_clip", description: "Copies a clip and nudges the copy sideways — great for shadows and rows.",
+  { id: "edit-copy-offset", label: "Copy with offset", group: "Edit", op: "duplicate_clip", description: "Copies a clip and nudges the copy sideways, great for shadows and rows.",
     args: { dx: 0.05, dy: 0 },
     params: [P.clipId, { key: "start", label: "Start (s)", type: "number", def: "$playhead", min: 0, max: 86400, step: 0.1 }, { key: "dx", label: "Sideways offset", type: "number", def: 0.05, min: -1, max: 1, step: 0.01 }, { key: "dy", label: "Up/down offset", type: "number", def: 0, min: -1, max: 1, step: 0.01 }] },
   { id: "edit-replace-text", label: "Change words", group: "Edit", op: "update_clip", description: "Changes what a text clip says, keeping its font, colour and size.",
@@ -819,7 +819,7 @@ export const BLOCK_LIBRARY: FriendlyBlock[] = [
     params: [P.clipId, presetOptions(g.ids), P.motionDuration, P.motionDelay, P.strength, MOTION_EASING],
   })),
   // Keyframe animation: any property, from one value to another, with an easing.
-  { id: "animate-property", label: "Animate a property", group: "Animate", op: "set_keyframes", description: "Changes any property over time — position, size, spin, see-through, colour and more.",
+  { id: "animate-property", label: "Animate a property", group: "Animate", op: "set_keyframes", description: "Changes any property over time, position, size, spin, see-through, colour and more.",
     args: { property: "scale", from: 0.2, to: 1, duration: 1, delay: 0, easing: "back-out" },
     params: [P.clipId, { key: "property", label: "Property", type: "select", def: "scale", options: ANIMATE_PROPERTY_OPTIONS }, { key: "from", label: "From", type: "number", def: 0.2, min: -360, max: 360, step: 0.01 }, { key: "to", label: "To", type: "number", def: 1, min: -360, max: 360, step: 0.01 }, P.animDuration, P.animDelay, { key: "easing", label: "Easing", type: "select", def: "back-out", options: EASING_OPTIONS }] },
   { id: "slide-in-left", label: "Slide in from left", group: "Animate", op: "set_keyframes", description: "Slides a clip in from the left edge.",
@@ -840,7 +840,7 @@ export const BLOCK_LIBRARY: FriendlyBlock[] = [
   { id: "spin-in", label: "Spin in", group: "Animate", op: "set_keyframes", description: "Twists a clip into place.",
     args: { property: "rotation", from: -120, to: 0, duration: 1, easing: "ease-out" },
     params: [P.clipId, { key: "from", label: "From", type: "number", def: -120, min: -360, max: 360, step: 1 }, { key: "to", label: "To", type: "number", def: 0, min: -360, max: 360, step: 1 }, P.animDuration, P.animDelay, { key: "easing", label: "Easing", type: "select", def: "ease-out", options: EASING_OPTIONS }] },
-  { id: "fade-in-soft", label: "Fade in slowly", group: "Animate", op: "set_keyframes", description: "Fades a clip in over time — great for subtitles.",
+  { id: "fade-in-soft", label: "Fade in slowly", group: "Animate", op: "set_keyframes", description: "Fades a clip in over time, great for subtitles.",
     args: { property: "opacity", from: 0, to: 1, duration: 2, easing: "ease-out" },
     params: [P.clipId, P.animDuration, P.animDelay, { key: "easing", label: "Easing", type: "select", def: "ease-out", options: EASING_OPTIONS }] },
   { id: "fade-out-soft", label: "Fade out slowly", group: "Animate", op: "set_keyframes", description: "Fades a clip out over time.",
@@ -875,7 +875,7 @@ export const BLOCK_LIBRARY: FriendlyBlock[] = [
   { id: "speed-ramp", label: "Speed steps", group: "Timing", op: "set_speed_ramp", description: "Changes a clip's speed over time: steps of fast, slow and normal in one clip.",
     args: { segments: "[{ \"speed\": 1, \"duration\": 2 }, { \"speed\": 2, \"duration\": 2 }]" },
     params: [P.clipId, { key: "segments", label: "Speed steps (JSON)", type: "json", def: "[{ \"speed\": 1, \"duration\": 2 }, { \"speed\": 2, \"duration\": 2 }]" }] },
-  { id: "freeze-frame", label: "Freeze frame", group: "Timing", op: "freeze_frame", description: "Pauses a clip on one frame and holds it — like hitting pause.",
+  { id: "freeze-frame", label: "Freeze frame", group: "Timing", op: "freeze_frame", description: "Pauses a clip on one frame and holds it, like hitting pause.",
     args: { duration: 2 },
     params: [P.clipId, { key: "at", label: "Freeze at (s)", type: "number", def: "$playhead", min: 0, max: 86400, step: 0.1 }, { key: "duration", label: "Hold for (s)", type: "number", def: 2, min: 0.1, max: 60, step: 0.1 }] },
   { id: "speed-up", label: "Speed up", group: "Timing", op: "update_clip", description: "Plays a clip faster (2 = double speed).",
@@ -889,8 +889,8 @@ export const BLOCK_LIBRARY: FriendlyBlock[] = [
   { id: "retime-motion", label: "Stretch motion", group: "Timing", op: "retime_animation", description: "Stretches or squeezes a clip's animation into a new time window.",
     args: { duration: 2, delay: 0 },
     params: [P.clipId, { key: "duration", label: "New duration (s)", type: "number", def: 2, min: 0.1, max: 60, step: 0.1 }, { key: "delay", label: "Delay (s)", type: "number", def: 0, min: 0, max: 60, step: 0.1 }] },
-  // Clip rigs: any clip — video, image, text or shape — behaves like a part of a puppet.
-  { id: "rig-pose", label: "Pose clips together", group: "Rig", op: "rig_pose", description: "Moves several clips to a pose at once — any mix of position, size, turn and see-through — from where they are now.",
+  // Clip rigs: any clip, video, image, text or shape, behaves like a part of a puppet.
+  { id: "rig-pose", label: "Pose clips together", group: "Rig", op: "rig_pose", description: "Moves several clips to a pose at once, any mix of position, size, turn and see-through, from where they are now.",
     args: { rotation: 20, duration: 0.8, delay: 0, easing: "ease-out" },
     params: [{ key: "clipIds", label: "Clips", type: "text", def: "$selection", placeholder: "$selection" },
       { key: "x", label: "X (0..1)", type: "number", def: "", min: 0, max: 1, step: 0.01 }, { key: "y", label: "Y (0..1)", type: "number", def: "", min: 0, max: 1, step: 0.01 },
@@ -1003,7 +1003,7 @@ export function validateGraph(graph: ToolGraph, ctx: ToolContext): GraphIssue[] 
   };
   for (const s of starts) {
     const c = cycle(s.id);
-    if (c) issues.push({ nodeId: c, level: "error", message: "These blocks form a loop — remove the connection that closes it." });
+    if (c) issues.push({ nodeId: c, level: "error", message: "These blocks form a loop, remove the connection that closes it." });
   }
   for (const n of graph.nodes) {
     if (n.type === "start" || n.type === "clipRef" || n.type === "frame" || n.type === "function" || n.type === "comment" || n.type === "value") continue;
@@ -1018,7 +1018,7 @@ export function validateGraph(graph: ToolGraph, ctx: ToolContext): GraphIssue[] 
     }
     if (!paramTargets.has(n.id)) issues.push({ nodeId: n.id, level: "warning", message: "This value block is not plugged into a field, so it does nothing." });
   }
-  // Action nodes: op known, JSON valid, friendly fields sane — on the args that
+  // Action nodes: op known, JSON valid, friendly fields sane, on the args that
   // will actually run, with any connected clip/frame/value applied first.
   const ANIMATABLE_KEYS = Object.keys(ANIMATABLE);
   const EASING_IDS = [...Object.keys(EASINGS), "hold", "step-start", "bounce-out", "elastic-out"];
@@ -1051,12 +1051,12 @@ export function validateGraph(graph: ToolGraph, ctx: ToolContext): GraphIssue[] 
     }
     // Motion blocks: the preset must exist in the engine.
     if (op === "apply_motion" && typeof eff.preset === "string" && !PRESET_IDS.includes(eff.preset)) {
-      issues.push({ nodeId: n.id, level: "error", message: `"${eff.preset}" is not a motion preset — pick one from the list.` });
+      issues.push({ nodeId: n.id, level: "error", message: `"${eff.preset}" is not a motion preset, pick one from the list.` });
     }
     // Animate-property blocks: property, easing and from/to must make sense.
     if (op === "set_keyframes" && eff.keyframes === undefined && eff.from !== undefined) {
       if (typeof eff.property !== "string" || !ANIMATABLE_KEYS.includes(eff.property)) issues.push({ nodeId: n.id, level: "error", message: "Pick a property to animate." });
-      if (typeof eff.easing === "string" && eff.easing && !EASING_IDS.includes(eff.easing)) issues.push({ nodeId: n.id, level: "error", message: `"${eff.easing}" is not an easing — pick one from the list.` });
+      if (typeof eff.easing === "string" && eff.easing && !EASING_IDS.includes(eff.easing)) issues.push({ nodeId: n.id, level: "error", message: `"${eff.easing}" is not an easing, pick one from the list.` });
       if (!numericish(eff.from) || !numericish(eff.to)) issues.push({ nodeId: n.id, level: "error", message: "From and To must be numbers." });
     }
     // Text-effect blocks: mode, duration and delay must make sense.
@@ -1090,7 +1090,7 @@ export function validateGraph(graph: ToolGraph, ctx: ToolContext): GraphIssue[] 
       const ok = ["all", "text", "shape", "media", "audio", "selected"].includes(s)
         || (s.startsWith("colour:") && /^#[0-9a-fA-F]{6}$/.test(s.slice(7).trim()))
         || (s.startsWith("contains:") && s.slice(9).trim() !== "");
-      if (!ok) issues.push({ nodeId: n.id, level: "error", message: "For each clip needs a valid clip filter — pick one from the list." });
+      if (!ok) issues.push({ nodeId: n.id, level: "error", message: "For each clip needs a valid clip filter, pick one from the list." });
     }
   }
   // Functions: names, calls, recursion.
@@ -1397,7 +1397,7 @@ function safeFnName(name: string, taken: Set<string>): string {
 
 /**
  * Convert a studio graph into readable, commented JavaScript that runs through
- * the vf helper and produces the same operations as compileGraph — so kids can
+ * the vf helper and produces the same operations as compileGraph, so kids can
  * see how their blocks look as code. Expects a graph that already validates.
  */
 export function graphToCode(graph: ToolGraph): string {
@@ -1438,7 +1438,7 @@ export function graphToCode(graph: ToolGraph): string {
     const op = node.op ?? (node.block ? BLOCK_MAP.get(node.block)?.op : undefined) ?? "";
     const block = node.block ? BLOCK_MAP.get(node.block) : undefined;
     const label = block?.label ?? op ?? "Advanced op";
-    emit(depth, `// ${label}${block?.description ? " — " + block.description.toLowerCase() : ""}`);
+    emit(depth, `// ${label}${block?.description ? ", " + block.description.toLowerCase() : ""}`);
     const args = nodeArgs(node);
     const rendered = renderArgs(op, args, vars);
     const entries = (skip: string[] = []) => rendered.exprs.filter((e) => !skip.some((k) => e.startsWith(JSON.stringify(k) + ":")));
@@ -1557,7 +1557,7 @@ export function graphToCode(graph: ToolGraph): string {
     }
   };
 
-  lines.push("// Blocks were converted to code — this tool now runs the code.");
+  lines.push("// Blocks were converted to code, this tool now runs the code.");
   lines.push("// vf has the playhead, selection, every clip and the project fps.");
   lines.push("// Build a list of operations and return it; they run as one undoable step.");
   lines.push("");
@@ -1567,7 +1567,7 @@ export function graphToCode(graph: ToolGraph): string {
   // Function definitions come first so the chain can call them.
   for (const f of fnNodes) {
     const name = fnNames.get(f.id) ?? "fn";
-    lines.push(`// Function "${f.name}" — a named group of blocks.`);
+    lines.push(`// Function "${f.name}", a named group of blocks.`);
     lines.push(`const ${name} = (index, count, clipId) => {`);
     walkChain(body.get(f.id), { ...TOP_VARS, index: "index", count: "count", clipId: "clipId" }, 1, new Set());
     lines.push("};");
@@ -1601,7 +1601,7 @@ export function saveUserTools(tools: CustomTool[], storage: { getItem: (k: strin
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * Presets: ready-made recipes of connected blocks — like example videos you
+ * Presets: ready-made recipes of connected blocks, like example videos you
  * can take apart. Clicking one drops its blocks on the canvas, already wired
  * to each other; you then set them up (your words, your colours, your clips).
  * Nothing runs until you press Run.
@@ -1631,8 +1631,8 @@ export const TOOL_PRESETS: ToolPreset[] = [
   {
     id: "title-card",
     name: "Title card",
-    emoji: "🎬",
-    description: "A big title that floats up into place and fades in — the classic opener.",
+    emoji: "",
+    description: "A big title that floats up into place and fades in, the classic opener.",
     build: () => {
       const clip = `title-${presetUid()}`;
       const a = presetAction("add-title", { id: clip, text: "Your title", duration: 4, textSize: 12, y: 0.5, fontWeight: 800 }, 0, 0);
@@ -1644,7 +1644,7 @@ export const TOOL_PRESETS: ToolPreset[] = [
   {
     id: "lower-third",
     name: "Lower third",
-    emoji: "📺",
+    emoji: "",
     description: "A name bar with a title over it, like on the news. Both fade in together.",
     build: () => {
       const bar = `bar-${presetUid()}`, name = `name-${presetUid()}`;
@@ -1658,8 +1658,8 @@ export const TOOL_PRESETS: ToolPreset[] = [
   {
     id: "kinetic-word",
     name: "Kinetic word",
-    emoji: "💥",
-    description: "A word that spins in and then cycles through colours — great for punch-ins.",
+    emoji: "",
+    description: "A word that spins in and then cycles through colours, great for punch-ins.",
     build: () => {
       const clip = `word-${presetUid()}`;
       const a = presetAction("add-title", { id: clip, text: "POW!", duration: 3, textSize: 14, fontWeight: 800 }, 0, 0);
@@ -1671,7 +1671,7 @@ export const TOOL_PRESETS: ToolPreset[] = [
   {
     id: "zoom-highlight",
     name: "Zoom highlight",
-    emoji: "🔍",
+    emoji: "",
     description: "Zooms a clip up to full size and makes it glow. Connect your clip to the Clip fields first.",
     build: () => {
       const note: ToolGraphNode = { id: uid(), type: "comment", text: "Connect a clip block to the two Clip fields", position: { x: 0, y: 0 } };
@@ -1683,7 +1683,7 @@ export const TOOL_PRESETS: ToolPreset[] = [
   {
     id: "staggered-captions",
     name: "Typing captions",
-    emoji: "💬",
+    emoji: "",
     description: "Three captions that type on one after another, half a second apart.",
     build: () => {
       const nodes: ToolGraphNode[] = [], edges: ToolGraphEdge[] = [];
@@ -1703,7 +1703,7 @@ export const TOOL_PRESETS: ToolPreset[] = [
   {
     id: "end-card",
     name: "End card",
-    emoji: "👋",
+    emoji: "",
     description: "A thanks-for-watching title that fades in gently and back out at the end.",
     build: () => {
       const clip = `end-${presetUid()}`;
@@ -1741,7 +1741,7 @@ export function decodeTool(text: string): CustomTool {
       ? decodeURIComponent(escape(atob(b64)))
       : Buffer.from(b64, "base64").toString("utf8");
     parsed = JSON.parse(json) as Partial<CustomTool>;
-  } catch { throw new Error("this tool code is damaged — copy it again from the Share button"); }
+  } catch { throw new Error("this tool code is damaged, copy it again from the Share button"); }
   if (typeof parsed.name !== "string" || !parsed.name.trim()) throw new Error("the tool code is missing a name");
   if (parsed.mode !== "blocks" && parsed.mode !== "code") throw new Error("the tool code must be a blocks or code tool");
   if (parsed.mode === "blocks" && !parsed.graph) throw new Error("the tool code has no blocks");
@@ -1761,12 +1761,12 @@ export function exportStandaloneScript(tool: CustomTool): string {
   const file = slug(tool.name);
   return [
     "// VideoForge tool: " + tool.name,
-    "// A standalone version of this code tool — it runs against the VideoForge API.",
+    "// A standalone version of this code tool, it runs against the VideoForge API.",
     "//",
     "// Usage:",
     "//   VF_API_KEY=vf_live_xxx node " + file + ".mjs <projectId> [--dry-run]",
     "//   VF_API_BASE overrides the server address (default http://localhost:5000).",
-    "// The playhead starts at 0 and nothing is selected — tools that read vf.playhead",
+    "// The playhead starts at 0 and nothing is selected, tools that read vf.playhead",
     "// or vf.selection run from the start of the timeline.",
     "// Get an API key with write scope from the Developer platform.",
     "",
@@ -1805,7 +1805,7 @@ export function exportStandaloneScript(tool: CustomTool): string {
     "  fps: timeline.fps ?? 30,",
     "};",
     "",
-    "// The vf helpers — the same ones the studio's code tools use.",
+    "// The vf helpers, the same ones the studio's code tools use.",
     "const needId = (id) => { if (!id || typeof id !== \"string\") throw new Error(\"this helper needs a clip id\"); return id; };",
     "const vf = {",
     "  playhead: ctx.playhead, duration: ctx.duration, selection: ctx.selection,",
@@ -1835,7 +1835,7 @@ export function exportStandaloneScript(tool: CustomTool): string {
     "  },",
     "};",
     "",
-    "// The tool's own code. It runs in your terminal, unsandboxed — only run code you trust.",
+    "// The tool's own code. It runs in your terminal, unsandboxed, only run code you trust.",
     "const TOOL_CODE = " + code + ";",
     "const fn = new Function(\"vf\", '\"use strict\";\\n' + TOOL_CODE);",
     "const ops = fn(vf);",

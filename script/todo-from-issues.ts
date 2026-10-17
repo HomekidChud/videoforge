@@ -20,7 +20,7 @@ const issues: Issue[] = [];
 for (let page = 1; page <= 5; page++) {
   const url = `https://api.github.com/repos/${repo}/issues?state=open&per_page=100&page=${page}${label ? `&labels=${encodeURIComponent(label)}` : ""}`;
   const res = await fetch(url, { headers });
-  if (!res.ok) throw new Error(`GitHub said ${res.status} ${res.statusText} for ${url}${res.status === 403 ? " — set GITHUB_TOKEN for a higher rate limit" : ""}`);
+  if (!res.ok) throw new Error(`GitHub said ${res.status} ${res.statusText} for ${url}${res.status === 403 ? ", set GITHUB_TOKEN for a higher rate limit" : ""}`);
   const batch = (await res.json()) as Issue[];
   issues.push(...batch);
   if (batch.length < 100) break;

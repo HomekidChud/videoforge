@@ -145,7 +145,7 @@
 @media(prefers-reduced-motion:reduce) { .studio:not(.live-watch) .workspace-divider:after { transition:none; } }
 
 /* ============================================================================
-   Save data and local drafts panel — richer look for the durability feature.
+   Save data and local drafts panel, richer look for the durability feature.
    The drafts panel rides the export-panel modal so it inherits the dark,
    glassy surface, but gets its own accent treatment so it reads as "your
    working copy" rather than "a cloud save".

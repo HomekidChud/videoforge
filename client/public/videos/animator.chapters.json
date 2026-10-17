@@ -1,0 +1,50 @@
+[
+ {
+  "id": "intro",
+  "title": "Introduction",
+  "start": 0,
+  "end": 18.67
+ },
+ {
+  "id": "open",
+  "title": "Open the Animator",
+  "start": 18.67,
+  "end": 33.89
+ },
+ {
+  "id": "rig",
+  "title": "Meet the rig",
+  "start": 33.89,
+  "end": 53.91
+ },
+ {
+  "id": "pose",
+  "title": "Pose and key",
+  "start": 53.91,
+  "end": 73.13
+ },
+ {
+  "id": "ease",
+  "title": "Ease the motion",
+  "start": 73.13,
+  "end": 99.63
+ },
+ {
+  "id": "play",
+  "title": "Play it back",
+  "start": 99.63,
+  "end": 113.61
+ },
+ {
+  "id": "apply",
+  "title": "Apply to edit",
+  "start": 113.61,
+  "end": 131.07
+ },
+ {
+  "id": "outro",
+  "title": "Summary",
+  "start": 131.07,
+  "end": 149.78
+ }
+]

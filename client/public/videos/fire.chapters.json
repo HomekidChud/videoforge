@@ -1,0 +1,68 @@
+[
+ {
+  "id": "intro",
+  "title": "Introduction",
+  "start": 0,
+  "end": 17.7
+ },
+ {
+  "id": "clip",
+  "title": "Get the clip in",
+  "start": 17.7,
+  "end": 34.56
+ },
+ {
+  "id": "trim",
+  "title": "Trim to the beat",
+  "start": 34.56,
+  "end": 45.7
+ },
+ {
+  "id": "second",
+  "title": "Make the second cut",
+  "start": 45.7,
+  "end": 60.64
+ },
+ {
+  "id": "look",
+  "title": "Warm the edit up",
+  "start": 60.64,
+  "end": 76.5
+ },
+ {
+  "id": "headline",
+  "title": "Add the headline",
+  "start": 76.5,
+  "end": 98.24
+ },
+ {
+  "id": "badge",
+  "title": "Add a badge that floats",
+  "start": 98.24,
+  "end": 117.95
+ },
+ {
+  "id": "lower",
+  "title": "Add the lower third",
+  "start": 117.95,
+  "end": 132.53
+ },
+ {
+  "id": "dissolve",
+  "title": "Join the cuts with a dissolve",
+  "start": 132.53,
+  "end": 150.35
+ },
+ {
+  "id": "export",
+  "title": "Check it, then export",
+  "start": 150.35,
+  "end": 171.09
+ },
+ {
+  "id": "outro",
+  "title": "Summary",
+  "start": 171.09,
+  "end": 189.66
+ }
+]

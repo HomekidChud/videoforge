@@ -97,7 +97,7 @@ export const TITLE_PRESETS: TitlePreset[] = [
   {id:"headline",label:"Headline",text:"Your story starts here",textSize:10,y:.5,textBg:false,font:"playfair-display",fontWeight:700},
   {id:"lower-third",label:"Lower third",text:"Name · Your role",textSize:5,y:.82,textBg:true,font:"inter",fontWeight:700},
   {id:"caption",label:"Caption",text:"Add your caption",textSize:4,y:.88,textBg:true,font:"lato"},
-  {id:"chapter",label:"Chapter card",text:"01 — A new chapter",textSize:8,y:.5,textBg:true,font:"cinzel"},
+  {id:"chapter",label:"Chapter card",text:"01, A new chapter",textSize:8,y:.5,textBg:true,font:"cinzel"},
   {id:"poster",label:"Poster shout",text:"MAKE IT LOUD",textSize:12,y:.5,textBg:false,font:"anton",textTransform:"uppercase"},
   {id:"note",label:"Handwritten note",text:"written by hand",textSize:6,y:.8,textBg:false,font:"caveat",lineHeight:1.3},
   {id:"quote",label:"Quote",text:"“Simplicity is the ultimate sophistication.”",textSize:5,y:.5,textBg:false,font:"lora",lineHeight:1.5},

@@ -172,7 +172,7 @@ async function runRender(jobId: string, projectId: string) {
   } catch (e: any) {
     storage.updateRenderJob(jobId, { status: "error", error: String(e?.message || e), updatedAt: now() });
   } finally {
-    for (const f of tempFiles) fs.promises.unlink(f).catch(() => {});
+    if (!process.env.VF_KEEP_TMP) for (const f of tempFiles) fs.promises.unlink(f).catch(() => {});
   }
 }
 
@@ -190,7 +190,7 @@ export async function registerRoutes(
   app.get("/api/health", (_req, res) => {
     const warnings: string[] = [];
     if (storageDegraded) warnings.push("configured database path is not writable; the server is running on an in-memory database and rejects write requests (503) until VIDEOFORGE_DB points inside a mounted, writable persistent disk");
-    // Configuration status only — never pings the cluster, so an unreachable
+    // Configuration status only, never pings the cluster, so an unreachable
     // optional integration cannot delay or fail app liveness. Use
     // `npm run mongo:check` to verify connectivity on demand.
     res.json({
@@ -230,7 +230,7 @@ export async function registerRoutes(
     const pending: Pending[] = [];
     let failed: string | null = null;
     busboy.on("file", (_name: string, stream: any, info: any) => {
-      // Stream straight to disk — never buffer whole videos in memory.
+      // Stream straight to disk, never buffer whole videos in memory.
       const id = uid();
       const dest = path.join(MEDIA_DIR, id);
       const out = fs.createWriteStream(dest, { highWaterMark: 1 << 20 });
@@ -293,7 +293,7 @@ export async function registerRoutes(
     res.json({ deleted: true });
   });
 
-  // raw binary streaming — accepts either a Bearer key or a signed ?st= token
+  // raw binary streaming, accepts either a Bearer key or a signed ?st= token
   app.get("/api/media/:id/raw", requireMediaAccess("asset"), (req, res) => {
     const a = storage.getAsset(String(req.params.id));
     if (!a) return res.status(404).json({ message: "asset not found" });
@@ -302,7 +302,7 @@ export async function registerRoutes(
     res.sendFile(path.resolve(a.storagePath), { dotfiles: "allow", cacheControl: false }, (err) => { if (err && !res.headersSent) res.status(404).json({ message: "media file missing" }); });
   });
 
-  // thumbnail (frame at 1s, or full image) — accepts Bearer key or signed ?st=
+  // thumbnail (frame at 1s, or full image), accepts Bearer key or signed ?st=
   app.get("/api/media/:id/thumb", requireMediaAccess("asset"), async (req, res) => {
     const a = storage.getAsset(String(req.params.id));
     if (!a) return res.status(404).json({ message: "asset not found" });

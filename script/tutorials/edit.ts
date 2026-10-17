@@ -19,6 +19,9 @@ const AUDIO = path.join(ROOT, "script/tutorials/audio");
 const OUT = path.join(ROOT, "client/public/videos");
 const narration = JSON.parse(fs.readFileSync(path.join(ROOT, "script/tutorials/narration", `${id}.json`), "utf8"));
 const manifest = JSON.parse(fs.readFileSync(path.join(WORK, "manifest.json"), "utf8"));
+// ONLY=intro,start renders a short test cut: quick to check the edit without waiting for the whole video.
+const ONLY = process.env.ONLY?.split(",");
+if (ONLY) { manifest.sections = manifest.sections.filter((x: any) => ONLY.includes(x.id)); narration.sections = narration.sections.filter((x: any) => ONLY.includes(x.id)); }
 const num = (v: number) => Math.round(v * 1000) / 1000;
 
 // ------------------------------------------------------------------ brand
@@ -55,10 +58,15 @@ async function upload(file: string, type: string, name: string) {
 }
 
 // ------------------------------------------------------------------ source media
-const source = path.join(WORK, "source.mp4");
-console.log("encoding the capture for editing");
-execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", path.join(WORK, "capture.mkv"), "-r", String(FPS), "-c:v", "libx264", "-preset", "fast", "-crf", "17", "-g", "15", "-pix_fmt", "yuv420p", "-an", source], { stdio: "inherit" });
-const videoAsset = await upload(source, "video/mp4", "capture.mp4");
+// Each section gets its own file. One long asset reused for every clip makes FFmpeg fan a single decoder out
+// to many trims, which buffers gigabytes of frames and renders at a crawl.
+console.log("cutting the capture into sections");
+const sectionAssets: Record<string, string> = {};
+for (const sec of manifest.sections as { id: string; start: number; end: number }[]) {
+  const file = path.join(WORK, `section-${sec.id}.mp4`);
+  execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-ss", String(sec.start), "-i", path.join(WORK, "capture.mkv"), "-t", String(num(sec.end - sec.start)), "-vf", `fps=${FPS},scale=1920:1080${zoomFilter(sec)},format=yuv420p`, "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-g", "30", "-an", file], { stdio: "inherit" });
+}
+for (const sec of manifest.sections as { id: string }[]) sectionAssets[sec.id] = await upload(path.join(WORK, `section-${sec.id}.mp4`), "video/mp4", `${id}-${sec.id}.mp4`);
 const audioAssets: Record<string, string> = {};
 for (const s of narration.sections) audioAssets[s.id] = await upload(path.join(AUDIO, `${id}-${s.id}.mp3`), "audio/mpeg", `${id}-${s.id}.mp3`);
 console.log("uploaded", Object.keys(audioAssets).length, "narration clips");
@@ -69,8 +77,8 @@ const ops: Op[] = [];
 const sections = manifest.sections as { id: string; title: string; start: number; end: number; audio: number }[];
 const LEAD = 0.5;
 
-/** Push-in keyframes for one section clip, from the recorded zoom events. */
-function zoomKeys(sec: { start: number; end: number }) {
+/** The push-in plan for one section: where the frame sits, in clip scale and centre, after each recorded zoom. */
+function zoomStates(sec: { start: number; end: number }) {
   const len = sec.end - sec.start;
   const evs = (manifest.events as any[]).filter((e) => e.kind === "zoom" && e.t >= sec.start - 0.01 && e.t <= sec.end + 0.01).sort((a, b) => a.t - b.t);
   const states: { t: number; s: number; x: number; y: number }[] = [{ t: 0, s: 1, x: 0.5, y: 0.5 }];
@@ -87,18 +95,20 @@ function zoomKeys(sec: { start: number; end: number }) {
   const last = states[states.length - 1];
   if (last.s > 1) states.push({ t: Math.max(last.t + ZOOM_TIME + 0.4, len - ZOOM_TIME - DISSOLVE - 0.2), s: 1, x: 0.5, y: 0.5 });
   // Drop states too close to the previous one for the move to read as a move.
-  const kept = states.filter((st, i) => i === 0 || st.t - states[i - 1].t > ZOOM_TIME + 0.15);
-  const keys = { scale: [] as any[], x: [] as any[], y: [] as any[] };
-  kept.forEach((st, i) => {
-    if (i === 0) return;
-    const prev = kept[i - 1];
-    for (const [p, a, b] of [["scale", prev.s, st.s], ["x", prev.x, st.x], ["y", prev.y, st.y]] as const) {
-      const arr = keys[p];
-      if (!arr.length || arr[arr.length - 1].time < st.t - 0.01) arr.push({ time: num(st.t), value: num(a), easing: "ease-in-out" });
-      arr.push({ time: num(Math.min(len, st.t + ZOOM_TIME)), value: num(b), easing: "ease-in-out" });
-    }
-  });
-  return Object.fromEntries(Object.entries(keys).filter(([, v]) => v.length > 1));
+  return states.filter((st, i) => i === 0 || st.t - states[i - 1].t > ZOOM_TIME + 0.15);
+}
+
+/**
+ * FFmpeg filters that bake the push-ins into a section. Scaling a frame up inside the final render is slow at
+ * 1080p, so the zoom is applied here, once, to the cut itself with a smooth ease between each state.
+ */
+function zoomFilter(sec: { start: number; end: number }) {
+  const st = zoomStates(sec);
+  if (st.length < 2) return "";
+  const ease = (T: number) => { const u = `clip((t-${num(T)})/${ZOOM_TIME},0,1)`; return `(${u}*${u}*(3-2*${u}))`; };
+  const track = (pick: (s: (typeof st)[number]) => number) => `${num(pick(st[0]))}` + st.slice(1).map((s, i) => `+(${num(pick(s) - pick(st[i]))})*${ease(s.t)}`).join("");
+  const z = track((s) => s.s), x = track((s) => s.x), y = track((s) => s.y);
+  return `,scale=w='2*trunc(960*(${z}))':h='2*trunc(540*(${z}))':eval=frame:flags=bilinear,crop=1920:1080:x='max(0,min(iw-1920,iw/2-1920*(${x})))':y='max(0,min(ih-1080,ih/2-1080*(${y})))'`;
 }
 
 let cursor = 0;
@@ -107,8 +117,7 @@ sections.forEach((sec, i) => {
   const len = num(sec.end - sec.start);
   const clipId = `sec-${sec.id}`;
   const start = num(cursor);
-  const kf = zoomKeys(sec);
-  ops.push({ op: "add_clip", args: { assetId: videoAsset, id: clipId, start, inPoint: num(sec.start), outPoint: num(sec.end), track: "video", keyframes: kf, ...(i === 0 ? {} : {}) } });
+  ops.push({ op: "add_clip", args: { assetId: sectionAssets[sec.id], id: clipId, start, inPoint: 0, outPoint: len, track: "video" } });
   if (i > 0) ops.push({ op: "set_transition", args: { clipId, type: "dissolve", duration: DISSOLVE } });
   placed.push({ id: sec.id, title: sec.title, start, len, audioStart: num(start + LEAD), clipId });
   cursor += len - (i < sections.length - 1 ? DISSOLVE : 0);
@@ -173,6 +182,7 @@ if (job.status !== "done") { console.error("render failed", JSON.stringify(job).
 const rendered = path.join(WORK, "rendered.mp4");
 fs.writeFileSync(rendered, Buffer.from(await (await fetch(`${HOST}/api/renders/${job.id}/download`, { headers: AUTH })).arrayBuffer()));
 console.log(`rendered in ${((Date.now() - t0) / 60000).toFixed(1)} min`);
+if (ONLY) { fs.copyFileSync(rendered, path.join(WORK, "test-cut.mp4")); process.exit(0); }
 
 // ------------------------------------------------------------------ mastering and sidecar files
 fs.mkdirSync(OUT, { recursive: true });

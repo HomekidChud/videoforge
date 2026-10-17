@@ -6,7 +6,7 @@ import {
   type Connection, type Edge, type EdgeProps, type Node, type NodeChange, type NodeProps, type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Hash, ToggleLeft, Puzzle, Code2, Film, Timer, Cable, AlignVerticalDistributeCenter, GraduationCap, Languages, Sparkles, Link2, Undo2, Redo2, Clapperboard, Eye, Play, X, Info, Square, Music2, Type as TypeIcon } from "lucide-react";
+import { Hash, ToggleLeft, Puzzle, Code2, Film, Timer, Cable, AlignVerticalDistributeCenter, GraduationCap, Languages, Sparkles, Link2, Undo2, Redo2, Clapperboard, Eye, Play, X, Info, Square, Music2, Type as TypeIcon, Plus, Scissors, ArrowUpRight, ArrowDownRight, AlertCircle, Waves, Camera, Pencil, Star, Repeat, MessageSquare } from "lucide-react";
 import {
   BLOCK_GROUPS, BLOCK_LIBRARY, BLOCK_MAP, OP_IDS, OP_PARAMS, blocksToGraph, connectableParamKeys, nodeParamKeys, HIDDEN_BLOCKS,
   codeErrorLine, compileGraph, graphToCode, validateGraph, runTool, TEMPLATE_DOCS, VF_HELPERS, APPLY_SCOPES, graphScope, type ApplyScope,
@@ -97,7 +97,7 @@ const TUTORIAL_STEPS = [
   {
     section: 0,
     title: "5. Apply it to your edit",
-    body: "Press the green Apply to edit button. Everything the blocks describe lands on your timeline as one step you can undo. Not sure yet? 👁 Preview lists what would change without touching your edit. If something is wrong, the bar at the bottom of the canvas explains what and clicks to the block.",
+    body: "Press the green Apply to edit button. Everything the blocks describe lands on your timeline as one step you can undo. Not sure yet? Preview lists what would change without touching your edit. If something is wrong, the bar at the bottom of the canvas explains what and clicks to the block.",
     target: '[data-testid="bs-run"]',
   },
   {
@@ -267,7 +267,7 @@ function ActionNode({ data, selected }: NodeProps) {
   const update = (key: string, value: unknown) => { (data as any).__update(node.id, { args: { ...(node.args ?? {}), [key]: value } }); };
   return (
     <NodeShell tone="action" hasError={d.hasError} hasWarning={d.hasWarning}
-      title={block ? trLabel(lang, block) : node.op ?? "Advanced op"} icon={block ? ({ Create: "＋", Edit: "✂", Entrances: "↗", Exits: "↘", Attention: "❗", Springy: "🌀", Camera: "🎥", Animate: "✦", Text: "T", Style: "✎", Clips: "🎞", Timing: "⏱" } as Record<string, string>)[block.group] ?? "★" : "★"}
+      title={block ? trLabel(lang, block) : node.op ?? "Advanced op"} icon={(block ? ({ Create: <Plus size={15} />, Edit: <Scissors size={15} />, Entrances: <ArrowUpRight size={15} />, Exits: <ArrowDownRight size={15} />, Attention: <AlertCircle size={15} />, Springy: <Waves size={15} />, Camera: <Camera size={15} />, Animate: <Sparkles size={15} />, Text: <TypeIcon size={15} />, Style: <Pencil size={15} />, Clips: <Film size={15} />, Timing: <Timer size={15} /> } as Record<string, JSX.Element>)[block.group] : undefined) ?? <Star size={15} />}
       onDelete={(data as any).__delete ? () => (data as any).__delete(node.id) : undefined}>
       {block ? <p className="bs-hint">{trDescription(lang, block)}</p> : null}
       {advanced ? (
@@ -298,7 +298,7 @@ function RepeatNode({ data }: NodeProps) {
     <div className={`bs-node bs-node-control${d.hasError ? " bs-node-error" : ""}`}>
       <InHandle />
       <div className="bs-node-head">
-        <span className="bs-node-icon">↻</span><b>{trUI(lang, "flow-repeat", "Repeat")}</b>
+        <span className="bs-node-icon"><Repeat size={15} /></span><b>{trUI(lang, "flow-repeat", "Repeat")}</b>
         <input className="bs-count" data-testid="bs-repeat-count" type="text" inputMode="numeric" aria-label="Repeat count" value={node.count ?? 3}
           onChange={(e) => (data as any).__update(node.id, { count: Number(e.target.value) || 0 })} disabled={(data as any).__readOnly} />
         <span>{trUI(lang, "flow-times", "times")}</span>
@@ -321,7 +321,7 @@ function EachClipNode({ data }: NodeProps) {
     <div className={`bs-node bs-node-control${d.hasError ? " bs-node-error" : ""}`}>
       <InHandle />
       <div className="bs-node-head">
-        <span className="bs-node-icon">🎞</span><b>{useContext(LangContext) === "es" ? "Para cada clip" : "For each clip"}</b>
+        <span className="bs-node-icon"><Repeat size={15} /></span><b>{useContext(LangContext) === "es" ? "Para cada clip" : "For each clip"}</b>
         <select aria-label="Which clips" value={base} disabled={(data as any).__readOnly}
           onChange={(e) => setSelect(e.target.value === "colour" ? "colour:#ffffff" : e.target.value === "contains" ? "contains:" : e.target.value)}>
           {["all", "text", "shape", "media", "audio", "selected", "colour", "contains"].map((s) => <option key={s} value={s}>{s}</option>)}
@@ -369,7 +369,7 @@ function CallNode({ data }: NodeProps) {
     <div className={`bs-node bs-node-fn${d.hasError ? " bs-node-error" : ""}`}>
       <InHandle />
       <div className="bs-node-head">
-        <span className="bs-node-icon">ƒ→</span><b>{trUI(useContext(LangContext), "flow-call", "Call")}</b>
+        <span className="bs-node-icon"><Code2 size={15} /></span><b>{trUI(useContext(LangContext), "flow-call", "Call")}</b>
         <select aria-label="Function name" value={node.name ?? ""} disabled={(data as any).__readOnly}
           onChange={(e) => (data as any).__update(node.id, { name: e.target.value })}>
           <option value="">choose…</option>
@@ -387,7 +387,7 @@ function CommentNode({ data }: NodeProps) {
   const node = d.node;
   return (
     <div className="bs-node bs-node-comment">
-      <span className="bs-node-icon">💬</span>
+      <span className="bs-node-icon"><MessageSquare size={15} /></span>
       <input className="bs-comment" type="text" aria-label="Note" placeholder="A note for future you" value={node.text ?? ""}
         onChange={(e) => (data as any).__update(node.id, { text: e.target.value })} disabled={(data as any).__readOnly} />
       <button className="bs-node-delete" aria-label="Delete block" onClick={() => (data as any).__delete(node.id)}><X size={12} /></button>
@@ -1133,7 +1133,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, onOpenAnimator,
           <div className="bs-presets-list">
             {TOOL_PRESETS.map((p) => (
               <button key={p.id} className="bs-preset-card" data-testid={`bs-preset-${p.id}`} onClick={() => applyPreset(p)} disabled={readOnly}>
-                <span className="bs-preset-emoji">{p.emoji}</span>
+                <span className="bs-preset-emoji"><Sparkles size={16} /></span>
                 <b>{p.name}</b>
                 <span className="bs-preset-desc">{p.description}</span>
               </button>
@@ -1196,11 +1196,11 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, onOpenAnimator,
               </div>
             ) : category === "Flow" ? (
               <div className="bs-palette-group">
-                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "repeat"); }} title={trUI(lang, "flow-repeat", "Run blocks a number of times")}>{trUI(lang, "flow-repeat", "↻ Repeat")}</div>
-                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "eachClip"); }} title={trUI(lang, "flow-each-clip", "Run blocks for every clip")}>{trUI(lang, "flow-each-clip", "🎞 For each clip")}</div>
-                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "function"); }} title={trUI(lang, "flow-function", "A named group of blocks")}>{trUI(lang, "flow-function", "ƒ Function")}</div>
-                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "call"); }} title={trUI(lang, "flow-call", "Run a function")}>{trUI(lang, "flow-call", "ƒ→ Call")}</div>
-                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "comment"); }} title={trUI(lang, "flow-note", "A note that does nothing")}>{trUI(lang, "flow-note", "💬 Note")}</div>
+                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "repeat"); }} title={trUI(lang, "flow-repeat", "Run blocks a number of times")}>{trUI(lang, "flow-repeat", "Repeat")}</div>
+                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "eachClip"); }} title={trUI(lang, "flow-each-clip", "Run blocks for every clip")}>{trUI(lang, "flow-each-clip", "For each clip")}</div>
+                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "function"); }} title={trUI(lang, "flow-function", "A named group of blocks")}>{trUI(lang, "flow-function", "Function")}</div>
+                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "call"); }} title={trUI(lang, "flow-call", "Run a function")}>{trUI(lang, "flow-call", "Call")}</div>
+                <div className="bs-chip" draggable={!readOnly} onDragStart={(e) => { e.dataTransfer.setData("application/videoforge", "comment"); }} title={trUI(lang, "flow-note", "A note that does nothing")}>{trUI(lang, "flow-note", "Note")}</div>
               </div>
             ) : category === "Values" ? (
               <div className="bs-palette-group">

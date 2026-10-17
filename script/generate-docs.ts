@@ -200,21 +200,21 @@ export function validateTaskPage(slug: string, md: string, stats: { done: number
   const total = stats.done + stats.doing + stats.todo;
   const pct = total ? Math.round((100 * stats.done) / total) : 0;
   for (const m of md.matchAll(/(\d+)\s+of\s+(\d+)\s+(?:items?|done)/gi)) {
-    if (Number(m[1]) !== stats.done || Number(m[2]) !== total) throw new Error(`${slug}.md: says ${m[1]} of ${m[2]}, but the checkboxes say ${stats.done} of ${total} — remove the hand-written number or fix the checkboxes`);
+    if (Number(m[1]) !== stats.done || Number(m[2]) !== total) throw new Error(`${slug}.md: says ${m[1]} of ${m[2]}, but the checkboxes say ${stats.done} of ${total}, remove the hand-written number or fix the checkboxes`);
   }
   for (const m of md.matchAll(/(\d+)%/g)) {
-    if (Number(m[1]) !== pct) throw new Error(`${slug}.md: says ${m[1]}%, but the checkboxes say ${pct}% — remove the hand-written number or fix the checkboxes`);
+    if (Number(m[1]) !== pct) throw new Error(`${slug}.md: says ${m[1]}%, but the checkboxes say ${pct}%, remove the hand-written number or fix the checkboxes`);
   }
   for (const bar of md.matchAll(/[█░]{8,}/g)) {
     const filled = [...bar[0]].filter((c) => c === "█").length;
     const want = Math.round((bar[0].length * stats.done) / Math.max(1, total));
-    if (filled !== want) throw new Error(`${slug}.md: a progress bar has ${filled} filled blocks, but ${want} is correct — remove the hand-written bar or fix the checkboxes`);
+    if (filled !== want) throw new Error(`${slug}.md: a progress bar has ${filled} filled blocks, but ${want} is correct, remove the hand-written bar or fix the checkboxes`);
   }
   const seen = new Set<string>();
   const tasks = [...md.matchAll(/^- \[( |x|~)\]\s+(.*)$/gm)].map((m) => m[2].replace(/\*\*(High|Medium|Low)\.\*\*\s*/, "").toLowerCase().replace(/\s+/g, " ").trim());
   for (const t of tasks) {
     if (!t) throw new Error(`${slug}.md: a task has no text`);
-    if (seen.has(t)) throw new Error(`${slug}.md: the item "${t.slice(0, 60)}" appears twice — each item must be listed once so the counts stay honest`);
+    if (seen.has(t)) throw new Error(`${slug}.md: the item "${t.slice(0, 60)}" appears twice, each item must be listed once so the counts stay honest`);
     seen.add(t);
   }
 }
@@ -265,7 +265,7 @@ const gitContributors = (): { name: string; commits: number }[] => {
 /** Write the generated module. Returns the pages that were baked. */
 export async function generateDocs(): Promise<DocPage[]> {
   const pages = await readDocPages();
-  const body = `// AUTO-GENERATED from docs/*.md — edit the markdown, not this file.
+  const body = `// AUTO-GENERATED from docs/*.md, edit the markdown, not this file.
 // Regenerate with: npm run docs
 import type { DocPage } from "./docs-content";
 
@@ -278,7 +278,7 @@ export const CONTRIBUTORS: { name: string; commits: number }[] = ${JSON.stringif
   // llms.txt: the same pages as a plain index, so agents can read the docs without a browser.
   // The rest of the file (discovery, creative loop) is hand-written and preserved.
   const pageList = [
-    ...pages.map((p) => `- [${p.title}](./#/docs/${p.slug}): ${p.description} — [markdown](https://github.com/HomekidChud/videoforge/blob/main/docs/${p.slug}.md)`),
+    ...pages.map((p) => `- [${p.title}](./#/docs/${p.slug}): ${p.description}, [markdown](https://github.com/HomekidChud/videoforge/blob/main/docs/${p.slug}.md)`),
     "- [Repository reference](https://github.com/HomekidChud/videoforge/blob/main/docs/API.md)",
     "- Markdown source for every page: https://github.com/HomekidChud/videoforge/tree/main/docs",
   ];

@@ -1,0 +1,50 @@
+[
+ {
+  "id": "intro",
+  "title": "Introduction",
+  "start": 0,
+  "end": 19.06
+ },
+ {
+  "id": "dock",
+  "title": "The tool dock",
+  "start": 19.06,
+  "end": 38.81
+ },
+ {
+  "id": "workspaces",
+  "title": "Workspaces",
+  "start": 38.81,
+  "end": 60.35
+ },
+ {
+  "id": "timeline",
+  "title": "The timeline",
+  "start": 60.35,
+  "end": 83.38
+ },
+ {
+  "id": "inspector",
+  "title": "The inspector",
+  "start": 83.38,
+  "end": 101.52
+ },
+ {
+  "id": "palette",
+  "title": "The command palette",
+  "start": 101.52,
+  "end": 119.42
+ },
+ {
+  "id": "shortcuts",
+  "title": "Keyboard shortcuts",
+  "start": 119.42,
+  "end": 137.2
+ },
+ {
+  "id": "outro",
+  "title": "Summary",
+  "start": 137.2,
+  "end": 152.95
+ }
+]

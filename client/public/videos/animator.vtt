@@ -1,0 +1,110 @@
+WEBVTT
+
+1
+00:00:00.500 --> 00:00:04.723
+This tutorial uses the Animator to make a figure wave.
+
+2
+00:00:04.723 --> 00:00:16.299
+You will rig the ready made stick figure, pose one arm, set keyframes with easing, and then apply the motion to your timeline as ordinary keyframes.
+
+3
+00:00:16.299 --> 00:00:18.410
+It takes about ten minutes.
+
+4
+00:00:19.170 --> 00:00:23.480
+Open the More menu at the top right and choose Animator.
+
+5
+00:00:23.480 --> 00:00:26.174
+The Animator opens over the Studio.
+
+6
+00:00:26.174 --> 00:00:33.640
+Select Stick figure, and ten shapes are placed on the timeline, already rigged and ready to pose.
+
+7
+00:00:34.390 --> 00:00:38.572
+The rig list on the left shows every part of the figure.
+
+8
+00:00:38.572 --> 00:00:42.531
+A part can hang from a parent and turn about a joint.
+
+9
+00:00:42.531 --> 00:00:50.449
+Here, the forearm is parented to the upper arm, so rotating the upper arm carries the whole chain with it.
+
+10
+00:00:50.449 --> 00:00:53.660
+Select the forearm to inspect its settings.
+
+11
+00:00:54.410 --> 00:00:57.690
+Start at zero seconds, which is the rest pose.
+
+12
+00:00:57.690 --> 00:01:04.465
+Move the playhead to zero point three seconds, and set the forearm's Turn value to minus sixty.
+
+13
+00:01:04.465 --> 00:01:07.175
+A keyframe is written at the playhead.
+
+14
+00:01:07.175 --> 00:01:12.880
+Then move to one second, and set Turn to forty, so the arm swings the other way.
+
+15
+00:01:13.630 --> 00:01:16.947
+Two keys make a wave, but a stiff one.
+
+16
+00:01:16.947 --> 00:01:24.628
+Select the second key and set its easing to Ease, so the arm starts and finishes gently.
+
+17
+00:01:24.628 --> 00:01:39.380
+Then add another pair of keys, at one point seven seconds with a Turn of minus fifty, and at two point four seconds with a Turn of zero, so the arm settles back to rest.
+
+18
+00:01:40.130 --> 00:01:42.183
+Press play in the Animator.
+
+19
+00:01:42.183 --> 00:01:44.844
+The figure waves twice and settles.
+
+20
+00:01:44.844 --> 00:01:51.840
+You can scrub the playhead to check individual poses, and drag any key diamond to retime it.
+
+21
+00:01:51.840 --> 00:01:53.360
+Keys snap to frames.
+
+22
+00:01:54.110 --> 00:01:57.184
+When the motion is right, press Apply to edit.
+
+23
+00:01:57.184 --> 00:02:02.599
+The Animator closes and the motion is baked onto the clips as ordinary keyframes.
+
+24
+00:02:02.599 --> 00:02:10.820
+Open the Animate workspace and select the forearm to see its rotation curve, which you can adjust like any other keyframes.
+
+25
+00:02:11.570 --> 00:02:14.528
+That completes the Animator tutorial.
+
+26
+00:02:14.528 --> 00:02:21.884
+Because the result is plain keyframes, the preview, the FFmpeg export and the API all agree.
+
+27
+00:02:21.884 --> 00:02:29.080
+The next tutorial covers block coding, which builds repeatable edits without writing code.
+

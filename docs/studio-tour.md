@@ -60,6 +60,8 @@ Press the question mark key to open the shortcut sheet. The full list is also on
 
 ## Where to go next
 
+Three pages continue from here, each building on what the tour covered.
+
 - [Motion graphics tutorial](motion-graphics-tutorial)
 - [Using the editor](editor)
 - [Keyboard shortcuts](keyboard-shortcuts)

@@ -14,7 +14,12 @@
     "durable:restore": "tsx script/durable-restore.ts",
     "mongo:check": "tsx script/mongo-check.ts",
     "docs": "tsx script/generate-docs.ts && tsx script/generate-openapi.ts",
-    "videos": "node script/record-tutorials.mjs && tsx script/build-tutorial-videos.ts"
+    "videos": "node script/tutorials/run.mjs",
+    "videos:mg": "node script/tutorials/run.mjs mg",
+    "videos:tour": "node script/tutorials/run.mjs tour",
+    "videos:animator": "node script/tutorials/run.mjs animator",
+    "videos:blocks": "node script/tutorials/run.mjs blocks",
+    "videos:fire": "node script/tutorials/run.mjs fire"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

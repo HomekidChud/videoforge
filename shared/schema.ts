@@ -3,7 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import type * as z from "zod/mini";
 
 // ============================================================================
-// TIMELINE MODEL — shared by the web editor UI and the agent API.
+// TIMELINE MODEL, shared by the web editor UI and the agent API.
 // Every clip is a reference to a media asset plus in/out trim points and
 // optional overlays (text captions). Audio is per-clip (volume, muted).
 // ============================================================================
@@ -74,7 +74,7 @@ export const renderJobs = sqliteTable("render_jobs", {
 });
 
 // ---------------------------------------------------------------------------
-// API keys — used by external AI agents & scripts. Never store the plaintext
+// API keys, used by external AI agents & scripts. Never store the plaintext
 // key, only sha256(key). `scope` is "read" | "write" | "admin".
 // ---------------------------------------------------------------------------
 export const apiKeys = sqliteTable("api_keys", {
@@ -89,7 +89,7 @@ export const apiKeys = sqliteTable("api_keys", {
 });
 
 // ---------------------------------------------------------------------------
-// Accounts — real people signing in with email + password or Google. API keys
+// Accounts, real people signing in with email + password or Google. API keys
 // stay for AI agents and scripts. Sessions live in the DB, so sign-ins survive
 // server restarts; the browser only ever holds an HttpOnly cookie.
 // ---------------------------------------------------------------------------

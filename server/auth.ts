@@ -2,9 +2,9 @@
 // API key / permission model.
 //
 // Scopes (least-privilege, escalating):
-//   read  — list & read-only access (GET)
-//   write — read + upload media, edit projects, trigger renders (GET/POST/PUT/DELETE)
-//   admin — everything, including creating & revoking other keys
+//   read , list & read-only access (GET)
+//   write, read + upload media, edit projects, trigger renders (GET/POST/PUT/DELETE)
+//   admin, everything, including creating & revoking other keys
 //
 // Keys are stored as sha256(key) only. Plaintext is shown once on creation.
 // Keys are prefixed `vf_live_` (agent/user keys) or `vf_admin_` (owner keys).
@@ -100,7 +100,7 @@ export async function ensureOwnerKeyExists(): Promise<string | null> {
     try { db.delete(apiKeys).where(eq(apiKeys.id, row.id)).run(); } catch { /* best effort */ }
     console.warn(
       `[auth] WARNING: created an owner key but could NOT write it to ${ADMIN_KEY_FILE} (${e.code ?? e.message}). ` +
-      `The key was discarded — nothing was saved. On read-only deployments, set ` +
+      `The key was discarded, nothing was saved. On read-only deployments, set ` +
       `VIDEOFORGE_BOOTSTRAP_KEY=<your chosen key> in the environment and restart; it will be seeded as the owner key.`
     );
     return null;
@@ -159,7 +159,7 @@ const SHORT_TOKEN_TTL_MS = 6 * 60 * 60 * 1000; // 6h
 
 // The signing secret is derived from the owner key hash. On ephemeral
 // deployments the DB resets but VIDEOFORGE_BOOTSTRAP_KEY stays stable, so the
-// secret is stable too — which is intentional so tokens keep working across
+// secret is stable too, which is intentional so tokens keep working across
 // restarts. Rotate the bootstrap key to invalidate all media tokens.
 function shortTokenSecret(): string {
   const ownerRow = listKeys().find((k) => k.scope === "admin");
@@ -229,7 +229,7 @@ export function verifyMediaToken(token: string, resourceId: string): boolean {
 
 /**
  * General-purpose scope gate. Requires a valid API key via Bearer header.
- * Does NOT accept ?st= media tokens — those are only valid on specific
+ * Does NOT accept ?st= media tokens, those are only valid on specific
  * media/download routes (see requireMediaAccess).
  */
 export function keyRestrictions(key: ApiKey): KeyRestrictions {
@@ -400,7 +400,7 @@ export function registerKeyRoutes(app: Express) {
       if (restrictions.expiresAt && restrictions.expiresAt <= Date.now()) return res.status(400).json({ message: "Expiry must be in the future." });
       if (restrictions.projectIds?.some(id => !storage.getProject(id))) return res.status(400).json({ message: "One or more projects do not exist." });
       const { key, record } = createKey(label.trim(), scope, restrictions);
-      res.status(201).json({ message: "Save this key now — it is shown only once.", key, record: keyMetadata(record) });
+      res.status(201).json({ message: "Save this key now, it is shown only once.", key, record: keyMetadata(record) });
     } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
 
@@ -412,7 +412,7 @@ export function registerKeyRoutes(app: Express) {
     res.json({ revoked: true });
   });
 
-  // Get the owner key plaintext (admin only) — only available before the
+  // Get the owner key plaintext (admin only), only available before the
   // OWNER_KEY.txt file is deleted, so the owner can always recover it.
   app.get("/api/keys/owner", requireAdmin, (_req, res) => {
     const pt = getOwnerKeyPlaintext();

@@ -4,7 +4,7 @@
 //
 // Sessions are random tokens stored as sha256 in SQLite, delivered as an
 // HttpOnly cookie. Because the session lives in the database (not memory),
-// sign-ins survive server restarts and redeploys — the browser keeps its
+// sign-ins survive server restarts and redeploys, the browser keeps its
 // cookie and it keeps working. Sessions last 30 days.
 // ============================================================================
 
@@ -102,7 +102,7 @@ function requestIsSecure(req: Request): boolean {
 /**
  * Cookie SameSite: Lax by default, but when the frontend lives on another site
  * (e.g. the app on GitHub Pages calling an API on render.com), the browser
- * would never send a Lax cookie on those cross-site requests — sign-in would
+ * would never send a Lax cookie on those cross-site requests, sign-in would
  * silently fail on the next API call. Cross-site frontends need SameSite=None
  * (which also requires Secure, so only on HTTPS).
  */
@@ -121,7 +121,7 @@ function sameSiteFor(req: Request, secure: boolean): "Lax" | "None" {
 }
 
 function setSessionCookie(res: Response, token: string, req: Request): void {
-  // Secure only when this request actually arrived over HTTPS — otherwise the
+  // Secure only when this request actually arrived over HTTPS, otherwise the
   // browser silently drops the cookie and every reload looks like a sign-out.
   const secure = requestIsSecure(req);
   res.setHeader("Set-Cookie", `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=${sameSiteFor(req, secure)}; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}${secure ? "; Secure" : ""}`);
@@ -145,7 +145,7 @@ export function userCount(): number {
 
 /** Account creation rules:
  *  - No accounts yet: the FIRST account is created with the owner API key
- *    (it becomes the workspace admin). This keeps a public deployment safe —
+ *    (it becomes the workspace admin). This keeps a public deployment safe -
  *    a stranger can't bootstrap themselves.
  *  - Accounts exist: anyone can register when VIDEOFORGE_ACCOUNTS=open,
  *    otherwise only an admin can create accounts (from the platform page). */
@@ -158,9 +158,9 @@ export function registerUser(email: unknown, password: unknown, name: unknown, o
   if (first) {
     // The first account must prove ownership with the workspace owner key.
     const key = typeof ownerKey === "string" && ownerKey.trim() ? findKeyByHash(hashKey(ownerKey.trim())) : undefined;
-    if (!key || key.scope !== "admin" || key.revoked) throw new Error("this workspace has no accounts yet — create yours with the owner API key (from data/OWNER_KEY.txt or VIDEOFORGE_BOOTSTRAP_KEY)");
+    if (!key || key.scope !== "admin" || key.revoked) throw new Error("this workspace has no accounts yet, create yours with the owner API key (from data/OWNER_KEY.txt or VIDEOFORGE_BOOTSTRAP_KEY)");
   } else if (!asAdmin && process.env.VIDEOFORGE_ACCOUNTS !== "open") {
-    throw new Error("this workspace needs an admin to create accounts — ask them to add you, or set VIDEOFORGE_ACCOUNTS=open to allow self-signup");
+    throw new Error("this workspace needs an admin to create accounts, ask them to add you, or set VIDEOFORGE_ACCOUNTS=open to allow self-signup");
   }
   const user: User = {
     id: crypto.randomUUID(),
@@ -289,7 +289,7 @@ export function registerAccountRoutes(app: Express) {
         const code = String(req.query?.code ?? "");
         const state = String(req.query?.state ?? "");
         const expected = readCookie(req.headers.cookie, "vf_oauth_state");
-        if (!code || !state || !expected || state !== expected) return fail("the request was stale — try again");
+        if (!code || !state || !expected || state !== expected) return fail("the request was stale, try again");
         const redirectUri = `${originOf(req)}/api/auth/google/callback`;
         const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
           method: "POST",
@@ -372,6 +372,6 @@ export function registerAccountRoutes(app: Express) {
 
 function rowToTool(row: { id: string; name: string; description: string; mode: string; code: string | null; graphJson: string | null }) {
   let graph: unknown = undefined;
-  try { graph = row.graphJson ? JSON.parse(row.graphJson) : undefined; } catch { /* damaged row — treated as absent */ }
+  try { graph = row.graphJson ? JSON.parse(row.graphJson) : undefined; } catch { /* damaged row, treated as absent */ }
   return { id: row.id, name: row.name, description: row.description, mode: row.mode === "code" ? "code" as const : "blocks" as const, code: row.code ?? undefined, graph };
 }

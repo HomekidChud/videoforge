@@ -147,7 +147,7 @@ export function ForgeTools({ disabled, onRun, onError, onNote, getCtx, studio = 
           } catch (e: any) { onError(e.message || "That tool code didn't work"); }
         }}>Add</button>
     </div>
-    <p className="help-text">Your blocks sync to your account and keep an offline copy in this browser. Share one with the 🔗 Share button in the studio, and add it here from its code.</p>
+    <p className="help-text">Your blocks sync to your account and keep an offline copy in this browser. Share one with the Share button in the studio, and add it here from its code.</p>
     <a href="#/docs/custom-tools" className="ghost-link">Blocks guide</a>
   </div>;
 }

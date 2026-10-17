@@ -5,14 +5,50 @@
   "subtitle": "Build repeatable edits from blocks, without writing code",
   "next": "Next: the Fire edit tutorial",
   "sections": [
-    { "id": "intro", "title": "Introduction", "say": "This tutorial builds a set of blocks called Title every clip. It adds a styled title at the playhead, and then fades in every clip in your edit. You build it without writing code, check it with a preview, and apply it as a single step that can be undone." },
-    { "id": "open", "title": "Open the block studio", "say": "Open the Blocks panel from the tool dock. The block studio fills the screen. The palette is on the left, the canvas is in the middle, and the run controls are in the header. If blocks are new to you, the Tutorial button in the header offers a guided walkthrough." },
-    { "id": "start", "title": "Start from the green block", "say": "Every set of blocks begins with the green block named When Apply is pressed. Its Work on setting decides which clips the set applies to. Choose Every clip, so the blocks act on the whole edit. Then click the name in the header and enter Title every clip." },
-    { "id": "chain", "title": "Add a title block", "say": "Open the Create category and drag an Add title block onto the canvas. Connect the green block's bottom dot to the top dot of the new block, so the title is added first. Then type Made with blocks into its Text field." },
-    { "id": "fade", "title": "Add a fade", "say": "Open the Animate category and drag in a Fade in block. Connect it beneath the title block. Fade in needs to know which clips to work on, so choose the selection value in its clip field." },
-    { "id": "loop", "title": "Repeat for each clip", "say": "From the Timing category, drag a For each clip block onto the canvas. Move the Fade in block into its body, and connect the loop beneath the title block. The fade now runs once for every clip, instead of once for the selection." },
-    { "id": "preview", "title": "Preview, then apply", "say": "Select Preview in the header. It lists exactly what Apply would change, one line per change, and it does not touch your edit. When the list is correct, select Apply to edit. The title lands at the playhead, and every clip fades in, as one undoable step." },
-    { "id": "save", "title": "Save, share and reuse", "say": "Your blocks save to your account as you work, and they appear in the Tools panel of the Studio. The Share button copies a short code that anyone can paste into their own Tools panel, and the Code tab shows the same blocks as JavaScript." },
-    { "id": "outro", "title": "Summary", "say": "That completes the block coding tutorial. The same blocks run through the same operations and validation as the API, so an agent could send exactly what you built. The next tutorial turns a single clip into a finished edit." }
+    {
+      "id": "intro",
+      "title": "Introduction",
+      "say": "This tutorial builds a set of blocks called Title every clip. It adds a styled title at the playhead, and then fades in every clip in your edit. You build it without writing code, check it with a preview, and apply it as a single step that can be undone."
+    },
+    {
+      "id": "open",
+      "title": "Open the block studio",
+      "say": "Open the Blocks panel from the tool dock. The block studio fills the screen. The palette is on the left, the canvas is in the middle, and the run controls are in the header. If blocks are new to you, the Tutorial button in the header offers a guided walkthrough."
+    },
+    {
+      "id": "start",
+      "title": "Start from the green block",
+      "say": "Every set of blocks begins with the green block named When Apply is pressed. Its Work on setting decides which clips the set applies to. Choose Every clip, so the blocks act on the whole edit. Then click the name in the header and enter Title every clip."
+    },
+    {
+      "id": "chain",
+      "title": "Add a title block",
+      "say": "Beneath the green block, an Add title block is already connected. The dot at the bottom of one block joins the dot at the top of the next, so the blocks run in order. Type Made with blocks into its Text field."
+    },
+    {
+      "id": "fade",
+      "title": "Add a fade",
+      "say": "Open the Animate category and drag a Fade in slowly block onto the canvas. Its Clip field reads clip ID, which means the clip being handled at that moment. The block will not run yet, because nothing connects it."
+    },
+    {
+      "id": "loop",
+      "title": "Repeat for each clip",
+      "say": "Open the Flow category and drag a For each clip block onto the canvas. Connect it beneath the title block, then join its repeat dot on the right to the Fade in slowly block. Set its filter to all, so the fade runs once for every kind of clip."
+    },
+    {
+      "id": "preview",
+      "title": "Preview, then apply",
+      "say": "Select Preview in the header. It lists exactly what Apply would change, one line per change, and it does not touch your edit. When the list is correct, select Apply to edit. The title lands at the playhead, and every clip fades in, as one undoable step."
+    },
+    {
+      "id": "save",
+      "title": "Save, share and reuse",
+      "say": "Your blocks save to your account as you work, and they appear in the Tools panel of the Studio. The Share button copies a short code that anyone can paste into their own Tools panel, and the Code tab shows the same blocks as JavaScript."
+    },
+    {
+      "id": "outro",
+      "title": "Summary",
+      "say": "That completes the block coding tutorial. The same blocks run through the same operations and validation as the API, so an agent could send exactly what you built. The next tutorial turns a single clip into a finished edit."
+    }
   ]
 }

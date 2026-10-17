@@ -1,0 +1,56 @@
+[
+ {
+  "id": "intro",
+  "title": "Introduction",
+  "start": 0,
+  "end": 17.78
+ },
+ {
+  "id": "open",
+  "title": "Open the block studio",
+  "start": 17.78,
+  "end": 35.48
+ },
+ {
+  "id": "start",
+  "title": "Start from the green block",
+  "start": 35.48,
+  "end": 55.74
+ },
+ {
+  "id": "chain",
+  "title": "Add a title block",
+  "start": 55.74,
+  "end": 73.44
+ },
+ {
+  "id": "fade",
+  "title": "Add a fade",
+  "start": 73.44,
+  "end": 93.02
+ },
+ {
+  "id": "loop",
+  "title": "Repeat for each clip",
+  "start": 93.02,
+  "end": 114.12
+ },
+ {
+  "id": "preview",
+  "title": "Preview, then apply",
+  "start": 114.12,
+  "end": 135.3
+ },
+ {
+  "id": "save",
+  "title": "Save, share and reuse",
+  "start": 135.3,
+  "end": 152.96
+ },
+ {
+  "id": "outro",
+  "title": "Summary",
+  "start": 152.96,
+  "end": 168.87
+ }
+]

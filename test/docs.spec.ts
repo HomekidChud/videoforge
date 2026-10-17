@@ -73,9 +73,10 @@ await check("auto tables", async () => {
 // Every {{video}} marker resolves to a real clip, poster and caption track.
 await check("video markers resolve to files", () => {
   const videos = DOC_PAGES.flatMap((p) => p.sections.filter((s) => s.video).map((s) => ({ page: p.slug, name: s.video! })));
-  assert.ok(videos.length >= 11, `the motion graphics tutorial embeds its clips, got ${videos.length}`);
+  const names = new Set(videos.map((v) => v.name));
+  for (const id of ["mg", "tour", "animator", "blocks", "fire"]) assert.ok(names.has(id), `a docs page embeds the ${id} video`);
   for (const v of videos) {
-    for (const ext of ["mp4", "png", "vtt"]) {
+    for (const ext of ["mp4", "png", "vtt", "chapters.json"]) {
       const file = path.join("client/public/videos", `${v.name}.${ext}`);
       assert.ok(fs.existsSync(file), `${v.page}: missing ${file}`);
     }

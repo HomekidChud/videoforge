@@ -1,4 +1,4 @@
-// AUTO-GENERATED from docs/*.md — edit the markdown, not this file.
+// AUTO-GENERATED from docs/*.md, edit the markdown, not this file.
 // Regenerate with: npm run docs
 import type { DocPage } from "./docs-content";
 
@@ -42,7 +42,7 @@ export const DOC_PAGES: DocPage[] = [
         "code": "Discover → Compose → Validate → Inspect → Render"
       }
     ],
-    "updated": "2026-10-17T13:19:57Z",
+    "updated": "2026-10-17T20:03:54Z",
     "added": "2026-10-15T22:20:52+01:00"
   },
   {
@@ -202,7 +202,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T18:48:19Z",
+    "updated": "2026-10-17T20:03:54Z",
     "added": "2026-10-17T08:48:53Z"
   },
   {
@@ -255,7 +255,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T08:48:53Z",
+    "updated": "2026-10-17T20:03:54Z",
     "added": "2026-10-15T22:20:52+01:00"
   },
   {
@@ -343,7 +343,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T18:00:49Z",
+    "updated": "2026-10-17T20:03:54Z",
     "added": "2026-10-17T17:48:00Z"
   },
   {
@@ -472,7 +472,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T18:00:49Z",
+    "updated": "2026-10-17T20:03:54Z",
     "added": "2026-10-17T17:48:00Z"
   },
   {
@@ -673,7 +673,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T18:00:49Z",
+    "updated": "2026-10-17T20:03:54Z",
     "added": "2026-10-17T17:48:00Z"
   },
   {
@@ -846,7 +846,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Where to go next",
-        "text": "",
+        "text": "Three pages continue from here, each building on what the tour covered.",
         "links": [
           {
             "label": "Motion graphics tutorial",
@@ -862,7 +862,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T20:03:54Z",
+    "added": "2026-10-17T20:03:54Z"
   },
   {
     "slug": "keyframes",
@@ -1210,7 +1212,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T08:48:53Z",
+    "updated": "2026-10-17T20:03:54Z",
     "added": "2026-10-15T22:20:52+01:00"
   },
   {
@@ -1316,7 +1318,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T08:48:53Z",
+    "updated": "2026-10-17T20:03:54Z",
     "added": "2026-10-15T22:29:58+01:00"
   },
   {
@@ -1737,7 +1739,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T13:19:57Z",
+    "updated": "2026-10-17T20:03:54Z",
     "added": "2026-10-17T13:09:37Z"
   },
   {
@@ -2402,7 +2404,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T08:48:53Z",
+    "updated": "2026-10-17T20:03:54Z",
     "added": "2026-10-15T22:35:29+01:00"
   },
   {
@@ -2537,7 +2539,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Where to go next",
-        "text": "",
+        "text": "Two pages cover the same ground in more depth.",
         "links": [
           {
             "label": "Studio tour",
@@ -2549,7 +2551,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T20:03:54Z",
+    "added": "2026-10-17T20:03:54Z"
   },
   {
     "slug": "agent-workflow",
@@ -2669,7 +2673,7 @@ export const DOC_PAGES: DocPage[] = [
           ],
           [
             "swap_asset",
-            "clipId, assetId, duration?, inPoint?, outPoint?, keepKeyframes? — replaces the media source of an existing clip (kept id, style, and placement). not supported on text/shape clips."
+            "clipId, assetId, duration?, inPoint?, outPoint?, keepKeyframes?, replaces the media source of an existing clip (kept id, style, and placement). not supported on text/shape clips."
           ],
           [
             "set_audio",
@@ -3330,7 +3334,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T18:00:49Z",
+    "updated": "2026-10-17T20:03:54Z",
     "added": "2026-10-17T08:48:53Z"
   },
   {
@@ -3388,7 +3392,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T13:19:57Z",
+    "updated": "2026-10-17T20:03:54Z",
     "added": "2026-10-17T13:09:37Z"
   },
   {
@@ -3436,7 +3440,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T13:19:57Z",
+    "updated": "2026-10-17T20:03:54Z",
     "added": "2026-10-17T13:09:37Z"
   },
   {
@@ -3599,16 +3603,15 @@ export const DOC_PAGES: DocPage[] = [
           },
           {
             "status": "done",
-            "text": "Record a screen capture of the whole motion graphics tutorial, one short clip per section, with the Studio shown at a readable size."
+            "text": "Record the whole motion graphics tutorial as one continuous 1080p video with spoken narration, instead of short clips."
           },
           {
             "status": "done",
-            "text": "Play each clip inside the docs page next to the step it shows: a video block with a poster image, captions and play, pause and replay."
+            "text": "Play each tutorial video inside its docs page: a single player with a poster image, clickable chapters, a synced transcript and captions."
           },
           {
-            "status": "todo",
-            "text": "Chapters on every tutorial video that link to the page section, and a section link that jumps the video to the right second.",
-            "priority": "High"
+            "status": "done",
+            "text": "Chapters on every tutorial video that link to the page section, and a section link that jumps the video to the right second."
           },
           {
             "status": "todo",
@@ -3616,13 +3619,12 @@ export const DOC_PAGES: DocPage[] = [
             "priority": "High"
           },
           {
-            "status": "todo",
-            "text": "Recorded walkthroughs of the Studio tour, the Animator, the block studio and the agent API workflow.",
-            "priority": "Medium"
+            "status": "done",
+            "text": "Recorded walkthroughs of the Studio tour, the Animator, the block studio and the agent API workflow."
           },
           {
             "status": "done",
-            "text": "Make the recordings with a script (Playwright plus FFmpeg) so they can be rebuilt in one command whenever the interface changes: `npm run videos` records the Studio and rebuilds every clip, cutting and captioning each one through VideoForge's own API and renderer."
+            "text": "Make the recordings with a script (Playwright plus FFmpeg) so they can be rebuilt in one command whenever the interface changes: `npm run videos` records every tutorial in a real browser and edits it through VideoForge itself, with title and end cards, dissolves, zoom push-ins on the active controls, chapter labels and loudness matched narration. `npm run videos:mg` and the other per tutorial scripts rebuild one."
           },
           {
             "status": "todo",
@@ -3634,9 +3636,8 @@ export const DOC_PAGES: DocPage[] = [
             "text": "More written tutorials: the Animator, block coding and a fire edit built from one clip, each with a matching API batch the docs tests apply for real."
           },
           {
-            "status": "todo",
-            "text": "Transcripts for every video, so each tutorial also works as text and in search.",
-            "priority": "Medium"
+            "status": "done",
+            "text": "Transcripts for every video, so each tutorial also works as text and in search."
           },
           {
             "status": "todo",
@@ -3645,14 +3646,19 @@ export const DOC_PAGES: DocPage[] = [
           },
           {
             "status": "todo",
+            "text": "Localized narration and captions for the Spanish docs.",
+            "priority": "Medium"
+          },
+          {
+            "status": "todo",
             "text": "Host videos outside git (a release asset or storage bucket) so the repository stays small.",
             "priority": "Low"
           }
         ],
         "taskStats": {
-          "done": 5,
+          "done": 8,
           "doing": 0,
-          "todo": 7
+          "todo": 5
         }
       },
       {
@@ -3660,59 +3666,48 @@ export const DOC_PAGES: DocPage[] = [
         "text": "The editor has grown crowded. The goal is a calmer layout where the common controls are obvious and the rest is one step away.",
         "tasks": [
           {
-            "status": "todo",
-            "text": "**Up next.** Audit every panel and the top bar, listing what is used daily, what is rare and what can move into a menu.",
-            "priority": "High"
+            "status": "done",
+            "text": "Audit every panel and the top bar, listing what is used daily, what is rare and what can move into a menu."
           },
           {
-            "status": "todo",
-            "text": "Calmer top bar: keep Edit and Animate, Add title, Project and Export in view and move the rest into a single More menu.",
-            "priority": "High"
+            "status": "done",
+            "text": "Calmer top bar: keep Edit and Animate, Add title, Project and Export in view and move the rest into a single More menu."
           },
           {
-            "status": "todo",
-            "text": "Workspace presets (Edit, Animate, Graphics, Audio, Blocks) that show only the panels each job needs, and remember the last one.",
-            "priority": "High"
+            "status": "done",
+            "text": "Workspace presets (Edit, Animate, Graphics, Audio, Blocks) that show only the panels each job needs, and remember the last one."
           },
           {
-            "status": "todo",
-            "text": "A command palette on Ctrl+K for every Studio action, with recent commands and shortcuts shown beside each.",
-            "priority": "High"
+            "status": "done",
+            "text": "A command palette on Ctrl+K for every Studio action, with recent commands and shortcuts shown beside each."
           },
           {
-            "status": "todo",
-            "text": "Inspector with progressive disclosure: the common controls first, advanced groups folded, and a search box inside the inspector.",
-            "priority": "High"
+            "status": "done",
+            "text": "Inspector with progressive disclosure: the common controls first, advanced groups folded, and a search box inside the inspector."
           },
           {
-            "status": "todo",
-            "text": "Icon dock for the left panels (Media, Effects, Blocks, Graphics, Tools, Projects) with tooltips, instead of a block of text tabs.",
-            "priority": "Medium"
+            "status": "done",
+            "text": "Icon dock for the left panels (Media, Effects, Blocks, Graphics, Tools, Projects) with tooltips, instead of a block of text tabs."
           },
           {
-            "status": "todo",
-            "text": "Simple and Advanced modes, so a first-time user sees a small set of tools and can switch the rest on.",
-            "priority": "Medium"
+            "status": "done",
+            "text": "Simple and Advanced modes, so a first-time user sees a small set of tools and can switch the rest on."
           },
           {
-            "status": "todo",
-            "text": "One spacing, type and colour scale shared by the Studio, Animator and block studio, built from the same design tokens.",
-            "priority": "Medium"
+            "status": "done",
+            "text": "One spacing, type and colour scale shared by the Studio, Animator and block studio, built from the same design tokens."
           },
           {
-            "status": "todo",
-            "text": "Timeline polish: tidier track headers, collapsible tracks, a minimap for long projects and clearer selection.",
-            "priority": "Medium"
+            "status": "done",
+            "text": "Timeline polish: tidier track headers, collapsible tracks, a minimap for long projects and clearer selection."
           },
           {
-            "status": "todo",
-            "text": "Keyboard shortcut sheet on the ? key, and an editor tour for first-time users.",
-            "priority": "Medium"
+            "status": "done",
+            "text": "Keyboard shortcut sheet on the ? key, and an editor tour for first-time users."
           },
           {
-            "status": "todo",
-            "text": "Better empty states for media, graphics and the timeline, each with one clear next action.",
-            "priority": "Medium"
+            "status": "done",
+            "text": "Better empty states for media, graphics and the timeline, each with one clear next action."
           },
           {
             "status": "todo",
@@ -3731,9 +3726,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ],
         "taskStats": {
-          "done": 0,
+          "done": 11,
           "doing": 0,
-          "todo": 14
+          "todo": 3
         }
       },
       {
@@ -3774,9 +3769,8 @@ export const DOC_PAGES: DocPage[] = [
             "text": "A glossary with hover definitions for words like clip, track, keyframe, scope and rig."
           },
           {
-            "status": "todo",
-            "text": "Keyboard shortcuts page generated from the Studio's own shortcut list.",
-            "priority": "Medium"
+            "status": "done",
+            "text": "Keyboard shortcuts page generated from the Studio's own shortcut list."
           },
           {
             "status": "done",
@@ -3794,9 +3788,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ],
         "taskStats": {
-          "done": 8,
+          "done": 9,
           "doing": 0,
-          "todo": 4
+          "todo": 3
         }
       },
       {
@@ -3951,7 +3945,7 @@ export const DOC_PAGES: DocPage[] = [
           },
           {
             "status": "done",
-            "text": "**Animator button.** Opens from the Studio top bar and from the block studio header."
+            "text": "**Animator button.** Opens from the More menu in the Studio top bar and from the block studio header."
           },
           {
             "status": "done",
@@ -4042,11 +4036,11 @@ export const DOC_PAGES: DocPage[] = [
           },
           {
             "status": "done",
-            "text": "Many more edit tools: the Edit group covers transform, flip and mirror, row/column placement and distribute, snap to grid, crop, opacity, colour looks and filters, brightness/contrast/saturation/blur, speed and duration, volume, mute, audio fades, tracks and layering, copy with offset, replace words, and for-each filtering by colour and contained text. (True edge-to-edge alignment is still open — see the bucket list.)"
+            "text": "Many more edit tools: the Edit group covers transform, flip and mirror, row/column placement and distribute, snap to grid, crop, opacity, colour looks and filters, brightness/contrast/saturation/blur, speed and duration, volume, mute, audio fades, tracks and layering, copy with offset, replace words, and for-each filtering by colour and contained text. (True edge-to-edge alignment is still open, see the bucket list.)"
           },
           {
             "status": "done",
-            "text": "True z-order: clips carry a z field (-100..100). Overlay visuals — media, shapes and text alike — stack by z in one order, in both the preview and the renderer; move_layer blocks step past the nearest neighbour even with unequal ranks."
+            "text": "True z-order: clips carry a z field (-100..100). Overlay visuals, media, shapes and text alike, stack by z in one order, in both the preview and the renderer; move_layer blocks step past the nearest neighbour even with unequal ranks."
           },
           {
             "status": "done",
@@ -4062,15 +4056,15 @@ export const DOC_PAGES: DocPage[] = [
           },
           {
             "status": "done",
-            "text": "First-tool tutorial: a six-step guided tour opens the first time a new blocks tool is created — name the tool, meet the block menu, edit the Add title block, run it and find it again — replayable from the 🎓 Tutorial button."
+            "text": "First-tool tutorial: a six-step guided tour opens the first time a new blocks tool is created, name the tool, meet the block menu, edit the Add title block, run it and find it again, replayable from the Tutorial button."
           },
           {
             "status": "done",
-            "text": "Value blocks: Text, Number and Yes / No blocks in a new Values category plug into any block field — typed arguments without touching code; bad numbers turn red and unplugged values get a warning, and blocks-to-code conversion inlines them identically."
+            "text": "Value blocks: Text, Number and Yes / No blocks in a new Values category plug into any block field, typed arguments without touching code; bad numbers turn red and unplugged values get a warning, and blocks-to-code conversion inlines them identically."
           },
           {
             "status": "done",
-            "text": "Arguments JSON editor removed: the Advanced op block and its Arguments (JSON) box are gone from the palette and the studio — every operation shows named, friendly fields, and a saved JSON object (like update_clip's patch) becomes editable property rows instead of raw text (saved advanced tools keep working)."
+            "text": "Arguments JSON editor removed: the Advanced op block and its Arguments (JSON) box are gone from the palette and the studio, every operation shows named, friendly fields, and a saved JSON object (like update_clip's patch) becomes editable property rows instead of raw text (saved advanced tools keep working)."
           },
           {
             "status": "done",
@@ -4078,19 +4072,19 @@ export const DOC_PAGES: DocPage[] = [
           },
           {
             "status": "done",
-            "text": "Blocks panel: the block studio now opens from its own Blocks tab next to Effects — the Tools tab is code-only (no block editor: its studio hides the Blocks tab and the block-creation buttons), while it still runs tools."
+            "text": "Blocks panel: the block studio now opens from the Blocks icon in the tool dock, the Tools panel is code-only (no block editor: its studio hides the Blocks switch and the block-creation buttons), while it still runs tools."
           },
           {
             "status": "done",
-            "text": "Blocks tab opens the canvas itself: clicking Blocks goes straight into the block studio (your latest tool, or a fresh draft with the tutorial) — no tools list in between; closing it returns to the panel you came from."
+            "text": "Blocks opens the canvas itself: choosing Blocks in the tool dock goes straight into the block studio (your latest tool, or a fresh draft with the tutorial), no tools list in between; closing it returns to the panel you came from."
           },
           {
             "status": "done",
-            "text": "Palette diet: the canned motion chips (Move in, Move out, Attention, Springy, Camera and their Animate duplicates) are out of the palette — the friendly from/to Animate blocks and presets cover them; hidden ids still load older saved tools."
+            "text": "Palette diet: the canned motion chips (Move in, Move out, Attention, Springy, Camera and their Animate duplicates) are out of the palette, the friendly from/to Animate blocks and presets cover them; hidden ids still load older saved tools."
           },
           {
             "status": "done",
-            "text": "Real edge alignment for the Line up block: clips line up by their measured edges — against each other or flush with the frame — including text clips (the renderer measures rendered text with drawtext/ascent)."
+            "text": "Real edge alignment for the Line up block: clips line up by their measured edges, against each other or flush with the frame, including text clips (the renderer measures rendered text with drawtext/ascent)."
           },
           {
             "status": "done",
@@ -4102,7 +4096,7 @@ export const DOC_PAGES: DocPage[] = [
           },
           {
             "status": "done",
-            "text": "Shareable tool codes: the 🔗 Share button copies a compact `VFT1:` code; the tools panel imports it. Old links keep working (damaged codes get a friendly error)."
+            "text": "Shareable tool codes: the Share button copies a compact `VFT1:` code; the tools panel imports it. Old links keep working (damaged codes get a friendly error)."
           },
           {
             "status": "done",
@@ -4118,31 +4112,31 @@ export const DOC_PAGES: DocPage[] = [
           },
           {
             "status": "done",
-            "text": "Localization: Spanish labels and descriptions for every block and group (🌐 button in the studio, remembered per browser; the browser language is the default). Search matches either language."
+            "text": "Localization: Spanish labels and descriptions for every block and group (language button in the studio, remembered per browser; the browser language is the default). Search matches either language."
           },
           {
             "status": "done",
-            "text": "Calmer blocks: the coloured field dots (clip / frame / value sockets) only show when you hover a block, select it, focus it or while dragging a connection — dots that already have something plugged in stay visible, and the 🔌 Connectors button pins them all on. The canvas legend explains the dots."
+            "text": "Calmer blocks: the coloured field dots (clip / frame / value sockets) only show when you hover a block, select it, focus it or while dragging a connection, dots that already have something plugged in stay visible, and the 🔌 Connectors button pins them all on. The canvas legend explains the dots."
           },
           {
             "status": "done",
-            "text": "Neater blocks: every block got more breathing room (roomier header, field and hint spacing) and a cleaner look — soft gradient card, one-pixel border, a colour-coded accent bar per block kind, circular glowing handles and hover states on the palette chips."
+            "text": "Neater blocks: every block got more breathing room (roomier header, field and hint spacing) and a cleaner look, soft gradient card, one-pixel border, a colour-coded accent bar per block kind, circular glowing handles and hover states on the palette chips."
           },
           {
             "status": "done",
-            "text": "One ✕ per wire, not per canvas: a wire's delete button now appears when you click that wire (or hover the ✕ itself), instead of every ✕ lighting up whenever you touch the canvas."
+            "text": "One delete button per wire, not per canvas: a wire's delete button now appears when you click that wire (or hover the button itself), instead of every wire showing one whenever you touch the canvas."
           },
           {
             "status": "done",
-            "text": "🧹 Tidy button: lines the run chain up a column, puts repeat bodies to its right, helper blocks (values, clips, frames) beside the blocks they feed and notes in a far column — one undo entry, like a drag. Presets and free spots also land further apart, so new blocks no longer stack on old ones."
+            "text": "Tidy button: lines the run chain up a column, puts repeat bodies to its right, helper blocks (values, clips, frames) beside the blocks they feed and notes in a far column, one undo entry, like a drag. Presets and free spots also land further apart, so new blocks no longer stack on old ones."
           },
           {
             "status": "done",
-            "text": "Bigger tutorial: six steps became eleven in three parts (Your first tool, Connecting things, Power moves) with part chips you can jump between — now covering wires vs field dots, importing clips, value blocks, undo, presets and where saved tools live."
+            "text": "Bigger tutorial: six steps became eleven in three parts (Your first tool, Connecting things, Power moves) with part chips you can jump between, now covering wires vs field dots, importing clips, value blocks, undo, presets and where saved tools live."
           },
           {
             "status": "done",
-            "text": "**Blocks are about the whole edit, not one tool.** The green block now reads \"When Apply is pressed\" and the Run button is ▶ Apply to edit. Preview lists what Apply would change before it touches the edit, and the green block's Work on setting picks which clips the blocks use: selected, every clip, under the playhead, or all video, text or shapes. Wording across the studio and the Tools panel changed from tools to blocks and scripts."
+            "text": "**Blocks are about the whole edit, not one tool.** The green block now reads \"When Apply is pressed\" and the run button reads Apply to edit. Preview lists what Apply would change before it touches the edit, and the green block's Work on setting picks which clips the blocks use: selected, every clip, under the playhead, or all video, text or shapes. Wording across the studio and the Tools panel changed from tools to blocks and scripts."
           }
         ],
         "taskStats": {
@@ -4173,11 +4167,11 @@ export const DOC_PAGES: DocPage[] = [
           },
           {
             "status": "done",
-            "text": "**Recorded tutorial.** Every step of the motion graphics tutorial now has a short clip of the Studio doing it: a Playwright capture cut and captioned through VideoForge itself, embedded beside the step with a poster, captions and native controls, under 1 MB for all eleven clips."
+            "text": "**Recorded tutorials.** Five narrated walkthroughs, each one edited video: the motion graphics tutorial, the Studio tour, the block studio, the Animator and a fire edit. Each has chapters, captions and a transcript beside it in the docs."
           },
           {
             "status": "done",
-            "text": "**Three more tutorials.** Block coding in the block studio, a wave in the Animator and a fire edit cut from one clip — each with step-by-step editor instructions and a matching API batch the docs tests apply for real."
+            "text": "**Three more tutorials.** Block coding in the block studio, a wave in the Animator and a fire edit cut from one clip, each with step by step editor instructions and a matching API batch the docs tests apply for real."
           },
           {
             "status": "done",
@@ -4223,9 +4217,9 @@ export const DOC_PAGES: DocPage[] = [
       }
     ],
     "taskStats": {
-      "done": 74,
+      "done": 89,
       "doing": 0,
-      "todo": 43
+      "todo": 29
     },
     "updated": "2026-10-17T18:48:19Z",
     "added": "2026-10-16T00:27:26Z"
@@ -4234,7 +4228,7 @@ export const DOC_PAGES: DocPage[] = [
 
 export const CONTRIBUTORS: { name: string; commits: number }[] = [
   {
-    "commits": 70,
+    "commits": 71,
     "name": "HomekidChud"
   },
   {

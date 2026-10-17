@@ -39,10 +39,10 @@ export async function run(rec, { page, only }) {
 
   await S("inspector", "The inspector", [
     async () => { await rec.zoom(".inspector", 1.5); await rec.click('[data-testid="inspector-search"]'); },
-    async () => { await rec.type('[data-testid="inspector-search"]', "opacity", { clear: true }); },
-    async () => { await rec.type('[data-testid="inspector-search"]', "", { clear: true }); await rec.click('[data-testid="button-studio-tools"]'); },
-    async () => { await rec.click('[data-testid="toggle-mode"]'); },
-    async () => { await rec.hover(".inspector", { dy: 0.6 }); await page.keyboard.press("Escape"); },
+    async () => { await rec.type('[data-testid="inspector-search"]', "opacity", { clear: true }); await wait(1200); },
+    async () => { await page.fill('[data-testid="inspector-search"]', ""); await wait(500); await rec.click('[data-testid="button-studio-tools"]'); },
+    async () => { await rec.click('[data-testid="toggle-mode"]'); await wait(1500); },
+    async () => { if (!(await page.locator('[data-testid="toggle-mode"]').count())) await rec.click('[data-testid="button-studio-tools"]'); await rec.click('[data-testid="toggle-mode"]'); await wait(500); await page.keyboard.press("Escape"); },
   ]);
 
   await S("palette", "The command palette", [

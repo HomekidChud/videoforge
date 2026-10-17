@@ -1,0 +1,118 @@
+WEBVTT
+
+1
+00:00:00.500 --> 00:00:04.622
+This tutorial builds a set of blocks called Title every clip.
+
+2
+00:00:04.622 --> 00:00:10.164
+It adds a styled title at the playhead, and then fades in every clip in your edit.
+
+3
+00:00:10.164 --> 00:00:17.530
+You build it without writing code, check it with a preview, and apply it as a single step that can be undone.
+
+4
+00:00:18.280 --> 00:00:20.963
+Open the Blocks panel from the tool dock.
+
+5
+00:00:20.963 --> 00:00:23.188
+The block studio fills the screen.
+
+6
+00:00:23.188 --> 00:00:29.471
+The palette is on the left, the canvas is in the middle, and the run controls are in the header.
+
+7
+00:00:29.471 --> 00:00:35.230
+If blocks are new to you, the Tutorial button in the header offers a guided walkthrough.
+
+8
+00:00:35.980 --> 00:00:41.887
+Every set of blocks begins with the green block named When Apply is pressed.
+
+9
+00:00:41.887 --> 00:00:46.473
+Its Work on setting decides which clips the set applies to.
+
+10
+00:00:46.473 --> 00:00:50.749
+Choose Every clip, so the blocks act on the whole edit.
+
+11
+00:00:50.749 --> 00:00:55.490
+Then click the name in the header and enter Title every clip.
+
+12
+00:00:56.240 --> 00:01:01.562
+Beneath the green block, an Add title block is already connected.
+
+13
+00:01:01.562 --> 00:01:09.751
+The dot at the bottom of one block joins the dot at the top of the next, so the blocks run in order.
+
+14
+00:01:09.751 --> 00:01:13.190
+Type Made with blocks into its Text field.
+
+15
+00:01:13.940 --> 00:01:20.575
+Open the Animate category and drag a Fade in slowly block onto the canvas.
+
+16
+00:01:20.575 --> 00:01:27.749
+Its Clip field reads clip ID, which means the clip being handled at that moment.
+
+17
+00:01:27.749 --> 00:01:32.770
+The block will not run yet, because nothing connects it.
+
+18
+00:01:33.520 --> 00:01:39.455
+Open the Flow category and drag a For each clip block onto the canvas.
+
+19
+00:01:39.455 --> 00:01:48.104
+Connect it beneath the title block, then join its repeat dot on the right to the Fade in slowly block.
+
+20
+00:01:48.104 --> 00:01:53.870
+Set its filter to all, so the fade runs once for every kind of clip.
+
+21
+00:01:54.620 --> 00:01:56.989
+Select Preview in the header.
+
+22
+00:01:56.989 --> 00:02:04.753
+It lists exactly what Apply would change, one line per change, and it does not touch your edit.
+
+23
+00:02:04.753 --> 00:02:08.594
+When the list is correct, select Apply to edit.
+
+24
+00:02:08.594 --> 00:02:15.050
+The title lands at the playhead, and every clip fades in, as one undoable step.
+
+25
+00:02:15.800 --> 00:02:22.636
+Your blocks save to your account as you work, and they appear in the Tools panel of the Studio.
+
+26
+00:02:22.636 --> 00:02:32.710
+The Share button copies a short code that anyone can paste into their own Tools panel, and the Code tab shows the same blocks as JavaScript.
+
+27
+00:02:33.460 --> 00:02:36.189
+That completes the block coding tutorial.
+
+28
+00:02:36.189 --> 00:02:44.243
+The same blocks run through the same operations and validation as the API, so an agent could send exactly what you built.
+
+29
+00:02:44.243 --> 00:02:48.170
+The next tutorial turns a single clip into a finished edit.
+

@@ -1,5 +1,5 @@
 /**
- * One-off, explicit rebuild-recovery helper. NOT called on boot — see the
+ * One-off, explicit rebuild-recovery helper. NOT called on boot, see the
  * safety comment in server/durable.ts. Use only if a rebuild lost the DB:
  *
  *   VIDEOFORGE_DB=path/to/data.db VIDEOFORGE_SYNC_DIR=path/to/restore npm run durable:restore
@@ -16,4 +16,4 @@ if (!dbPath) { console.error("Set VIDEOFORGE_DB to the SQLite file to restore in
 if (!process.env.VIDEOFORGE_SYNC_DIR) { console.error("Set VIDEOFORGE_SYNC_DIR to the manifest directory."); process.exit(1); }
 const sqlite = new Database(dbPath);
 const result = restoreFromManifest(sqlite as never);
-console.log(result.restored ? `Restored from manifest: ${JSON.stringify(result.counts)}` : "Nothing to restore — the DB already has every row the manifest has.");
+console.log(result.restored ? `Restored from manifest: ${JSON.stringify(result.counts)}` : "Nothing to restore, the DB already has every row the manifest has.");
