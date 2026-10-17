@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Play, Pause, SkipBack, SkipForward, Scissors, Undo2, Redo2, Magnet, Plus, Upload, Type, Film, Music2, Image as ImageIcon, Download, Check, AlertCircle, Loader2, FolderOpen, FilePlus2, Trash2, Share2, X, Lock, Globe, ChevronDown, Eye, Sparkles } from "lucide-react";
+import { Clapperboard, Play, Pause, SkipBack, SkipForward, Scissors, Undo2, Redo2, Magnet, Plus, Upload, Type, Film, Music2, Image as ImageIcon, Download, Check, AlertCircle, Loader2, FolderOpen, FilePlus2, Trash2, Share2, X, Lock, Globe, ChevronDown, Eye, Sparkles } from "lucide-react";
 import { clipDuration, clipEnd, normalizeClip, normalizeTimeline, timelineDuration, type Clip, type Timeline } from "@shared/timeline";
 import { ANIMATABLE, clamp, valueAt, type AnimationProperty, type Keyframe } from "@shared/animation";
 import { TITLE_PRESETS, motionPreset } from "@shared/presets";
@@ -23,6 +23,8 @@ import { WorkspaceDivider } from "@/components/forge-workspace";
 import ForgeMotion from "@/components/forge-motion";
 import { ForgeTools } from "@/components/forge-tools";
 import { toolContext } from "@shared/custom-tools";
+import ForgeAnimator from "@/components/forge-animator";
+import { animationsByName, loadAnimations, type RigAnimation } from "@shared/rig";
 
 type SaveState = "empty" | "saved" | "dirty" | "saving" | "error" | "readonly";
 type Me = { id: string; scope: "read" | "write" | "admin" };
@@ -229,12 +231,25 @@ export default function EditorPage() {
   const runOps = (ops: TimelineOp[], label = "tool") => {
     if (readOnly) return;
     try {
-      if (!ops.length) return toast("The tool produced no operations.");
+      if (!ops.length) return toast("The blocks produced no changes.");
       mutate(() => ops.reduce((t, op) => applyTimelineOp(t, op, (id) => byId.get(id)), tlRef.current));
-      toast(`Ran ${label}: ${ops.length} operation${ops.length === 1 ? "" : "s"}`);
-    } catch (e: any) { toast(e.message || "The tool failed", "error"); }
+      toast(`Applied to your edit: ${ops.length} change${ops.length === 1 ? "" : "s"}. Undo (Ctrl+Z) reverts it.`);
+    } catch (e: any) { toast(e.message || "The blocks could not be applied", "error"); }
   };
-  const getToolCtx = () => toolContext(tlRef.current, timeRef.current, selectedIds, timelineDuration(tlRef.current));
+  const getToolCtx = () => toolContext(tlRef.current, timeRef.current, selectedIds, timelineDuration(tlRef.current), animationsByName(loadAnimations(window.localStorage, projectId ?? "draft")));
+  const [animatorOpen, setAnimatorOpen] = useState(false);
+  const applyRig = (anim: RigAnimation) => {
+    if (readOnly) return;
+    try {
+      let changed = 0;
+      mutate(() => { const before = tlRef.current; const next = applyTimelineOp(before, { op: "rig_bake", args: { animation: anim } }, (id) => byId.get(id)); changed = next.clips.filter((c, i) => c !== before.clips[i]).length; return next; });
+      toast(`Applied “${anim.name}” to ${anim.parts.length} clip${anim.parts.length === 1 ? "" : "s"}. Undo (Ctrl+Z) reverts it.`);
+    } catch (e: any) { toast(e.message || "Could not apply the animation", "error"); }
+  };
+  const addRigClips = (raw: Record<string, unknown>[]) => {
+    if (readOnly) return;
+    mutate((t) => ({ ...t, clips: [...t.clips, ...raw.map((c) => normalizeClip(c as unknown as Clip))] }));
+  };
   const selectedIds = useMemo(() => sel.filter((id) => timeline.clips.some((c) => c.id === id)), [sel, timeline.clips]);
   const selIdsRef = useRef<string[]>([]); selIdsRef.current = selectedIds;
   const selected = timeline.clips.find((c) => c.id === selectedIds[selectedIds.length - 1]) ?? null;
@@ -473,6 +488,7 @@ export default function EditorPage() {
           <button className={workspace==="edit"?"active":""} aria-pressed={workspace==="edit"} onClick={()=>setWorkspace("edit")} data-testid="workspace-edit">Edit</button>
           <button className={workspace==="animate"?"active":""} aria-pressed={workspace==="animate"} onClick={()=>{setWorkspace("animate");setTimelineHeight(h=>Math.max(h,400));}} data-testid="workspace-animate"><Sparkles size={13}/>Animate</button>
         </div>
+        <button className="secondary-btn animator-open" onClick={()=>setAnimatorOpen(true)} title="Animator: pose clips, text and shapes like rigs and key them on a timeline" data-testid="button-animator"><Clapperboard size={14}/><span className="hide-sm">Animator</span></button>
         <details className="studio-tools"><summary data-testid="button-studio-tools">Tools<ChevronDown size={13}/></summary><div className="studio-tools-menu">
           <button onClick={()=>setCompositionOpen(true)} data-testid="button-composition">Composition JSON</button>
           <button aria-pressed={libraryOpen} onClick={()=>setLibraryOpen(v=>!v)} data-testid="toggle-library">{libraryOpen?"Hide":"Show"} library</button>
@@ -505,7 +521,7 @@ export default function EditorPage() {
         {/* Distinct keys: switching Tools → Blocks must remount ForgeTools so its
             open-the-studio effect runs. Without a key, React reuses the Tools
             instance and the Blocks tab just shows the tool library list. */}
-        {panel === "blocks" ? <ForgeTools key="blocks" disabled={readOnly} onRun={(ops) => runOps(ops)} onError={(m) => toast(m, "error")} onNote={(m) => toast(m)} getCtx={getToolCtx} studio autoOpen onExitStudio={() => setPanel(lastPanelRef.current)} /> : panel === "tools" ? <ForgeTools key="tools" disabled={readOnly} onRun={(ops) => runOps(ops)} onError={(m) => toast(m, "error")} onNote={(m) => toast(m)} getCtx={getToolCtx} studio={false} /> : panel === "graphics" ? <ForgeGraphics disabled={readOnly} onApply={op=>{if(readOnly)return;try{const t=tlRef.current,next=applyGraphics(t,op,timeRef.current),ids=next.clips.filter(c=>!t.clips.some(o=>o.id===c.id)).map(c=>c.id);mutate(()=>next);setSel(ids);toast(`Added ${ids.length} editable graphics clip${ids.length===1?"":"s"}`);}catch(e:any){toast(e.message,"error");}}}/> : panel === "effects" ? <ForgeEffects disabled={readOnly} onApply={(e) => applyEffect(e)} /> : panel === "media" ? <>
+        {panel === "blocks" ? <ForgeTools key="blocks" disabled={readOnly} onRun={(ops) => runOps(ops)} onError={(m) => toast(m, "error")} onNote={(m) => toast(m)} getCtx={getToolCtx} studio autoOpen onExitStudio={() => setPanel(lastPanelRef.current)} onOpenAnimator={() => setAnimatorOpen(true)} /> : panel === "tools" ? <ForgeTools key="tools" disabled={readOnly} onRun={(ops) => runOps(ops)} onError={(m) => toast(m, "error")} onNote={(m) => toast(m)} getCtx={getToolCtx} studio={false}  onOpenAnimator={() => setAnimatorOpen(true)} /> : panel === "graphics" ? <ForgeGraphics disabled={readOnly} onApply={op=>{if(readOnly)return;try{const t=tlRef.current,next=applyGraphics(t,op,timeRef.current),ids=next.clips.filter(c=>!t.clips.some(o=>o.id===c.id)).map(c=>c.id);mutate(()=>next);setSel(ids);toast(`Added ${ids.length} editable graphics clip${ids.length===1?"":"s"}`);}catch(e:any){toast(e.message,"error");}}}/> : panel === "effects" ? <ForgeEffects disabled={readOnly} onApply={(e) => applyEffect(e)} /> : panel === "media" ? <>
           <label className={`dropzone ${readOnly ? "disabled" : ""}`} data-testid="button-upload">{upload ? <><Loader2 className="spin" size={18} /><span>Uploading {Math.round(upload.pct * 100)}%</span><i style={{ width: `${upload.pct * 100}%` }} /></> : <><Upload size={19} /><b>Import media</b><span>Video, audio or images — or drop files anywhere</span></>}
             <input type="file" multiple accept="video/*,audio/*,image/*" disabled={readOnly || !!upload} onChange={(e) => { if (e.target.files?.length) importFiles(e.target.files); e.target.value = ""; }} /></label>
           <div className="asset-list">
@@ -541,6 +557,7 @@ export default function EditorPage() {
         </aside>}</div>
       </section></div>
 
+    {animatorOpen&&<ForgeAnimator timeline={timeline} assets={assets} mediaUrl={mediaUrl} projectKey={projectId ?? "draft"} readOnly={readOnly} initialSelection={selectedIds} playhead={time} onApply={applyRig} onCreateClips={addRigClips} onClose={()=>setAnimatorOpen(false)} onError={(m)=>toast(m,"error")} onNote={(m)=>toast(m)} />}
     {compositionOpen&&<ForgeComposition timeline={timeline} disabled={readOnly} assetIds={new Set(assets.map(a=>a.id))} onClose={()=>setCompositionOpen(false)} onApply={t=>{mutate(()=>t);setSel([]);seek(0);toast("Composition imported");}}/>}
     {exportOpen && <div className="export-panel" role="dialog" aria-label="Export">
       <div className="modal-head"><h3>Export video</h3><button className="icon-btn" aria-label="Close export panel" onClick={() => setExportOpen(false)}><X size={16} /></button></div>

@@ -2,7 +2,7 @@
 title: Bucket list
 group: Studio
 order: 99
-description: What is done in the block studio and custom tools, and what to build next.
+description: What is done in the block studio, the Animator and the docs, and what to build next.
 ---
 
 ## Where we are
@@ -44,9 +44,19 @@ The block studio, the code editor and the tool engine are in good shape. Each it
 - [x] 🧹 Tidy button: lines the run chain up a column, puts repeat bodies to its right, helper blocks (values, clips, frames) beside the blocks they feed and notes in a far column — one undo entry, like a drag. Presets and free spots also land further apart, so new blocks no longer stack on old ones.
 - [x] Bigger tutorial: six steps became eleven in three parts (Your first tool, Connecting things, Power moves) with part chips you can jump between — now covering wires vs field dots, importing clips, value blocks, undo, presets and where saved tools live.
 
+- [x] **Rig animations, for clips.** The Animator is a Roblox-style animation editor where the parts are your own clips instead of bones: video clips, images, text and shapes all become rig parts with a joint, an optional parent and their own keyframes. Pose by dragging on the stage or typing values, key on a dope sheet with easing per key, parent parts by dragging, and bake the result into plain clip keyframes with the green Apply to edit button. Presets (bounce, swing, wave, pulse, float, pop in, walk cycle), a ready-made stick figure, undo and redo, and animations saved per project. Because it bakes into ordinary keyframes the preview, FFmpeg export and API need no new renderer.
+- [x] **Animator button.** Opens from the Studio top bar and from the block studio header.
+- [x] **Blocks are about the whole edit, not one tool.** The green block now reads "When Apply is pressed" and the Run button is ▶ Apply to edit. Preview lists what Apply would change before it touches the edit, and the green block's Work on setting picks which clips the blocks use: selected, every clip, under the playhead, or all video, text or shapes. Wording across the studio and the Tools panel changed from tools to blocks and scripts.
+- [x] **Rig blocks and operations.** Pose clips together, Make a clip follow another and Play an Animator animation join the palette, backed by new `rig_pose`, `rig_follow` and `rig_bake` timeline operations that agents can call too.
+- [x] **Better docs.** Sidebar guide groups open and close with an arrow (remembered per browser, plus Collapse all), every section folds with its own arrow, and there are reading times, a progress bar, a highlighted on-this-page list, copyable section links, breadcrumbs, note, tip and warning callouts, bullet lists with bold, code and links, an edit-on-GitHub link and a back-to-top button.
+
 ## Bucket list
 
 Big and small ideas, roughly by value. Each one is a candidate for its own commit and browser-verified round.
 
-- [ ] **Rig animations — a Roblox-Studio-style rig animator.** The big one: characters and props built from a joint hierarchy (bones with parent/child transforms), posed by selecting a joint and rotating/moving it, the way Roblox Studio's Animation Editor works. Poses captured as per-joint keyframes on a timeline, interpolated (linear + easing, maybe the existing bezier tween slopes), and baked into an **animation clip that lands on the video timeline as a normal, editable clip** — trim it, retime it, layer it, run it backwards with the existing tools. Stretch: onion skinning, IK handles for limbs, walk-cycle presets, and a library of rigs (stick figure, mascot, hands). This is skeletal animation — today's motion presets only animate whole clips, so this needs a new rig data model, a pose/keyframe editor panel and renderer support (browser canvas first, FFmpeg export after). Big but the future of the studio.
+- [ ] Onion skinning and a ghost of the previous pose in the Animator.
+- [ ] IK handles so dragging a hand moves the whole arm.
+- [ ] A library of ready-made rigs beyond the stick figure: mascot, hands.
+- [ ] Save Animator animations to the project on the server so they follow you between browsers.
+- [ ] Rig keys on text effects and colour, not just position, size, turn and see-through.
 - [ ] Your idea here — the studio is in good shape; what should kids be able to make next?

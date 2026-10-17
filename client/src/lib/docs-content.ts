@@ -1,4 +1,4 @@
-export type DocSection = { title:string; text:string; code?:string; language?:string; rows?:string[][]; links?:{label:string;slug:string}[] };
+export type DocSection = { title:string; text:string; callouts?:{kind:"note"|"tip"|"warning";text:string}[]; code?:string; language?:string; rows?:string[][]; links?:{label:string;slug:string}[] };
 export type DocPage = { slug:string; group:string; title:string; description:string; sections:DocSection[] };
 // The pages themselves come from docs/*.md, compiled by script/generate-docs.ts.
 export { DOC_PAGES } from "./docs-generated";

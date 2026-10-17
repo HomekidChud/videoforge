@@ -13,9 +13,15 @@ Open Studio and sign in with a read, write or admin key. The left library holds 
 
 On mobile, the preview stays above the active Timeline, Library or Inspector panel. Switch panels with the panel buttons rather than scrolling away from the preview. Tools contains composition JSON, add title, redo, snapping and documentation links.
 
-## Custom tools
+## Blocks and scripts
 
-The Tools tab of the library lists your custom tools: automations written in JavaScript or assembled from building blocks. Run one and its operations apply as a single undoable step. See Custom tools.
+The **Blocks** tab opens the block studio: snap blocks together, preview what they would change, then press the green **Apply to edit** button to change your timeline in one undoable step. The Tools tab lists saved scripts written in JavaScript. See Blocks & scripts.
+
+> [!TIP] Press Preview in the block studio to see exactly what Apply would do before it touches your edit.
+
+## Animator
+
+The **Animator** button in the top bar opens a Roblox-style animation editor for clips, text and shapes. Add clips as parts of a rig, parent them, set joints, pose them on a timeline and press Apply to edit. See Animator.
 
 ## Typography for text clips
 
@@ -57,4 +63,6 @@ Shortcuts are ignored while typing in an input. Editing commands require a write
 
 Projects autosave as you edit. Check the save status before leaving. Export queues a server-side MP4 job. Public sharing requires an admin to change visibility and a completed render. A public share link does not expose your API key or source footage.
 
+- [Animator](animator)
+- [Blocks & scripts](custom-tools)
 - [Rendering](rendering)

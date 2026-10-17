@@ -8,7 +8,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import {
   BLOCK_GROUPS, BLOCK_LIBRARY, BLOCK_MAP, OP_IDS, OP_PARAMS, blocksToGraph, connectableParamKeys, nodeParamKeys, HIDDEN_BLOCKS,
-  codeErrorLine, compileGraph, graphToCode, validateGraph, runTool, TEMPLATE_DOCS, VF_HELPERS,
+  codeErrorLine, compileGraph, graphToCode, validateGraph, runTool, TEMPLATE_DOCS, VF_HELPERS, APPLY_SCOPES, graphScope, type ApplyScope,
   TOOL_PRESETS, encodeTool, decodeTool, listStickers, stickerArgs, exportStandaloneScript,
   type CustomTool, type ToolContext, type ToolGraph, type ToolGraphNode, type ToolParam, type ToolPreset,
 } from "@shared/custom-tools";
@@ -26,7 +26,9 @@ type StudioProps = {
   onChange: (tool: CustomTool) => void;
   onClose: () => void;
   onRun: (ops: TimelineOp[]) => void;
-  /** True when the tool was just created with "New tool with blocks" — opens the tutorial. */
+  /** Opens the clip Animator from the studio header. */
+  onOpenAnimator?: () => void;
+  /** True when the script was just created with "New blocks" — opens the tutorial. */
   fresh?: boolean;
   /** False when opened from a place that only edits code — hides the Blocks tab. */
   allowBlocks?: boolean;
@@ -39,6 +41,7 @@ const CATEGORY_HELP: Record<string, string> = {
   Create: "Add new things to your video: titles, shapes, music notes",
   Edit: "Change clips you already have: move, resize, colour, layer",
   Animate: "Make clips move: zoom, slide, spin, pop, glow",
+  Rig: "Make clips act like parts of a puppet: pose them together, follow, play Animator animations",
   Text: "Type-on effects, word reveals and colour changes",
   Style: "Looks: filters, brightness, blur, borders",
   Clips: "Copy, delete and reorder clips",
@@ -58,18 +61,18 @@ const CATEGORIES: Array<{ id: string; label: string; help: string }> = [
 
 /** The first-tool tutorial: a guided tour in three short parts. */
 const TUTORIAL_KEY = "vf.tutorial.v1";
-const TUTORIAL_SECTIONS = ["Your first tool", "Connecting things", "Power moves"];
+const TUTORIAL_SECTIONS = ["Your first blocks", "Connecting things", "Power moves"];
 const TUTORIAL_STEPS = [
   {
     section: 0,
-    title: "Make your first tool",
-    body: "This tour shows you how to make a tool that adds a title to your video. It has three parts — you are in the first. Press Next to follow along, or Skip if you already know the studio. You can replay this any time with the 🎓 Tutorial button.",
+    title: "Build your first blocks",
+    body: "This tour builds a small set of blocks that adds a title to your edit. It has three parts — you are in the first. Press Next to follow along, or Skip if you already know the studio. You can replay this any time with the 🎓 Tutorial button.",
     target: '[data-testid="bs-name"]',
   },
   {
     section: 0,
-    title: "1. Name your tool",
-    body: "Every tool needs a name. Click the name box at the top and type one — try “My first title”.",
+    title: "1. Name your blocks",
+    body: "Every set of blocks needs a name. Click the name box at the top and type one — try “My first title”.",
     target: '[data-testid="bs-name"]',
   },
   {
@@ -80,8 +83,8 @@ const TUTORIAL_STEPS = [
   },
   {
     section: 0,
-    title: "3. Start runs first",
-    body: "Your tool already has two blocks: the green Start block and an “Add title” block, joined by a wire from the bottom of one to the top of the next. That wire means “do this, then that”. Blocks run in the order the wires connect them.",
+    title: "3. Green runs first",
+    body: "Your canvas already has two blocks: the green “When Apply is pressed” block and an “Add title” block, joined by a wire from the bottom of one to the top of the next. That wire means “do this, then that”. Blocks run in the order the wires connect them.",
     target: '[data-testid="bs-canvas"]',
   },
   {
@@ -92,8 +95,8 @@ const TUTORIAL_STEPS = [
   },
   {
     section: 0,
-    title: "5. Run it",
-    body: "Press the ▶ Run button to try your tool. It adds the title to the timeline at the playhead — one step you can undo. If something is wrong, the bar at the bottom of the canvas explains what and clicks to the block.",
+    title: "5. Apply it to your edit",
+    body: "Press the green ▶ Apply to edit button. Everything the blocks describe lands on your timeline as one step you can undo. Not sure yet? 👁 Preview lists what would change without touching your edit. If something is wrong, the bar at the bottom of the canvas explains what and clicks to the block.",
     target: '[data-testid="bs-run"]',
   },
   {
@@ -123,13 +126,13 @@ const TUTORIAL_STEPS = [
   {
     section: 2,
     title: "10. Ready-made recipes",
-    body: "The ✨ Presets button opens example recipes — connected groups of blocks for titles, zooms and more. Click one and its blocks land on the canvas already wired; take them apart and make them yours. Nothing runs until you press ▶ Run.",
+    body: "The ✨ Presets button opens example recipes — connected groups of blocks for titles, zooms and more. Click one and its blocks land on the canvas already wired; take them apart and make them yours. Nothing changes until you press ▶ Apply to edit.",
     target: '[data-testid="bs-presets"]',
   },
   {
     section: 2,
     title: "11. Save and find it later",
-    body: "Press ✕ to close — that saves your tool to your account. Open it again from the Tools panel (Open in studio), or press the Blocks tab to jump straight back into your latest tool. Curious about code? The Code tab shows the JavaScript your blocks make.",
+    body: "Press ✕ to close — that saves your blocks to your account. Open it again from the Blocks panel (Open in studio), or press the Blocks tab to jump straight back into your latest tool. Curious about code? The Code tab shows the JavaScript your blocks make.",
     target: '[data-testid="bs-close"]',
   },
 ];
@@ -138,7 +141,7 @@ function tutorialSeen(): boolean {
   try { return window.localStorage.getItem(TUTORIAL_KEY) != null; } catch { return false; }
 }
 
-/** The default graph for a new tool: Start → Add title. */
+/** The default graph for new blocks: green start → Add title. */
 export function defaultGraph(): ToolGraph {
   const action = uid();
   return {
@@ -234,10 +237,19 @@ function NodeShell({ children, tone = "default", hasError, hasWarning, title, ic
 }
 
 function StartNode({ data }: NodeProps) {
+  const node = (data as unknown as NodeData).node, ro = (data as any).__readOnly;
+  const scope = APPLY_SCOPES.some((x) => x.id === node.args?.scope) ? (node.args!.scope as ApplyScope) : "selection";
   return (
     <div className="bs-node bs-node-start">
-      <div className="bs-node-head"><span className="bs-node-icon">⚡</span><b>Start</b></div>
-      <p className="bs-hint">When the tool runs…</p>
+      <div className="bs-node-head"><span className="bs-node-icon">▶</span><b>When Apply is pressed</b></div>
+      <p className="bs-hint">The green button runs everything below on your edit, as one step you can undo.</p>
+      <label className="bs-start-scope">
+        <span>Work on</span>
+        <select aria-label="Which clips the blocks work on" data-testid="bs-start-scope" value={scope} disabled={ro}
+          onChange={(e) => (data as any).__update(node.id, { args: { ...(node.args ?? {}), scope: e.target.value } })}>
+          {APPLY_SCOPES.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+        </select>
+      </label>
       <NextHandle />
     </div>
   );
@@ -494,7 +506,7 @@ function CodeTab({ tool, ctx, readOnly, onChange, runError, notice, onDismissNot
     if (e.key === "Tab" && !readOnly) { e.preventDefault(); insert("  "); }
   };
 
-  /** Download this tool as a standalone script that runs it against the API. */
+  /** Download these blocks as a standalone script that runs against the API. */
   const exportScript = () => {
     const blob = new Blob([exportStandaloneScript(tool)], { type: "text/javascript" });
     const url = URL.createObjectURL(blob);
@@ -509,7 +521,7 @@ function CodeTab({ tool, ctx, readOnly, onChange, runError, notice, onDismissNot
     <div className="bs-code-wrap" data-testid="bs-code-panel">
       {notice && (
         <div className="bs-notice" data-testid="bs-converted-notice">
-          <span>💡 Blocks were converted to code — this tool now runs the code. Switch back to Blocks any time; your blocks are kept.</span>
+          <span>💡 Blocks were converted to code — these blocks now run as code. Switch back to Blocks any time; your blocks are kept.</span>
           <button className="bs-notice-close" aria-label="Dismiss" onClick={onDismissNotice} data-testid="bs-notice-close">✕</button>
         </div>
       )}
@@ -542,7 +554,7 @@ function CodeTab({ tool, ctx, readOnly, onChange, runError, notice, onDismissNot
         </div>
         <div className="bs-code-side" data-testid="bs-code-ref">
           <p className="bs-ref-title">vf helpers — click to insert</p>
-          <button className="bs-ref-export" onClick={exportScript} data-testid="bs-export-script" title="Download this tool as a standalone script that runs it against the API">⬇ Export as standalone script</button>
+          <button className="bs-ref-export" onClick={exportScript} data-testid="bs-export-script" title="Download these blocks as a standalone script that runs against the API">⬇ Export as standalone script</button>
           {VF_HELPERS.map((h) => (
             <button key={h.name} className="bs-ref-item" onClick={() => insert(h.example)} disabled={readOnly} title={h.description} data-testid={`bs-ref-${h.name}`}>
               <code className="bs-ref-sig">{h.signature}</code>
@@ -570,7 +582,7 @@ function edgeStyle(edge: Edge) {
   return {};
 }
 
-function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlocks = true }: StudioProps) {
+function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, onOpenAnimator, fresh, allowBlocks = true }: StudioProps) {
   const graph = tool.graph ?? blocksToGraph(tool.blocks ?? []);
   const rf = useReactFlow();
   const wrapper = useRef<HTMLDivElement>(null);
@@ -891,7 +903,22 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
     requestAnimationFrame(() => rf.fitView({ padding: 0.25, maxZoom: 1.1 }));
   }, [graph, setGraphCommitted, estHeight, rf]);
 
+  const [preview, setPreview] = useState<TimelineOp[] | null>(null);
+  /** Dry run: work out what Apply would do, without touching the edit. */
+  const showPreview = useCallback(() => {
+    setRunError(null);
+    try {
+      if (tab === "blocks") {
+        const fatal = issues.find((i) => i.level === "error");
+        if (fatal) { setShowErrors(true); return; }
+      }
+      const ops = runTool(tab === "code" ? { ...tool, mode: "code" } : { ...tool, graph, mode: "blocks" }, ctx);
+      setPreview(ops);
+    } catch (e: any) { setRunError(e.message); setShowErrors(true); }
+  }, [tool, graph, ctx, issues, tab]);
+
   const run = useCallback(() => {
+    setPreview(null);
     setRunError(null);
     if (tab === "code") {
       try { onRun(runTool({ ...tool, mode: "code" }, ctx)); } catch (e: any) { setRunError(e.message); setShowErrors(true); }
@@ -1032,27 +1059,27 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
     <LangContext.Provider value={lang}>
     <div className={`bs-studio${showHandles ? " bs-show-handles" : ""}${connecting ? " bs-connecting" : ""}`} data-testid="block-studio">
       <header className="bs-header">
-        <input className="bs-title" aria-label="Tool name" value={tool.name} onChange={(e) => onChange({ ...tool, name: e.target.value })} disabled={readOnly} data-testid="bs-name" />
-        <div className="bs-tabs" role="tablist" aria-label="Tool mode">
+        <input className="bs-title" aria-label="Name" value={tool.name} onChange={(e) => onChange({ ...tool, name: e.target.value })} disabled={readOnly} data-testid="bs-name" />
+        <div className="bs-tabs" role="tablist" aria-label="Editing mode">
           {allowBlocks && <button role="tab" aria-selected={tab === "blocks"} className={tab === "blocks" ? "active" : ""} onClick={switchToBlocks} data-testid="bs-tab-blocks">🧩 Blocks</button>}
           <button role="tab" aria-selected={tab === "code"} className={tab === "code" ? "active" : ""} onClick={switchToCode} data-testid="bs-tab-code">{"</>"} Code</button>
         </div>
         <span className="bs-spacer" />
         {tab === "blocks" && (
-          <button className="bs-btn" onClick={() => setImportOpen((o) => !o)} disabled={readOnly} data-testid="bs-import">🎬 Import clips</button>
+          <button className="bs-btn" onClick={() => setImportOpen((o) => !o)} disabled={readOnly} data-testid="bs-import" title="Bring clips from your project onto the canvas">🎬 <span className="bs-lbl">Import clips</span></button>
         )}
         {tab === "blocks" && (
-          <button className="bs-btn" disabled={readOnly} onClick={() => addNode({ id: uid(), type: "frame", frame: Math.round(ctx.playhead * ctx.fps), position: freeSpot() })} data-testid="bs-add-frame">🖼 Add frame</button>
+          <button className="bs-btn" disabled={readOnly} onClick={() => addNode({ id: uid(), type: "frame", frame: Math.round(ctx.playhead * ctx.fps), position: freeSpot() })} data-testid="bs-add-frame" title="Add a frame (time) block">🖼 <span className="bs-lbl">Add frame</span></button>
         )}
         {tab === "blocks" && (
           <button className={`bs-btn${showHandles ? " bs-btn-on" : ""}`} onClick={() => setShowHandles((s) => !s)} disabled={readOnly}
-            aria-pressed={showHandles} data-testid="bs-handles" title="Show every field dot (they also appear on hover)">🔌 Connectors</button>
+            aria-pressed={showHandles} data-testid="bs-handles" title="Show every field dot (they also appear on hover)">🔌 <span className="bs-lbl">Connectors</span></button>
         )}
         {tab === "blocks" && (
-          <button className="bs-btn" onClick={tidy} disabled={readOnly} data-testid="bs-tidy" title="Line the blocks up neatly — undoable">🧹 Tidy</button>
+          <button className="bs-btn" onClick={tidy} disabled={readOnly} data-testid="bs-tidy" title="Line the blocks up neatly — undoable">🧹 <span className="bs-lbl">Tidy</span></button>
         )}
         {tab === "blocks" && (
-          <button className="bs-btn" onClick={() => setTutorialStep(0)} disabled={readOnly} data-testid="bs-tutorial-open" title="Show the studio tutorial">🎓 Tutorial</button>
+          <button className="bs-btn" onClick={() => setTutorialStep(0)} disabled={readOnly} data-testid="bs-tutorial-open" title="Show the studio tutorial">🎓 <span className="bs-lbl">Tutorial</span></button>
         )}
         {tab === "blocks" && (
           <button className="bs-btn" onClick={() => { const next: BlockLang = lang === "es" ? "en" : "es"; setLang(next); saveLang(next, window.localStorage); }} data-testid="bs-lang" title="Switch language / Cambiar idioma">🌐 {lang === "es" ? "ES" : "EN"}</button>
@@ -1061,23 +1088,45 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, fresh, allowBlo
           <button className="bs-btn bs-btn-presets" onClick={() => setPresetsOpen((o) => !o)} disabled={readOnly} data-testid="bs-presets" title="Ready-made recipes of connected blocks">✨ Presets</button>
         )}
         <button className="bs-btn" onClick={async () => {
-          try { await navigator.clipboard.writeText(encodeTool({ ...tool, graph })); setShared("Tool code copied — paste it into anyone's studio with Import"); }
+          try { await navigator.clipboard.writeText(encodeTool({ ...tool, graph })); setShared("Block code copied — paste it into anyone's studio with Import"); }
           catch { setShared("Couldn't reach the clipboard — try again"); }
           setTimeout(() => setShared(""), 3500);
-        }} disabled={readOnly} data-testid="bs-share" title="Copy this tool as a code you can share">🔗 Share</button>
+        }} disabled={readOnly} data-testid="bs-share" title="Copy these blocks as a code you can share">🔗 <span className="bs-lbl">Share</span></button>
         {tab === "blocks" && <>
           <button className="bs-btn" onClick={undo} disabled={readOnly || !canUndo} data-testid="bs-undo" title="Undo (Ctrl+Z)">↶</button>
           <button className="bs-btn" onClick={redo} disabled={readOnly || !canRedo} data-testid="bs-redo" title="Redo (Ctrl+Shift+Z)">↷</button>
         </>}
-        <button className="bs-btn bs-btn-run" onClick={run} disabled={readOnly} data-testid="bs-run">▶ Run</button>
+        {onOpenAnimator && <button className="bs-btn" onClick={onOpenAnimator} data-testid="bs-open-animator" title="Open the Animator — pose and animate clips, text and shapes like rigs">🎞 Animator</button>}
+        <button className="bs-btn" onClick={showPreview} disabled={readOnly} data-testid="bs-preview" title="See what Apply would change, without changing anything">👁 Preview</button>
+        <button className="bs-btn bs-btn-run" onClick={run} disabled={readOnly} data-testid="bs-run" title="Apply these blocks to your edit — one undoable step">▶ Apply to edit</button>
         <button className="bs-btn bs-btn-close" onClick={onClose} aria-label="Close studio" data-testid="bs-close">✕</button>
       </header>
+      {preview && (
+        <div className="bs-preview" role="dialog" aria-label="Preview of changes" data-testid="bs-preview-panel">
+          <div className="bs-preview-head">
+            <b>{preview.length === 0 ? "Nothing would change" : `${preview.length} change${preview.length === 1 ? "" : "s"} to your edit`}</b>
+            <button className="bs-notice-close" aria-label="Close preview" onClick={() => setPreview(null)}>✕</button>
+          </div>
+          {preview.length === 0
+            ? <p className="bs-hint">Your blocks produced no changes. Check that the clips they work on exist — the green block’s “Work on” setting picks which clips are used.</p>
+            : <ol className="bs-preview-list">{preview.slice(0, 40).map((o, i) => {
+                const label = BLOCK_LIBRARY.find((b) => b.op === o.op)?.label ?? o.op.replace(/_/g, " ");
+                const detail = Object.entries(o.args ?? {}).filter(([, v]) => typeof v !== "object").slice(0, 3).map(([k, v]) => `${k}: ${String(v).slice(0, 24)}`).join(" · ");
+                return <li key={i}><b>{label}</b>{detail && <span>{detail}</span>}</li>;
+              })}</ol>}
+          {preview.length > 40 && <p className="bs-hint">…and {preview.length - 40} more.</p>}
+          <div className="bs-preview-actions">
+            <button className="bs-btn bs-btn-run" onClick={run} disabled={readOnly || preview.length === 0} data-testid="bs-preview-apply">▶ Apply to edit</button>
+            <button className="bs-btn" onClick={() => setPreview(null)}>Not now</button>
+          </div>
+        </div>
+      )}
       {shared && <div className="bs-notice" data-testid="bs-share-notice"><span>🔗 {shared}</span><button className="bs-notice-close" aria-label="Dismiss" onClick={() => setShared("")}>✕</button></div>}
       {presetsOpen && tab === "blocks" && (
         <div className="bs-presets" data-testid="bs-presets-panel" role="dialog" aria-label="Presets">
           <div className="bs-presets-head">
             <h3>✨ Presets</h3>
-            <p>Example recipes, ready to take apart. Click one and its blocks appear on the canvas, connected to the right blocks — you set them up with your own words, colours and clips. Nothing runs until you press ▶ Run.</p>
+            <p>Example recipes, ready to take apart. Click one and its blocks appear on the canvas, connected to the right blocks — you set them up with your own words, colours and clips. Nothing changes until you press ▶ Apply to edit.</p>
             <button className="bs-notice-close" aria-label="Close presets" onClick={() => setPresetsOpen(false)}>✕</button>
           </div>
           <div className="bs-presets-list">

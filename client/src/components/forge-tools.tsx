@@ -5,7 +5,7 @@ import type { TimelineOp } from "@shared/editing";
 import { api } from "@/lib/api";
 import BlockStudio, { defaultGraph } from "./forge-block-studio";
 
-export function ForgeTools({ disabled, onRun, onError, onNote, getCtx, studio = true, autoOpen = false, onExitStudio }: { disabled: boolean; onRun: (ops: TimelineOp[]) => void; onError: (message: string) => void; onNote?: (message: string) => void; getCtx: () => ToolContext; studio?: boolean; autoOpen?: boolean; onExitStudio?: () => void }) {
+export function ForgeTools({ disabled, onRun, onError, onNote, getCtx, studio = true, autoOpen = false, onExitStudio, onOpenAnimator }: { disabled: boolean; onRun: (ops: TimelineOp[]) => void; onError: (message: string) => void; onNote?: (message: string) => void; getCtx: () => ToolContext; studio?: boolean; autoOpen?: boolean; onExitStudio?: () => void; onOpenAnimator?: () => void }) {
   const [userTools, setUserTools] = useState<CustomTool[]>(() => loadUserTools(window.localStorage));
   const [editing, setEditing] = useState<CustomTool | null>(null);
   const [freshTool, setFreshTool] = useState(false);
@@ -53,7 +53,7 @@ export function ForgeTools({ disabled, onRun, onError, onNote, getCtx, studio = 
   }, []);
 
   const freshDraft = () => {
-    const tool: CustomTool = { id: `tool-${Date.now().toString(36)}`, name: "My tool", description: "What this tool does", mode: "blocks", graph: defaultGraph() };
+    const tool: CustomTool = { id: `tool-${Date.now().toString(36)}`, name: "My blocks", description: "What these blocks do to your edit", mode: "blocks", graph: defaultGraph() };
     draftRef.current = JSON.stringify(tool);
     return tool;
   };
@@ -84,7 +84,7 @@ export function ForgeTools({ disabled, onRun, onError, onNote, getCtx, studio = 
       }
       if (!ops.length) return;
       if (rest.length) onRun(rest);
-    } catch (e: any) { onError(e.message || "The tool failed"); }
+    } catch (e: any) { onError(e.message || "The blocks could not be applied"); }
   };
 
   // Full-screen studio while a tool is open.
@@ -109,6 +109,7 @@ export function ForgeTools({ disabled, onRun, onError, onNote, getCtx, studio = 
         onExitStudio?.();
       }}
       onRun={onRun}
+      onOpenAnimator={onOpenAnimator}
     />;
   }
 
@@ -116,7 +117,7 @@ export function ForgeTools({ disabled, onRun, onError, onNote, getCtx, studio = 
     <div className="tool-card-head"><b>{tool.name}</b><span className="eyebrow">{tool.mode === "blocks" ? "Blocks" : "Code"}</span></div>
     <p className="help-text">{tool.description}</p>
     <div className="tool-card-actions">
-      <button className="primary-btn" disabled={disabled} onClick={() => runToolNow(tool)} data-testid={`tool-run-${tool.id}`}>Run</button>
+      <button className="primary-btn" disabled={disabled} onClick={() => runToolNow(tool)} data-testid={`tool-run-${tool.id}`}>Apply to edit</button>
       {studio && <button className="chip" disabled={disabled} onClick={() => setEditing(structuredClone(tool))} data-testid={`tool-edit-${tool.id}`}>Open in studio</button>}
       <button className="chip" disabled={disabled} onClick={() => setUserTools((list) => [...list, { ...structuredClone(tool), id: `tool-${Date.now().toString(36)}`, name: `${tool.name} copy`, builtIn: false }])}>Duplicate</button>
       {!builtIn && <button className="chip" disabled={disabled} onClick={() => { setUserTools((list) => list.filter((t) => t.id !== tool.id)); void dropTool(tool.id); }}>Delete</button>}
@@ -124,16 +125,16 @@ export function ForgeTools({ disabled, onRun, onError, onNote, getCtx, studio = 
   </div>;
 
   return <div className="effects-panel" data-testid="tools-library">
-    <div className="library-heading"><h3>Custom tools</h3><span className="eyebrow">{BUILT_IN_TOOLS.length + userTools.length} tools</span></div>
-    <p className="help-text">Automate your edit in the block studio: drag blocks, connect them with lines, bring in clips and frames, and run everything as one undoable step. Prefer typing? Every tool also has a code mode.</p>
+    <div className="library-heading"><h3>Blocks &amp; scripts</h3><span className="eyebrow">{BUILT_IN_TOOLS.length + userTools.length} saved</span></div>
+    <p className="help-text">Build anything for your edit in the block studio — titles, timing, styling, rigs, whole sequences. Drag blocks, connect them, pick which clips they work on, then press the green Apply to edit button to change your timeline in one undoable step. Prefer typing? Every set of blocks also has a code mode.</p>
     <section className="effect-group"><h4>Examples</h4>{BUILT_IN_TOOLS.map((t) => card(t, true))}</section>
-    {userTools.length > 0 && <section className="effect-group"><h4>Your tools</h4>{userTools.map((t) => card(t, false))}</section>}
+    {userTools.length > 0 && <section className="effect-group"><h4>Yours</h4>{userTools.map((t) => card(t, false))}</section>}
     <div className="tool-add-row">
-      <button className="primary-btn" disabled={disabled} data-testid="tool-new-code" onClick={() => setEditing({ id: `tool-${Date.now().toString(36)}`, name: "My tool", description: "What this tool does", mode: "code", code: "// vf.playhead, vf.selection, vf.clips\nreturn [];" })}>New tool with code</button>
-      {studio && <button className="primary-btn" disabled={disabled} data-testid="tool-new-blocks" onClick={() => { setFreshTool(true); setEditing(freshDraft()); }}>New tool with blocks</button>}
+      <button className="primary-btn" disabled={disabled} data-testid="tool-new-code" onClick={() => setEditing({ id: `tool-${Date.now().toString(36)}`, name: "My blocks", description: "What these blocks do to your edit", mode: "code", code: "// vf.playhead, vf.selection, vf.clips\nreturn [];" })}>New script with code</button>
+      {studio && <button className="primary-btn" disabled={disabled} data-testid="tool-new-blocks" onClick={() => { setFreshTool(true); setEditing(freshDraft()); }}>New blocks</button>}
     </div>
     <div className="tool-import-row">
-      <input className="tool-import-input" placeholder="Paste a tool code (VFT1:…)" aria-label="Paste a tool code"
+      <input className="tool-import-input" placeholder="Paste a block code (VFT1:…)" aria-label="Paste a block code"
         data-testid="tool-import-code" value={importCode} onChange={(e) => setImportCode(e.target.value)} disabled={disabled} />
       <button className="chip" disabled={disabled || !importCode.trim()} data-testid="tool-import-btn"
         onClick={() => {
@@ -142,11 +143,11 @@ export function ForgeTools({ disabled, onRun, onError, onNote, getCtx, studio = 
             setUserTools((list) => [...list, tool]);
             void pushTool(tool);
             setImportCode("");
-            onNote?.(`Added tool “${tool.name}”`);
+            onNote?.(`Added “${tool.name}”`);
           } catch (e: any) { onError(e.message || "That tool code didn't work"); }
-        }}>Add tool</button>
+        }}>Add</button>
     </div>
-    <p className="help-text">Tools sync to your account and also live in this browser as an offline copy. Share one with the 🔗 Share button in the studio, and add it here from its code.</p>
-    <a href="#/docs/custom-tools" className="ghost-link">Custom tools guide</a>
+    <p className="help-text">Your blocks sync to your account and keep an offline copy in this browser. Share one with the 🔗 Share button in the studio, and add it here from its code.</p>
+    <a href="#/docs/custom-tools" className="ghost-link">Blocks guide</a>
   </div>;
 }

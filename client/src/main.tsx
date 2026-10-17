@@ -4,6 +4,7 @@ import App from "./App";
 import "./index.css";
 import "./forge.css";
 import "./studio.css";
+import "./animator.css";
 
 if (!window.location.hash) {
   window.location.hash = "#/";

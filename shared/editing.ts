@@ -5,6 +5,7 @@ import { motionPreset } from "./presets";
 import { templateClips } from "./graphics";
 import { beatTimes, retimeAnimation, reverseAnimation } from "./motion";
 import { codeRecipe } from "./expr";
+import { RIG_PROPS, applyAnimationToClips, bakeFollow, followAnimation, normalizeAnimation, restPose, type RigProp } from "./rig";
 import { fitClip, clipBounds, type FitMode } from "./layout";
 import { normalizeExpressions, valueAt, ANIMATABLE } from "./animation";
 const uid = () => Math.random().toString(36).slice(2,14);
@@ -268,6 +269,47 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
           const c=find(args?.clipId); if(!isProperty(args?.property)) throw new Error("unknown animation property");
           c.keyframes = { ...c.keyframes, ...normalizeKeyframes({ [args.property]: args.keyframes },clipDuration(c)) };
           if(!args.keyframes?.length) delete c.keyframes[args.property as AnimationProperty];
+          break;
+        }
+        case "rig_bake": {
+          // Bake an animator animation (parts, joints, local keyframes) into plain clip keyframes.
+          const rawAnim = args?.animation;
+          if (!rawAnim || typeof rawAnim !== "object" || !Array.isArray(rawAnim.parts)) throw new Error("rig_bake needs an animation with parts");
+          const restDefaults: Record<string, unknown> = {};
+          for (const p of rawAnim.parts) if (p && typeof p.clipId === "string") restDefaults[p.clipId] = restPose(find(p.clipId));
+          const anim = normalizeAnimation({ ...rawAnim, start: args.start ?? rawAnim.start, rest: { ...restDefaults, ...(rawAnim.rest ?? {}) } });
+          const { clips: baked, changed } = applyAnimationToClips(anim, clips, timeline.resolution);
+          for (const id of changed) { const i = clips.findIndex((c) => c.id === id); clips[i] = normalizeClip(baked[i]); }
+          break;
+        }
+        case "rig_pose": {
+          // Move several clips to a pose together: any of x, y, scale, rotation, opacity, from where they are now.
+          const ids: unknown[] = Array.isArray(args?.clipIds) ? args.clipIds : String(args?.clipIds ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+          if (!ids.length) throw new Error("rig_pose needs clipIds");
+          const targets: Partial<Record<RigProp, number>> = {};
+          for (const prop of RIG_PROPS) if (args[prop] !== undefined && args[prop] !== "") { const n = Number(args[prop]); if (!Number.isFinite(n)) throw new Error(`rig_pose: ${prop} must be a number`); targets[prop] = n; }
+          if (!Object.keys(targets).length) throw new Error("rig_pose needs at least one of x, y, scale, rotation, opacity");
+          const delay = Math.max(0, Number(args.delay ?? 0) || 0), duration = Math.max(0.01, Number(args.duration ?? 0.8) || 0.8);
+          const easing = typeof args.easing === "string" && args.easing ? args.easing : "ease-out";
+          for (const id of ids) {
+            const c = find(id); if (c.track === "audio") throw new Error("audio clips cannot be posed");
+            const dur = clipDuration(c), kf: Record<string, unknown> = { ...(c.keyframes ?? {}) };
+            for (const [prop, to] of Object.entries(targets)) {
+              const from = valueAt(c, prop as AnimationProperty, Math.min(delay, dur));
+              kf[prop] = [{ time: round(Math.min(delay, dur)), value: from, easing }, { time: round(Math.min(delay + duration, dur)), value: to }].filter((k, i, a) => i === 0 || k.time > a[0].time);
+            }
+            c.keyframes = normalizeKeyframes(kf, dur);
+            const expr = { ...(c.expressions ?? {}) } as Record<string, string>; Object.keys(targets).forEach((p) => delete expr[p]);
+            if (Object.keys(expr).length) c.expressions = expr; else delete c.expressions;
+          }
+          break;
+        }
+        case "rig_follow": {
+          // Make one clip ride another, turning and scaling with it about the parent's joint.
+          const parent = find(args?.parentId), child = find(args?.childId);
+          const anim = followAnimation(parent, child, timeline.resolution, { pivotX: args.pivotX, pivotY: args.pivotY });
+          const next = bakeFollow(anim, clips, timeline.resolution, child.id);
+          const i = clips.findIndex((c) => c.id === child.id); clips[i] = normalizeClip(next[i]);
           break;
         }
         case "upsert_keyframe": {

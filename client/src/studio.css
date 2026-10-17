@@ -444,3 +444,21 @@
 /* per-edge delete button: click a wire first to reveal its ✕ (hidden ones can't be clicked) */
 .bs-edge-delete { width: 20px; height: 20px; border-radius: 50%; background: #26292f; border: 1px solid #3a3f47; color: #9aa0a8; cursor: pointer; font-size: 10px; line-height: 1; padding: 0; opacity: 0; transition: opacity .12s; pointer-events: none; }
 .bs-edge-delete:hover, .bs-edge-delete.selected { opacity: 1 !important; background: #3a2323; border-color: #6b2424; color: #ff9d9d; pointer-events: all; }
+
+/* Green start block: which clips the blocks work on */
+.bs-start-scope { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; color: #b9c8bd; }
+.bs-start-scope select { flex: 1; min-width: 0; padding: 6px 8px; font-size: 12px; background: #101a14; border: 1px solid #3d9a63; color: #e8f2ea; border-radius: 6px; }
+.bs-node-start { min-width: 230px; }
+
+/* Preview: what Apply would change */
+.bs-preview { position: absolute; z-index: 40; top: 56px; right: 14px; width: min(380px, calc(100% - 28px)); max-height: calc(100% - 80px); overflow: auto; background: #19191b; border: 1px solid #3d9a63; border-radius: 10px; padding: 14px; box-shadow: 0 16px 48px #000a; }
+.bs-preview-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.bs-preview-list { margin: 0 0 12px; padding: 0; list-style: none; display: grid; gap: 4px; counter-reset: p; }
+.bs-preview-list li { counter-increment: p; display: flex; flex-direction: column; padding: 6px 8px 6px 34px; position: relative; background: #202022; border-radius: 6px; font-size: 12px; }
+.bs-preview-list li::before { content: counter(p); position: absolute; left: 8px; top: 6px; color: #7f7d80; font-variant-numeric: tabular-nums; }
+.bs-preview-list li span { color: #a4a1a0; font-size: 11px; }
+.bs-preview-actions { display: flex; gap: 8px; }
+.bs-dot-cat-rig { background: #2fb5a3; }
+.bs-start-scope { padding-left: 6px; }
+.bs-studio .bs-title { width: auto; flex: 1 1 200px; max-width: 300px; }
+@media (max-width: 1760px) { .bs-header .bs-lbl { display: none; } .bs-header .bs-btn { padding: 7px 10px; } }

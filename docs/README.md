@@ -24,12 +24,16 @@ description: One timeline. A browser studio. An API your agents can actually use
 
 The body is a light markdown dialect:
 
-- `## Section title` starts a section shown with an anchor link
+- `## Section title` starts a section. Readers can open and close it with the arrow, and copy a link to it
 - paragraphs are plain text (single newlines are joined)
 - fenced code blocks render as copyable blocks; the fence word becomes the
   label (` ```shell ` shows a SHELL label)
 - pipe tables render as tables; cells may contain literal `|`
 - `- [Label](slug)` list items render as link cards to another docs page
+- other `- item` lines render as a bullet list; `**bold**`, `` `code` `` and
+  `[links](https://example.com)` work inside paragraphs, lists and callouts
+- callouts: start a line with `> [!NOTE]`, `> [!TIP]` or `> [!WARNING]` followed
+  by the text. Follow-on `>` lines continue it
 
 ## Tables that stay in sync with the code
 

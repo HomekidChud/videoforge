@@ -1,7 +1,7 @@
 ---
 title: Agent workflow
 group: Agent API
-order: 16
+order: 17
 description: A reliable observe, edit, verify loop for AI-driven video production.
 ---
 

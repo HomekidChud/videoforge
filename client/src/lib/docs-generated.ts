@@ -11,7 +11,7 @@ export const DOC_PAGES: DocPage[] = [
     "sections": [
       {
         "title": "Welcome to VideoForge",
-        "text": "VideoForge is a self-hosted video editor and programmable composition engine. Use the Studio to cut footage and animate graphics, or use the same HTTP API to let scripts and AI agents build the edit. Your media stays on your server. A hosted deployment runs at <https://videoforge-api-s54w.onrender.com> — set BASE to it and use an API key issued by that deployment. GET /api/health reports status. To run your own, see Self-hosting."
+        "text": "VideoForge is a self-hosted video editor and programmable composition engine. Use the Studio to cut footage and animate graphics, or use the same HTTP API to let scripts and AI agents build the edit. Your media stays on your server.\n\nA hosted deployment runs at <https://videoforge-api-s54w.onrender.com> — set BASE to it and use an API key issued by that deployment. GET /api/health reports status. To run your own, see Self-hosting."
       },
       {
         "title": "Choose your starting point",
@@ -47,7 +47,7 @@ export const DOC_PAGES: DocPage[] = [
     "sections": [
       {
         "title": "Connect to your server",
-        "text": "Run npm ci and npm run dev in the repository. The default server is http://localhost:5000. On first boot, the server creates an owner key; use it to generate a restricted write key for your agent. Set BASE to your server URL and KEY to that scoped key. Never put the owner key in client code. To use the hosted deployment instead, set BASE to https://videoforge-api-s54w.onrender.com. Keys are issued per deployment: a key from your local server will not work there. GET /api/health reports status.",
+        "text": "Run npm ci and npm run dev in the repository. The default server is http://localhost:5000. On first boot, the server creates an owner key; use it to generate a restricted write key for your agent. Set BASE to your server URL and KEY to that scoped key. Never put the owner key in client code.\n\nTo use the hosted deployment instead, set BASE to https://videoforge-api-s54w.onrender.com. Keys are issued per deployment: a key from your local server will not work there. GET /api/health reports status.",
         "language": "SHELL",
         "code": "export BASE=\"http://localhost:5000\"\nexport KEY=\"<your-scoped-write-key>\"\ncurl \"$BASE/api/capabilities\" \\\n  -H \"Authorization: Bearer $KEY\""
       },
@@ -79,7 +79,7 @@ export const DOC_PAGES: DocPage[] = [
     "sections": [
       {
         "title": "Three ways to sign in",
-        "text": "- **Email and password** — the everyday way for people. The first account is created with the workspace owner key (printed to `data/OWNER_KEY.txt` on first boot, or set `VIDEOFORGE_BOOTSTRAP_KEY`); it becomes the workspace admin. After that, new accounts come from an admin (Developer platform → Accounts) unless `VIDEOFORGE_ACCOUNTS=open` allows self-signup. - **Google** — a “Continue with Google” button appears when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set (standard OAuth, verified id-token claims). - **API keys** — for AI agents, scripts and the standalone tool exports. No password, no cookie: `Authorization: Bearer <key>`. Sessions are random tokens stored in SQLite behind an HttpOnly `vf_session` cookie (30 days), so **sign-ins survive server restarts and browser refreshes**. Logout destroys the session. The health endpoint, documentation, share pages and the homepage never require a sign-in.",
+        "text": "- **Email and password** — the everyday way for people. The first account is created with the workspace owner key (printed to `data/OWNER_KEY.txt` on first boot, or set `VIDEOFORGE_BOOTSTRAP_KEY`); it becomes the workspace admin. After that, new accounts come from an admin (Developer platform → Accounts) unless `VIDEOFORGE_ACCOUNTS=open` allows self-signup.\n- **Google** — a “Continue with Google” button appears when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set (standard OAuth, verified id-token claims).\n- **API keys** — for AI agents, scripts and the standalone tool exports. No password, no cookie: `Authorization: Bearer <key>`.\n\nSessions are random tokens stored in SQLite behind an HttpOnly `vf_session` cookie (30 days), so **sign-ins survive server restarts and browser refreshes**. Logout destroys the session. The health endpoint, documentation, share pages and the homepage never require a sign-in.",
         "language": "SHELL",
         "code": "# Account sign-in (sets the cookie)\ncurl -c jar -X POST \"$BASE/api/auth/login\" -H 'Content-Type: application/json' \\\n  -d '{\"email\":\"you@example.com\",\"password\":\"…\"}'\ncurl -b jar \"$BASE/api/auth/me\"\n\n# Agent key\ncurl \"$BASE/api/auth/me\" -H \"Authorization: Bearer $KEY\""
       },
@@ -1242,8 +1242,18 @@ export const DOC_PAGES: DocPage[] = [
         "text": "On mobile, the preview stays above the active Timeline, Library or Inspector panel. Switch panels with the panel buttons rather than scrolling away from the preview. Tools contains composition JSON, add title, redo, snapping and documentation links."
       },
       {
-        "title": "Custom tools",
-        "text": "The Tools tab of the library lists your custom tools: automations written in JavaScript or assembled from building blocks. Run one and its operations apply as a single undoable step. See Custom tools."
+        "title": "Blocks and scripts",
+        "text": "The **Blocks** tab opens the block studio: snap blocks together, preview what they would change, then press the green **Apply to edit** button to change your timeline in one undoable step. The Tools tab lists saved scripts written in JavaScript. See Blocks & scripts.",
+        "callouts": [
+          {
+            "kind": "tip",
+            "text": "Press Preview in the block studio to see exactly what Apply would do before it touches your edit."
+          }
+        ]
+      },
+      {
+        "title": "Animator",
+        "text": "The **Animator** button in the top bar opens a Roblox-style animation editor for clips, text and shapes. Add clips as parts of a rig, parent them, set joints, pose them on a timeline and press Apply to edit. See Animator."
       },
       {
         "title": "Typography for text clips",
@@ -1316,6 +1326,14 @@ export const DOC_PAGES: DocPage[] = [
         "text": "Projects autosave as you edit. Check the save status before leaving. Export queues a server-side MP4 job. Public sharing requires an admin to change visibility and a completed render. A public share link does not expose your API key or source footage.",
         "links": [
           {
+            "label": "Animator",
+            "slug": "animator"
+          },
+          {
+            "label": "Blocks & scripts",
+            "slug": "custom-tools"
+          },
+          {
             "label": "Rendering",
             "slug": "rendering"
           }
@@ -1324,22 +1342,221 @@ export const DOC_PAGES: DocPage[] = [
     ]
   },
   {
-    "slug": "custom-tools",
+    "slug": "animator",
     "group": "Studio",
-    "title": "Custom tools",
-    "description": "Write your own one-click automations in JavaScript or snap them together in a full-screen block studio.",
+    "title": "Animator",
+    "description": "Pose clips, text and shapes like a rig, key them on a timeline and apply the result to your edit.",
     "sections": [
       {
-        "title": "Your own tools",
-        "text": "Custom tools are small automations you write once and run with a click: \"three beat titles at the playhead\", \"bold every title\", \"orbit the selection\". A tool returns a list of timeline operations, and running it applies them as one atomic, undoable step — the same operations the API uses, with the same validation. Click the **Blocks** tab, next to Effects, and the block studio opens straight away; code tools live in the Tools tab."
+        "title": "What the Animator is",
+        "text": "The Animator is a pose-and-keyframe editor in the style of Roblox Studio's Animation Editor, but the puppet parts are your own clips. A video clip, an image, a line of text or a shape can each be a **part**. Parts have a **joint** they turn about, can hang off a **parent**, and carry keyframes for position, size, turn and see-through. Press **Apply to edit** and the result lands on your timeline as ordinary keyframes, so you can still trim, retime and layer the clips with every other tool.\n\nOpen it with the **Animator** button in the top bar of the Studio, or the 🎞 Animator button inside the block studio.",
+        "callouts": [
+          {
+            "kind": "note",
+            "text": "Nothing about rendering changes. The Animator bakes into the same keyframes every clip already has, so the preview, the FFmpeg export and the API all agree."
+          }
+        ]
       },
       {
-        "title": "Two ways to write one",
-        "text": "Every tool has a name, a description, and a program written in one of two modes, both edited in the full-screen block studio. - **Blocks** is a canvas like Scratch: drag friendly blocks, connect them with lines, and run them — no code required. - **Code** is a short JavaScript function that receives a `vf` helper and returns operations. The studio's Code tab is a plain editor for coders. Duplicate a built-in example to get started; your tools are stored in your browser and run only against the timeline you have open."
+        "title": "Build a rig",
+        "text": "Select the clips you want to animate in the editor, open the Animator and press **Selected clips**. They appear in the Rig list on the left. **On screen** adds every clip that is visible while the animation plays, and **Stick figure** creates a ready-made figure of ten shapes on the timeline and rigs it for you.\n\n- Drag a part onto another to make it a **child**. Drag it into empty space to unparent it.\n- A child moves, turns and scales with its parent, about the parent's joint. Its own keyframes still work on top.\n- Open **Joint & parent** to move the joint. Put the joint at the shoulder of an arm clip and rotating the arm swings it from there.",
+        "callouts": [
+          {
+            "kind": "tip",
+            "text": "Parent a hand to a forearm and the forearm to an upper arm. Rotating the upper arm carries the whole chain, the way a Roblox character's arm works."
+          }
+        ]
+      },
+      {
+        "title": "Pose and key",
+        "text": "Move the playhead, then pose a part. You can drag the highlighted object on the stage, or type into the **Pose** fields. Each change writes a keyframe at the playhead. If a property had no keys yet, a first key at the start pins its resting value so nothing jumps.\n\nOpen a part's row in the Keyframes panel to see each property on its own line. The summary row shows every key time at once.",
+        "rows": [
+          [
+            "Control",
+            "What it does"
+          ],
+          [
+            "Diamond beside a field",
+            "Adds or removes a key for that one property at the playhead"
+          ],
+          [
+            "Key pose (K)",
+            "Keys every property of the selected part at the playhead"
+          ],
+          [
+            "Double-click a property row",
+            "Adds a key at that time"
+          ],
+          [
+            "Drag a diamond",
+            "Moves the key, snapped to a frame"
+          ],
+          [
+            "Easing",
+            "Sets how the pose eases into the next key. Choose hold to step"
+          ]
+        ]
+      },
+      {
+        "title": "Presets",
+        "text": "The **Presets** menu writes a ready-made motion onto the selected part, or onto all parts. Values are relative to each part's resting pose, so a preset works wherever the clip sits.",
+        "rows": [
+          [
+            "Preset",
+            "Result"
+          ],
+          [
+            "Bounce",
+            "Hops up and lands, again and again"
+          ],
+          [
+            "Swing",
+            "Rocks left and right about the joint"
+          ],
+          [
+            "Wave",
+            "A quick friendly wave"
+          ],
+          [
+            "Pulse",
+            "Breathes in and out"
+          ],
+          [
+            "Float",
+            "Drifts gently up and down"
+          ],
+          [
+            "Pop in",
+            "Springs into view"
+          ],
+          [
+            "Walk cycle",
+            "Swings limbs in opposite pairs. Made for the stick figure"
+          ]
+        ],
+        "callouts": [
+          {
+            "kind": "tip",
+            "text": "Apply Walk cycle to all parts of the stick figure, press Space to play, then Apply to edit."
+          }
+        ]
+      },
+      {
+        "title": "Apply to your edit",
+        "text": "**Apply to edit** is the green button. It bakes the active animation into the clips as one undoable step, so Ctrl+Z puts everything back. Keys outside the part of the clip the animation covers are left alone. **Starts at** sets where on the timeline the animation begins, and **At playhead** uses the current playhead.\n\nAnimations are saved in this browser for the project, so they are there when you reopen the Animator. A part whose clip has been deleted shows as missing and must be removed before you can apply.",
+        "callouts": [
+          {
+            "kind": "warning",
+            "text": "Applying replaces the position, size, turn and see-through keyframes on the rigged clips, including any you added by hand. Keyframes on other properties are untouched. Use Clear from edit to remove a rig's keyframes from its clips."
+          }
+        ]
+      },
+      {
+        "title": "Use it from blocks and the API",
+        "text": "Saved animations can run from blocks. Add **Play an Animator animation** and type the animation's name. Two more blocks work on clips directly: **Pose clips together** moves several clips to a pose at once, and **Make a clip follow another** lets one clip ride another's motion about a joint.\n\nThe same three actions exist as timeline operations, so agents can drive rigs without the Animator.",
+        "rows": [
+          [
+            "Operation",
+            "Purpose"
+          ],
+          [
+            "rig_bake",
+            "Bakes an animation with parts, parents, joints and local keyframes into clip keyframes"
+          ],
+          [
+            "rig_pose",
+            "Moves several clips to a pose together, from where they are now"
+          ],
+          [
+            "rig_follow",
+            "Makes a child clip ride a parent clip's motion"
+          ]
+        ],
+        "code": "{\n  \"op\": \"rig_bake\",\n  \"args\": {\n    \"animation\": {\n      \"name\": \"Wave\",\n      \"length\": 2,\n      \"start\": 0,\n      \"parts\": [\n        { \"clipId\": \"upper-arm\", \"pivotY\": -0.07 },\n        { \"clipId\": \"forearm\", \"parentId\": \"upper-arm\", \"pivotY\": -0.065 }\n      ],\n      \"tracks\": {\n        \"upper-arm\": { \"rotation\": [{ \"time\": 0, \"value\": 0 }, { \"time\": 1, \"value\": 40, \"easing\": \"ease-in-out\" }, { \"time\": 2, \"value\": 0 }] }\n      }\n    }\n  }\n}"
+      },
+      {
+        "title": "Keyboard shortcuts",
+        "text": "Shortcuts are ignored while typing in a field.",
+        "rows": [
+          [
+            "Key",
+            "Action"
+          ],
+          [
+            "Space",
+            "Play / pause the preview"
+          ],
+          [
+            "K",
+            "Key the selected part's whole pose"
+          ],
+          [
+            "Left / Right",
+            "Step one frame"
+          ],
+          [
+            "Delete",
+            "Delete the selected key"
+          ],
+          [
+            "Ctrl/Cmd + Z",
+            "Undo"
+          ],
+          [
+            "Ctrl/Cmd + Shift + Z",
+            "Redo"
+          ],
+          [
+            "Escape",
+            "Close the Animator"
+          ]
+        ],
+        "links": [
+          {
+            "label": "Keyframes & easing",
+            "slug": "keyframes"
+          },
+          {
+            "label": "Blocks & scripts",
+            "slug": "custom-tools"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "custom-tools",
+    "group": "Studio",
+    "title": "Blocks & scripts",
+    "description": "Build anything for your edit with blocks or code, preview it, then apply it to your timeline in one undoable step.",
+    "sections": [
+      {
+        "title": "What blocks are for",
+        "text": "Blocks are a way to tell the editor what to do to your edit. They started as a way to build small custom tools, and they are much more than that now: titles and timing, styling a whole selection, animating clips, rigging characters, building whole sequences. You describe the change by snapping blocks together, then press the green **Apply to edit** button. Everything lands on your timeline as one atomic, undoable step, using the same operations and validation as the API.",
+        "callouts": [
+          {
+            "kind": "note",
+            "text": "Click the **Blocks** tab, next to Effects, and the block studio opens straight away. Scripts written in JavaScript live in the Tools tab."
+          }
+        ]
+      },
+      {
+        "title": "Apply to edit",
+        "text": "Every set of blocks begins with the green **When Apply is pressed** block. Press **▶ Apply to edit** in the header, or on a saved set in the Tools panel, and the blocks below it run.\n\n- **Preview** lists exactly what would change, one line per change, without touching your edit. Apply from the preview when it looks right.\n- **Work on** sits on the green block and picks which clips `$selection` means: the selected clips, every clip, the clips under the playhead, all video and image clips, all text clips or all shapes. A set of blocks that fades every title works without selecting anything.\n- If something is wrong the error bar at the bottom explains what and jumps to the block. Applying is disabled until errors are fixed.\n- Ctrl+Z in the editor undoes an apply in one step.",
+        "callouts": [
+          {
+            "kind": "tip",
+            "text": "Not sure what a set of blocks does? Press Preview first. It never changes your edit."
+          }
+        ]
+      },
+      {
+        "title": "Two ways to write them",
+        "text": "Every set of blocks has a name, a description, and a program written in one of two modes, both edited in the full-screen block studio.\n\n- **Blocks** is a canvas like Scratch: drag friendly blocks, connect them with lines, and apply them. No code required.\n- **Code** is a short JavaScript function that receives a `vf` helper and returns operations. The studio's Code tab is a plain editor for coders.\n\nDuplicate a built-in example to get started. Your blocks sync to your account and run only against the timeline you have open."
       },
       {
         "title": "The block studio",
-        "text": "Open any tool (or create one) and the studio takes over the screen. Blocks live in the palette on the left. The narrow rail of coloured dots picks a **category** — Create, Edit, Animate, Text, Style, Clips, Timing, Values and Flow — and the palette shows that category's blocks. Drag them onto the canvas. Connect a block's bottom dot to the next block's top dot to say \"then do this\": the line snaps in place and that becomes the run order. A tool starts at the **Start** block and follows the lines. Creating your first tool with **New tool with blocks** opens a short tutorial: name the tool, meet the block menu, change the text of the Add title block, press Run, and find your tool again in the Blocks panel. The 🎓 Tutorial button in the header replays it any time. Every field on a block has a small dot on its left. Clip and frame blocks plug into clip and time fields; **Values** blocks plug into any field. Drag a 📝 Text, 🔢 Number or 🔘 Yes / No block next to a block, type the value, and drag from its dot into the field — the connected value wins over whatever is typed in the field itself. Number blocks that don't hold a number turn red, and an unplugged value block gets a nudge to connect it. ### Editing clips you already have The **Edit** group is for everything that changes an existing clip. **Move**, **Set size** and **Rotate** transform a clip; **Flip upside down** and **Mirror** flip it; **Line up** and **Snap to grid** tidy a whole selection — place them in a tidy row or column at fixed frame spots, or spread them evenly across the frame. Colour and mood come from **Colour look**, **Brightness**, **Contrast**, **Colour strength** and **Blur**. Timing and sound: **Change speed**, **Set duration**, **Volume**, **Mute**, **Fade sound in/out**. Layering is real stacking order: **Forwards/Backwards one layer** and **Bring to front / Send to back** change a clip's z (higher draws on top, in both the preview and the render), and **Move to track** moves it between the overlay, video and audio tracks. **Crop** trims a picture or video in from the sides — the layer keeps its box with transparent padding where pixels were cut, so the preview and the export match. **Copy with offset** duplicates a clip and nudges the copy sideways — perfect for shadows and rows — and **Change words** rewrites a text clip while keeping its font, colour and size. Motion blocks also take an **easing** pick (the default, \"preset\", keeps each move's own built-in easing). ### Animating anything **Animate a property** is the keyframe block: pick a property (position, size, rotation, opacity, colour filters, reveal, volume), a **from** and a **to** value, a duration, a delay and an easing — including bounce and elastic, which the studio converts into keyframe curves for you. Ready-made variants cover the popular moves (slide in, rise up, drop, zoom, spin, fade), and **Draw on** uncovers shapes and videos left to right. Expression blocks like **Pulsing glow** and **Parallax float** animate forever with small formulas of time. ### Text effects Text clips can be revealed over time: **Typewriter** types them on character by character, **Reveal word by word** and **Reveal line by line** show them progressively, and **Colour cycle** steps the colour through a rainbow. All of them preview in the editor and export to video. **Stop text effects** turns them off. Control blocks (Repeat, For each clip, Function) have a second dot on their right side: connect blocks there to fill their body.",
+        "text": "Open any blocks (or create new ones) and the studio takes over the screen. Blocks live in the palette on the left. The narrow rail of coloured dots picks a **category** — Create, Edit, Animate, Text, Style, Clips, Timing, Values and Flow — and the palette shows that category's blocks. Drag them onto the canvas. Connect a block's bottom dot to the next block's top dot to say \"then do this\": the line snaps in place and that becomes the run order. Everything starts at the green block and follows the lines.\n\nCreating your first blocks with **New blocks** opens a short tutorial: name them, meet the block menu, change the text of the Add title block, press Apply to edit, and find them again in the Blocks panel. The 🎓 Tutorial button in the header replays it any time.\n\nEvery field on a block has a small dot on its left. Clip and frame blocks plug into clip and time fields; **Values** blocks plug into any field. Drag a 📝 Text, 🔢 Number or 🔘 Yes / No block next to a block, type the value, and drag from its dot into the field — the connected value wins over whatever is typed in the field itself. Number blocks that don't hold a number turn red, and an unplugged value block gets a nudge to connect it.\n\n### Editing clips you already have\n\nThe **Edit** group is for everything that changes an existing clip. **Move**, **Set size** and **Rotate** transform a clip; **Flip upside down** and **Mirror** flip it; **Line up** and **Snap to grid** tidy a whole selection — place them in a tidy row or column at fixed frame spots, or spread them evenly across the frame. Colour and mood come from **Colour look**, **Brightness**, **Contrast**, **Colour strength** and **Blur**. Timing and sound: **Change speed**, **Set duration**, **Volume**, **Mute**, **Fade sound in/out**. Layering is real stacking order: **Forwards/Backwards one layer** and **Bring to front / Send to back** change a clip's z (higher draws on top, in both the preview and the render), and **Move to track** moves it between the overlay, video and audio tracks. **Crop** trims a picture or video in from the sides — the layer keeps its box with transparent padding where pixels were cut, so the preview and the export match. **Copy with offset** duplicates a clip and nudges the copy sideways — perfect for shadows and rows — and **Change words** rewrites a text clip while keeping its font, colour and size. Motion blocks also take an **easing** pick (the default, \"preset\", keeps each move's own built-in easing).\n\n### Animating anything\n\n**Animate a property** is the keyframe block: pick a property (position, size, rotation, opacity, colour filters, reveal, volume), a **from** and a **to** value, a duration, a delay and an easing — including bounce and elastic, which the studio converts into keyframe curves for you. Ready-made variants cover the popular moves (slide in, rise up, drop, zoom, spin, fade), and **Draw on** uncovers shapes and videos left to right. Expression blocks like **Pulsing glow** and **Parallax float** animate forever with small formulas of time.\n\n### Text effects\n\nText clips can be revealed over time: **Typewriter** types them on character by character, **Reveal word by word** and **Reveal line by line** show them progressively, and **Colour cycle** steps the colour through a rainbow. All of them preview in the editor and export to video. **Stop text effects** turns them off.\n\nControl blocks (Repeat, For each clip, Function) have a second dot on their right side: connect blocks there to fill their body.",
         "rows": [
           [
             "Block family",
@@ -1352,6 +1569,10 @@ export const DOC_PAGES: DocPage[] = [
           [
             "Edit",
             "change clips you already have: move, resize, rotate, flip and mirror, line up and distribute, snap to grid, crop, opacity, colour looks and filters, speed and duration, volume, mute, fades, tracks, real layer order, copy with offset, replace words"
+          ],
+          [
+            "Rig",
+            "make clips behave like parts of a rig: pose several clips together, make one clip follow another, or play an animation saved in the Animator"
           ],
           [
             "Animate",
@@ -1384,16 +1605,44 @@ export const DOC_PAGES: DocPage[] = [
         ]
       },
       {
+        "title": "Rig blocks",
+        "text": "The **Rig** group treats any clip, whether video, image, text or shape, like a part of a puppet.",
+        "rows": [
+          [
+            "Block",
+            "What it does"
+          ],
+          [
+            "Pose clips together",
+            "Moves several clips to a pose at once (position, size, angle, see-through) from where they are now"
+          ],
+          [
+            "Make a clip follow another",
+            "The follower rides the leader's motion, turning and resizing with it about a joint, like a hand on an arm"
+          ],
+          [
+            "Play an Animator animation",
+            "Applies an animation you saved in the Animator. Type its name"
+          ]
+        ],
+        "callouts": [
+          {
+            "kind": "tip",
+            "text": "Open the Animator from the 🎞 Animator button in the studio header to build the animation, then play it from blocks by name."
+          }
+        ]
+      },
+      {
         "title": "Clips and frames",
-        "text": "Two special blocks plug your project straight into a tool. - **Import clips** lists every clip in the timeline — add one and it becomes a clip block on the canvas. - **Add frame** adds a frame block: a frame number that knows the project fps, so it shows the real seconds it stands for. Connect a clip block's right dot into a block's **clip** field (a purple dot on its left edge) to make that block act on that clip. Connect a frame block into a **time** field and it becomes that many seconds. One connection per field — dragging a new one replaces the old."
+        "text": "Two special blocks plug your project straight into your blocks.\n\n- **Import clips** lists every clip in the timeline — add one and it becomes a clip block on the canvas.\n- **Add frame** adds a frame block: a frame number that knows the project fps, so it shows the real seconds it stands for.\n\nConnect a clip block's right dot into a block's **clip** field (a purple dot on its left edge) to make that block act on that clip. Connect a frame block into a **time** field and it becomes that many seconds. One connection per field — dragging a new one replaces the old."
       },
       {
         "title": "Errors, live",
-        "text": "The studio checks the graph as you edit. Problems turn the block red and collect in the error panel at the bottom of the screen: click a message to jump to the block. A missing Start, a block with two blocks after it, a loop that never ends, a function that calls itself, a clip that no longer exists — all are caught before anything runs. Disconnected blocks only get a warning, and running with errors is disabled until they are fixed. Run failures land in the same panel."
+        "text": "The studio checks the graph as you edit. Problems turn the block red and collect in the error panel at the bottom of the screen: click a message to jump to the block. A missing green block, a block with two blocks after it, a loop that never ends, a function that calls itself, a clip that no longer exists — all are caught before anything runs. Disconnected blocks only get a warning, and applying with errors is disabled until they are fixed. Failures while applying land in the same panel."
       },
       {
         "title": "Templates",
-        "text": "Any string value in a block can hold a template that is resolved when the tool runs. Arithmetic works too: `\"$playhead + $index * 0.4\"` staggers each step from the playhead. Fields marked JSON (patches, keyframes, expressions) are parsed into objects, so an update step can carry any clip fields, including the new text style. For-each groups can also filter by what a clip looks like or says: pick **colour** and a colour swatch to run blocks for every clip of that colour, or pick **contains** and type a few words to catch every text clip containing them. Audio clips are included too (kind \"audio\"), so a for-each over audio can change volume across a whole soundtrack. Switching a blocks tool to the Code tab converts the graph into readable JavaScript that produces the same operations; the `vf` helpers cover everything the blocks can do, including `vf.animateProperty`, `vf.textEffect` and `vf.colorCycle`.",
+        "text": "Any string value in a block can hold a template that is resolved when you apply the blocks.\n\nArithmetic works too: `\"$playhead + $index * 0.4\"` staggers each step from the playhead. Fields marked JSON (patches, keyframes, expressions) are parsed into objects, so an update step can carry any clip fields, including the new text style.\n\nFor-each groups can also filter by what a clip looks like or says: pick **colour** and a colour swatch to run blocks for every clip of that colour, or pick **contains** and type a few words to catch every text clip containing them. Audio clips are included too (kind \"audio\"), so a for-each over audio can change volume across a whole soundtrack.\n\nSwitching to the Code tab converts the graph into readable JavaScript that produces the same operations; the `vf` helpers cover everything the blocks can do, including `vf.animateProperty`, `vf.textEffect` and `vf.colorCycle`.",
         "rows": [
           [
             "Template",
@@ -1423,11 +1672,11 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Blocks ↔ code",
-        "text": "Switching a blocks tool to the Code tab converts the graph into readable, commented JavaScript that uses the `vf` helper — chains become sequential calls, Repeat becomes a `for` loop, For-each-clip becomes a filtered `vf.clips` loop, functions become `const name = (index, count, clipId) => …`, and clip/frame connections become arguments. The tool now runs that code (the blocks are kept, so you can switch back). The conversion is faithful: the generated code produces the same operations the blocks would, resolved at run time against the live playhead and selection. Invalid graphs stay in Blocks with an error instead of converting."
+        "text": "Switching to the Code tab converts the graph into readable, commented JavaScript that uses the `vf` helper — chains become sequential calls, Repeat becomes a `for` loop, For-each-clip becomes a filtered `vf.clips` loop, functions become `const name = (index, count, clipId) => …`, and clip/frame connections become arguments. The blocks now run as that code (they are kept, so you can switch back). The conversion is faithful: the generated code produces the same operations the blocks would, resolved at run time against the live playhead and selection. Invalid graphs stay in Blocks with an error instead of converting."
       },
       {
-        "title": "Code tools",
-        "text": "A code tool is the body of a JavaScript function. It receives one argument, `vf`, and returns one operation or an array of them. The Code tab is a real editor: line numbers, tab-key support, and a reference panel listing every `vf` helper — click an example to insert it at the cursor. The `$templates` the blocks use (like `$playhead`) are listed with their code equivalents (`vf.playhead`). When a run fails, the error shows inline above the code with the offending line highlighted in the gutter, as well as in the error console.",
+        "title": "Code scripts",
+        "text": "A script is the body of a JavaScript function. It receives one argument, `vf`, and returns one operation or an array of them. The Code tab is a real editor: line numbers, tab-key support, and a reference panel listing every `vf` helper — click an example to insert it at the cursor. The `$templates` the blocks use (like `$playhead`) are listed with their code equivalents (`vf.playhead`). When a run fails, the error shows inline above the code with the offending line highlighted in the gutter, as well as in the error console.",
         "language": "JS",
         "code": "// vf has the playhead, selection and every clip\nconst ops = [];\nfor (const id of vf.selection) {\n  ops.push(vf.animate(id, { rotation: \"wiggle(2, 4)\" }));\n}\nops.push(vf.markers(120, 8));\nreturn ops;",
         "rows": [
@@ -1475,12 +1724,22 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Safety and limits",
-        "text": "Code tools run as ordinary JavaScript in your own browser page — there is no sandbox, so only run tools you wrote or trust. The server still validates every operation a tool produces and rejects anything invalid, atomically. Both block and code tools may produce at most 100 operations, matching the batch limit. Because tools are just operations, they respect scopes, undo, dry runs and everything else in the operation catalog."
+        "text": "Scripts run as ordinary JavaScript in your own browser page — there is no sandbox, so only run scripts you wrote or trust. The server still validates every operation a tool produces and rejects anything invalid, atomically. Both blocks and scripts may produce at most 100 operations, matching the batch limit. Because blocks and scripts are just operations, they respect scopes, undo, dry runs and everything else in the operation catalog.",
+        "callouts": [
+          {
+            "kind": "warning",
+            "text": "Code scripts run in your own browser page with no sandbox. Only run scripts you wrote or trust."
+          }
+        ]
       },
       {
-        "title": "Where tools live",
-        "text": "Your library syncs to your account (or API key), so it follows you between browsers — `GET/PUT/DELETE /api/tools/:id` — with the browser's local copy as the offline fallback. Share one with the 🔗 Share button: a compact `VFT1:` code anyone can import. The Code tab's **Export as standalone script** downloads a single `.mjs` that runs the same code against the API — set `VF_API_KEY` and pass a project id (`--dry-run` previews the change summary) — handy for agents and cron jobs. The studio speaks Spanish too: the 🌐 button switches every block label and description (remembered per browser).",
+        "title": "Where they live",
+        "text": "Your library syncs to your account (or API key), so it follows you between browsers — `GET/PUT/DELETE /api/tools/:id` — with the browser's local copy as the offline fallback. Share one with the 🔗 Share button: a compact `VFT1:` code anyone can import. Animations you save in the Animator are stored in this browser for the project. The Code tab's **Export as standalone script** downloads a single `.mjs` that runs the same code against the API — set `VF_API_KEY` and pass a project id (`--dry-run` previews the change summary) — handy for agents and cron jobs. The studio speaks Spanish too: the 🌐 button switches every block label and description (remembered per browser).",
         "links": [
+          {
+            "label": "Animator",
+            "slug": "animator"
+          },
           {
             "label": "Using the editor",
             "slug": "editor"
@@ -1626,6 +1885,18 @@ export const DOC_PAGES: DocPage[] = [
           [
             "set_keyframes",
             "clipId, property, keyframes: [{time,value,easing?}] replaces that property; [] clears it"
+          ],
+          [
+            "rig_bake",
+            "animation: {name?, length, start?, parts: [{clipId, parentId?, pivotX?, pivotY?}], tracks: {clipId: {x|y|scale|rotation|opacity: [{time,value,easing?}]}}}, start? - bakes an Animator animation (joints and parent/child parts) into ordinary clip keyframes"
+          ],
+          [
+            "rig_pose",
+            "clipIds[], any of x, y, scale, rotation, opacity, delay? (0..60), duration? (default 0.8), easing? - moves several clips to a pose together from where they are now"
+          ],
+          [
+            "rig_follow",
+            "childId, parentId, pivotX?, pivotY? (joint offset from the parent's centre, fraction of the frame) - the child rides the parent's motion, turning and scaling about the joint"
           ],
           [
             "upsert_keyframe",
@@ -1983,7 +2254,7 @@ export const DOC_PAGES: DocPage[] = [
     "slug": "TODO",
     "group": "Studio",
     "title": "Bucket list",
-    "description": "What is done in the block studio and custom tools, and what to build next.",
+    "description": "What is done in the block studio, the Animator and the docs, and what to build next.",
     "sections": [
       {
         "title": "Where we are",
@@ -1991,11 +2262,11 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Shipped",
-        "text": "- [x] Full-screen Scratch-style block studio (React Flow) with palette drag and drop, custom nodes, per-edge delete buttons, inline param handles, live validation and the error console bar. - [x] Code tab as a real editor: helper reference sidebar with click-to-insert examples, $-template reference, line numbers, tab-key support, bigger monospace font and inline run errors. - [x] Blocks → Code conversion on tab switch, with generated JavaScript that produces the same operations the blocks would, and a notice that the tool now runs the code. - [x] Animation everything: all motion presets in the palette (entrances, exits, attention, springy, camera), animate-any-property keyframe blocks with easings, text effects (typewriter, word/line reveal, colour cycle), draw-on, pulsing glow, parallax, speed and timing blocks. - [x] Many more edit tools: the Edit group covers transform, flip and mirror, row/column placement and distribute, snap to grid, crop, opacity, colour looks and filters, brightness/contrast/saturation/blur, speed and duration, volume, mute, audio fades, tracks and layering, copy with offset, replace words, and for-each filtering by colour and contained text. (True edge-to-edge alignment is still open — see the bucket list.) - [x] True z-order: clips carry a z field (-100..100). Overlay visuals — media, shapes and text alike — stack by z in one order, in both the preview and the renderer; move_layer blocks step past the nearest neighbour even with unequal ranks. - [x] Spatial crop for media clips: a crop box (fractions of the layer box) applied by the preview's clip-path and the renderer's crop filter (the layer keeps its box, padded back transparent, so preview and export match), driven by the friendly trim-sides Crop block. - [x] Motion blocks take an easing pick; audio clips are walkable by for-each (kind \"audio\") for volume tools. - [x] Hosted API server documented: https://videoforge-api-s54w.onrender.com is stated in the introduction, quickstart, self-hosting guide and README, with per-deployment keys. - [x] Palette tabs: the studio palette is a Scratch-style rail of coloured categories (Create, Edit, Move in, Move out, Attention, Springy, Camera, Animate, Text, Style, Clips, Timing, Values, Flow) with the palette showing only the selected category. - [x] First-tool tutorial: a six-step guided tour opens the first time a new blocks tool is created — name the tool, meet the block menu, edit the Add title block, run it and find it again — replayable from the 🎓 Tutorial button. - [x] Value blocks: Text, Number and Yes / No blocks in a new Values category plug into any block field — typed arguments without touching code; bad numbers turn red and unplugged values get a warning, and blocks-to-code conversion inlines them identically. - [x] Arguments JSON editor removed: the Advanced op block and its Arguments (JSON) box are gone from the palette and the studio — every operation shows named, friendly fields, and a saved JSON object (like update_clip's patch) becomes editable property rows instead of raw text (saved advanced tools keep working). - [x] Motion blocks are edit tools: \"Entrances\"/\"Exits\" became Move in / Move out with labels like \"Move a clip in\", framed as animating a clip you already have; saved block ids are unchanged. - [x] Blocks panel: the block studio now opens from its own Blocks tab next to Effects — the Tools tab is code-only (no block editor: its studio hides the Blocks tab and the block-creation buttons), while it still runs tools. - [x] Blocks tab opens the canvas itself: clicking Blocks goes straight into the block studio (your latest tool, or a fresh draft with the tutorial) — no tools list in between; closing it returns to the panel you came from. - [x] Palette diet: the canned motion chips (Move in, Move out, Attention, Springy, Camera and their Animate duplicates) are out of the palette — the friendly from/to Animate blocks and presets cover them; hidden ids still load older saved tools. - [x] Real edge alignment for the Line up block: clips line up by their measured edges — against each other or flush with the frame — including text clips (the renderer measures rendered text with drawtext/ascent). - [x] Real speed ramps and freeze frames as first-class timeline ops: the Speed steps block builds a per-clip ramp (segments of constant speed, 0 = freeze), rendered with per-segment trim/setpts/concat (audio silenced and padded to match), and the preview plays the same ramp. Freeze frame is its own block. - [x] Undo/redo for the studio: one entry per drop, delete, paste or edge; drags are one entry (committed at drag start); quick typing coalesces (900 ms). Ctrl+Z / Ctrl+Shift+Z, with a capture-phase listener so text fields don't swallow it. - [x] Shareable tool codes: the 🔗 Share button copies a compact `VFT1:` code; the tools panel imports it. Old links keep working (damaged codes get a friendly error). - [x] Server-side tool library: tools sync per account (or per API key) with `GET/PUT/DELETE /api/tools/:id`, merged with the browser's local copy as the offline fallback. - [x] Save as sticker: the block turns any clip into a reusable building block; stickers appear in their own palette category and drop as fresh clips. - [x] Hover help on palette groups and a searchable palette (search matches either language). - [x] Export code tools as standalone scripts: the Code tab's “Export as standalone script” downloads a single .mjs that runs the same code against the API (`VF_API_KEY` env, `--dry-run` preview), for agents and cron jobs. - [x] Localization: Spanish labels and descriptions for every block and group (🌐 button in the studio, remembered per browser; the browser language is the default). Search matches either language. - [x] Accounts with durable sign-ins: email + password (first account needs the owner key), Google when configured, API keys for agents; sessions live in SQLite so they survive restarts. No API key needed to use the studio. - [x] Calmer blocks: the coloured field dots (clip / frame / value sockets) only show when you hover a block, select it, focus it or while dragging a connection — dots that already have something plugged in stay visible, and the 🔌 Connectors button pins them all on. The canvas legend explains the dots. - [x] Neater blocks: every block got more breathing room (roomier header, field and hint spacing) and a cleaner look — soft gradient card, one-pixel border, a colour-coded accent bar per block kind, circular glowing handles and hover states on the palette chips. - [x] One ✕ per wire, not per canvas: a wire's delete button now appears when you click that wire (or hover the ✕ itself), instead of every ✕ lighting up whenever you touch the canvas. - [x] 🧹 Tidy button: lines the run chain up a column, puts repeat bodies to its right, helper blocks (values, clips, frames) beside the blocks they feed and notes in a far column — one undo entry, like a drag. Presets and free spots also land further apart, so new blocks no longer stack on old ones. - [x] Bigger tutorial: six steps became eleven in three parts (Your first tool, Connecting things, Power moves) with part chips you can jump between — now covering wires vs field dots, importing clips, value blocks, undo, presets and where saved tools live."
+        "text": "- [x] Full-screen Scratch-style block studio (React Flow) with palette drag and drop, custom nodes, per-edge delete buttons, inline param handles, live validation and the error console bar.\n- [x] Code tab as a real editor: helper reference sidebar with click-to-insert examples, $-template reference, line numbers, tab-key support, bigger monospace font and inline run errors.\n- [x] Blocks → Code conversion on tab switch, with generated JavaScript that produces the same operations the blocks would, and a notice that the tool now runs the code.\n- [x] Animation everything: all motion presets in the palette (entrances, exits, attention, springy, camera), animate-any-property keyframe blocks with easings, text effects (typewriter, word/line reveal, colour cycle), draw-on, pulsing glow, parallax, speed and timing blocks.\n- [x] Many more edit tools: the Edit group covers transform, flip and mirror, row/column placement and distribute, snap to grid, crop, opacity, colour looks and filters, brightness/contrast/saturation/blur, speed and duration, volume, mute, audio fades, tracks and layering, copy with offset, replace words, and for-each filtering by colour and contained text. (True edge-to-edge alignment is still open — see the bucket list.)\n- [x] True z-order: clips carry a z field (-100..100). Overlay visuals — media, shapes and text alike — stack by z in one order, in both the preview and the renderer; move_layer blocks step past the nearest neighbour even with unequal ranks.\n- [x] Spatial crop for media clips: a crop box (fractions of the layer box) applied by the preview's clip-path and the renderer's crop filter (the layer keeps its box, padded back transparent, so preview and export match), driven by the friendly trim-sides Crop block.\n- [x] Motion blocks take an easing pick; audio clips are walkable by for-each (kind \"audio\") for volume tools.\n- [x] Hosted API server documented: https://videoforge-api-s54w.onrender.com is stated in the introduction, quickstart, self-hosting guide and README, with per-deployment keys.\n- [x] Palette tabs: the studio palette is a Scratch-style rail of coloured categories (Create, Edit, Move in, Move out, Attention, Springy, Camera, Animate, Text, Style, Clips, Timing, Values, Flow) with the palette showing only the selected category.\n- [x] First-tool tutorial: a six-step guided tour opens the first time a new blocks tool is created — name the tool, meet the block menu, edit the Add title block, run it and find it again — replayable from the 🎓 Tutorial button.\n- [x] Value blocks: Text, Number and Yes / No blocks in a new Values category plug into any block field — typed arguments without touching code; bad numbers turn red and unplugged values get a warning, and blocks-to-code conversion inlines them identically.\n- [x] Arguments JSON editor removed: the Advanced op block and its Arguments (JSON) box are gone from the palette and the studio — every operation shows named, friendly fields, and a saved JSON object (like update_clip's patch) becomes editable property rows instead of raw text (saved advanced tools keep working).\n- [x] Motion blocks are edit tools: \"Entrances\"/\"Exits\" became Move in / Move out with labels like \"Move a clip in\", framed as animating a clip you already have; saved block ids are unchanged.\n- [x] Blocks panel: the block studio now opens from its own Blocks tab next to Effects — the Tools tab is code-only (no block editor: its studio hides the Blocks tab and the block-creation buttons), while it still runs tools.\n- [x] Blocks tab opens the canvas itself: clicking Blocks goes straight into the block studio (your latest tool, or a fresh draft with the tutorial) — no tools list in between; closing it returns to the panel you came from.\n- [x] Palette diet: the canned motion chips (Move in, Move out, Attention, Springy, Camera and their Animate duplicates) are out of the palette — the friendly from/to Animate blocks and presets cover them; hidden ids still load older saved tools.\n- [x] Real edge alignment for the Line up block: clips line up by their measured edges — against each other or flush with the frame — including text clips (the renderer measures rendered text with drawtext/ascent).\n- [x] Real speed ramps and freeze frames as first-class timeline ops: the Speed steps block builds a per-clip ramp (segments of constant speed, 0 = freeze), rendered with per-segment trim/setpts/concat (audio silenced and padded to match), and the preview plays the same ramp. Freeze frame is its own block.\n- [x] Undo/redo for the studio: one entry per drop, delete, paste or edge; drags are one entry (committed at drag start); quick typing coalesces (900 ms). Ctrl+Z / Ctrl+Shift+Z, with a capture-phase listener so text fields don't swallow it.\n- [x] Shareable tool codes: the 🔗 Share button copies a compact `VFT1:` code; the tools panel imports it. Old links keep working (damaged codes get a friendly error).\n- [x] Server-side tool library: tools sync per account (or per API key) with `GET/PUT/DELETE /api/tools/:id`, merged with the browser's local copy as the offline fallback.\n- [x] Save as sticker: the block turns any clip into a reusable building block; stickers appear in their own palette category and drop as fresh clips.\n- [x] Hover help on palette groups and a searchable palette (search matches either language).\n- [x] Export code tools as standalone scripts: the Code tab's “Export as standalone script” downloads a single .mjs that runs the same code against the API (`VF_API_KEY` env, `--dry-run` preview), for agents and cron jobs.\n- [x] Localization: Spanish labels and descriptions for every block and group (🌐 button in the studio, remembered per browser; the browser language is the default). Search matches either language.\n- [x] Accounts with durable sign-ins: email + password (first account needs the owner key), Google when configured, API keys for agents; sessions live in SQLite so they survive restarts. No API key needed to use the studio.\n- [x] Calmer blocks: the coloured field dots (clip / frame / value sockets) only show when you hover a block, select it, focus it or while dragging a connection — dots that already have something plugged in stay visible, and the 🔌 Connectors button pins them all on. The canvas legend explains the dots.\n- [x] Neater blocks: every block got more breathing room (roomier header, field and hint spacing) and a cleaner look — soft gradient card, one-pixel border, a colour-coded accent bar per block kind, circular glowing handles and hover states on the palette chips.\n- [x] One ✕ per wire, not per canvas: a wire's delete button now appears when you click that wire (or hover the ✕ itself), instead of every ✕ lighting up whenever you touch the canvas.\n- [x] 🧹 Tidy button: lines the run chain up a column, puts repeat bodies to its right, helper blocks (values, clips, frames) beside the blocks they feed and notes in a far column — one undo entry, like a drag. Presets and free spots also land further apart, so new blocks no longer stack on old ones.\n- [x] Bigger tutorial: six steps became eleven in three parts (Your first tool, Connecting things, Power moves) with part chips you can jump between — now covering wires vs field dots, importing clips, value blocks, undo, presets and where saved tools live.\n\n- [x] **Rig animations, for clips.** The Animator is a Roblox-style animation editor where the parts are your own clips instead of bones: video clips, images, text and shapes all become rig parts with a joint, an optional parent and their own keyframes. Pose by dragging on the stage or typing values, key on a dope sheet with easing per key, parent parts by dragging, and bake the result into plain clip keyframes with the green Apply to edit button. Presets (bounce, swing, wave, pulse, float, pop in, walk cycle), a ready-made stick figure, undo and redo, and animations saved per project. Because it bakes into ordinary keyframes the preview, FFmpeg export and API need no new renderer.\n- [x] **Animator button.** Opens from the Studio top bar and from the block studio header.\n- [x] **Blocks are about the whole edit, not one tool.** The green block now reads \"When Apply is pressed\" and the Run button is ▶ Apply to edit. Preview lists what Apply would change before it touches the edit, and the green block's Work on setting picks which clips the blocks use: selected, every clip, under the playhead, or all video, text or shapes. Wording across the studio and the Tools panel changed from tools to blocks and scripts.\n- [x] **Rig blocks and operations.** Pose clips together, Make a clip follow another and Play an Animator animation join the palette, backed by new `rig_pose`, `rig_follow` and `rig_bake` timeline operations that agents can call too.\n- [x] **Better docs.** Sidebar guide groups open and close with an arrow (remembered per browser, plus Collapse all), every section folds with its own arrow, and there are reading times, a progress bar, a highlighted on-this-page list, copyable section links, breadcrumbs, note, tip and warning callouts, bullet lists with bold, code and links, an edit-on-GitHub link and a back-to-top button."
       },
       {
         "title": "Bucket list",
-        "text": "Big and small ideas, roughly by value. Each one is a candidate for its own commit and browser-verified round. - [ ] **Rig animations — a Roblox-Studio-style rig animator.** The big one: characters and props built from a joint hierarchy (bones with parent/child transforms), posed by selecting a joint and rotating/moving it, the way Roblox Studio's Animation Editor works. Poses captured as per-joint keyframes on a timeline, interpolated (linear + easing, maybe the existing bezier tween slopes), and baked into an **animation clip that lands on the video timeline as a normal, editable clip** — trim it, retime it, layer it, run it backwards with the existing tools. Stretch: onion skinning, IK handles for limbs, walk-cycle presets, and a library of rigs (stick figure, mascot, hands). This is skeletal animation — today's motion presets only animate whole clips, so this needs a new rig data model, a pose/keyframe editor panel and renderer support (browser canvas first, FFmpeg export after). Big but the future of the studio. - [ ] Your idea here — the studio is in good shape; what should kids be able to make next?"
+        "text": "Big and small ideas, roughly by value. Each one is a candidate for its own commit and browser-verified round.\n\n- [ ] Onion skinning and a ghost of the previous pose in the Animator.\n- [ ] IK handles so dragging a hand moves the whole arm.\n- [ ] A library of ready-made rigs beyond the stick figure: mascot, hands.\n- [ ] Save Animator animations to the project on the server so they follow you between browsers.\n- [ ] Rig keys on text effects and colour, not just position, size, turn and see-through.\n- [ ] Your idea here — the studio is in good shape; what should kids be able to make next?"
       }
     ]
   }

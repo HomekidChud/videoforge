@@ -26,7 +26,7 @@ export const DOC_ENDPOINTS = [
 ];
 
 
-export type DocSection = { title: string; text: string; code?: string; language?: string; rows?: string[][]; links?: { label: string; slug: string }[] };
+export type DocSection = { title: string; text: string; callouts?: { kind: "note" | "tip" | "warning"; text: string }[]; code?: string; language?: string; rows?: string[][]; links?: { label: string; slug: string }[] };
 export type DocPage = { slug: string; group: string; title: string; description: string; sections: DocSection[] };
 
 /** Tables that must always match the code: generated from the shared catalogs. */
@@ -67,8 +67,18 @@ export function parseDocPage(slug: string, md: string): DocPage {
   let paragraph: string[] = [];
   const flushParagraph = () => {
     if (current && paragraph.length) {
-      const text = paragraph.join(" ").trim();
-      if (text) current.text = current.text ? `${current.text} ${text}` : text;
+      // Prose lines join into one paragraph; "- item" lines stay one per line. Pieces are split by a blank line.
+      const pieces: string[] = []; let prose: string[] = [], items: string[] = [];
+      const endProse = () => { if (prose.length) pieces.push(prose.join(" ")); prose = []; };
+      const endItems = () => { if (items.length) pieces.push(items.join("\n")); items = []; };
+      for (const l of paragraph) {
+        if (/^- /.test(l)) { endProse(); items.push(l); }
+        else if (items.length && !/^- /.test(l)) { items[items.length - 1] += ` ${l}`; }
+        else prose.push(l);
+      }
+      endProse(); endItems();
+      const text = pieces.join("\n\n").trim();
+      if (text) current.text = current.text ? `${current.text}\n\n${text}` : text;
       paragraph = [];
     }
   };
@@ -120,6 +130,17 @@ export function parseDocPage(slug: string, md: string): DocPage {
         }
       }
       current.rows = [header, ...body];
+    } else if (line.startsWith(">")) {
+      // Callouts: "> [!NOTE] text", "> [!TIP] text" or "> [!WARNING] text"; later quote lines continue the text.
+      flushParagraph();
+      if (!current) throw new Error(`${slug}.md: callout before any section heading`);
+      const quote: string[] = [];
+      while (i < lines.length && lines[i].startsWith(">")) quote.push(lines[i++].replace(/^>\s?/, "").trim());
+      const m = quote[0].match(/^\[!(NOTE|TIP|WARNING)\]\s*(.*)$/);
+      if (!m) throw new Error(`${slug}.md: a callout in "${current.title}" must start with [!NOTE], [!TIP] or [!WARNING]`);
+      const text = [m[2], ...quote.slice(1)].join(" ").trim();
+      if (!text) throw new Error(`${slug}.md: empty callout in "${current.title}"`);
+      current.callouts = [...(current.callouts ?? []), { kind: m[1].toLowerCase() as "note" | "tip" | "warning", text }];
     } else if (/^- \[(.+?)\]\(([a-z0-9-]+)\)$/.test(line.trim())) {
       flushParagraph();
       if (!current) throw new Error(`${slug}.md: link before any section heading`);

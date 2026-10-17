@@ -78,6 +78,8 @@ export type ToolContext = {
   resolution: { width: number; height: number };
   /** Project fps, so frame blocks resolve to seconds. */
   fps: number;
+  /** Animations saved in the Animator, by name, so blocks can play them. */
+  animations?: Record<string, unknown>;
 };
 
 export const TOOL_PARAM_TYPES: ToolParamType[] = ["text", "number", "color", "select", "json"];
@@ -156,6 +158,27 @@ export const OP_PARAMS: Record<string, ToolParam[]> = {
     { key: "clipId", label: "Clip id", type: "text", def: "$clipId" },
     { key: "property", label: "Property", type: "select", def: "scale", options: ["x", "y", "scale", "rotation", "opacity"] },
     { key: "keyframes", label: "Keyframes (JSON)", type: "json", def: "[{ \"time\": 0, \"value\": 0, \"easing\": \"ease-out\" }, { \"time\": 0.8, \"value\": 1 }]" },
+  ],
+  rig_pose: [
+    { key: "clipIds", label: "Clip ids", type: "text", def: "$selection", placeholder: "$selection" },
+    { key: "x", label: "X", type: "number", def: "", min: 0, max: 1, step: 0.01 },
+    { key: "y", label: "Y", type: "number", def: "", min: 0, max: 1, step: 0.01 },
+    { key: "scale", label: "Scale", type: "number", def: "", min: 0.1, max: 2, step: 0.05 },
+    { key: "rotation", label: "Rotation", type: "number", def: 20, min: -360, max: 360, step: 5 },
+    { key: "opacity", label: "Opacity", type: "number", def: "", min: 0, max: 1, step: 0.05 },
+    { key: "delay", label: "Delay", type: "number", def: 0, min: 0, max: 60, step: 0.1 },
+    { key: "duration", label: "Duration", type: "number", def: 0.8, min: 0.01, max: 60, step: 0.1 },
+    { key: "easing", label: "Easing", type: "select", def: "ease-out", options: ["ease-out", "ease-in", "ease-in-out", "linear", "back-out", "snappy", "anticipate"] },
+  ],
+  rig_follow: [
+    { key: "childId", label: "Child clip id", type: "text", def: "$clipId" },
+    { key: "parentId", label: "Parent clip id", type: "text", def: "" },
+    { key: "pivotX", label: "Joint X", type: "number", def: 0, min: -1, max: 1, step: 0.01 },
+    { key: "pivotY", label: "Joint Y", type: "number", def: 0, min: -1, max: 1, step: 0.01 },
+  ],
+  rig_bake: [
+    { key: "animation", label: "Animation", type: "text", def: "My animation" },
+    { key: "start", label: "Start", type: "number", def: "", min: 0, max: 86400, step: 0.1 },
   ],
   stagger_clips: [
     { key: "clipIds", label: "Clip ids", type: "text", def: "$selection", placeholder: "$selection" },
@@ -341,6 +364,8 @@ export function convertOpArgs(op: string, args: Record<string, unknown>): Record
       }
     }
     if (p.type === "number") {
+      // A blank number box means "leave this alone", not zero.
+      if ((args[p.key] as string).trim() === "") { delete args[p.key]; continue; }
       const n = Number(args[p.key]);
       if (Number.isFinite(n)) args[p.key] = n;
     }
@@ -434,6 +459,18 @@ export function keyframesFromTo(from: number, to: number, duration: number, dela
 }
 
 /** Compile a block program into timeline operations for one context. Throws readable errors. */
+/** The "Play an Animator animation" block names its animation; swap the name for the saved animation itself. */
+function withAnimation(op: string, args: Record<string, unknown>, ctx: ToolContext): Record<string, unknown> {
+  if (op !== "rig_bake") return args;
+  if (typeof args.animation === "string") {
+    const found = ctx.animations?.[args.animation.trim()];
+    if (!found) throw new Error(`No Animator animation called "${args.animation}". Save it from the Animator first.`);
+    args.animation = found;
+  }
+  if (args.start === "" || args.start === undefined) delete args.start;
+  return args;
+}
+
 export function compileBlocks(blocks: ToolBlock[], ctx: ToolContext, into: TimelineOp[] = []): TimelineOp[] {
   const base: ToolVars = { ...ctx, index: 0, count: 1, clipId: "" };
   const walk = (list: ToolBlock[], vars: ToolVars) => {
@@ -441,8 +478,8 @@ export function compileBlocks(blocks: ToolBlock[], ctx: ToolContext, into: Timel
       if (block.kind === "comment") continue;
       if (block.kind === "op") {
         if (!block.op || typeof block.op !== "string") throw new Error("an op block needs an operation name");
-        const args = convertOpArgs(block.op, resolveArgs(block.args, vars));
-        if (into.length >= 100) throw new Error("the tool expands to more than 100 operations; the batch limit");
+        const args = withAnimation(block.op, convertOpArgs(block.op, resolveArgs(block.args, vars)), ctx);
+        if (into.length >= 100) throw new Error("your blocks expand to more than 100 operations; the batch limit");
         into.push({ op: block.op, args });
       } else if (block.kind === "repeat") {
         const count = Math.max(0, Math.min(1000, Math.round(Number(block.count) || 0)));
@@ -469,7 +506,7 @@ export function normalizeOps(result: unknown): TimelineOp[] {
     if (args !== undefined && (typeof args !== "object" || args === null || Array.isArray(args))) throw new Error(`op "${(op as TimelineOp).op}" needs an args object`);
     out.push({ op: (op as TimelineOp).op, args: args ?? {} });
   }
-  if (out.length > 100) throw new Error("a tool may run at most 100 operations; the batch limit");
+  if (out.length > 100) throw new Error("a script may run at most 100 operations; the batch limit");
   return out;
 }
 
@@ -612,7 +649,7 @@ export function codeErrorLine(error: string): number | null {
 export type FriendlyBlock = {
   id: string;
   label: string;
-  group: "Create" | "Edit" | "Move in" | "Move out" | "Attention" | "Springy" | "Camera" | "Animate" | "Text" | "Style" | "Clips" | "Timing" | "Advanced";
+  group: "Create" | "Edit" | "Move in" | "Move out" | "Attention" | "Springy" | "Camera" | "Animate" | "Rig" | "Text" | "Style" | "Clips" | "Timing" | "Advanced";
   op: string;
   args?: Record<string, unknown>;
   params: ToolParam[];
@@ -852,9 +889,26 @@ export const BLOCK_LIBRARY: FriendlyBlock[] = [
   { id: "retime-motion", label: "Stretch motion", group: "Timing", op: "retime_animation", description: "Stretches or squeezes a clip's animation into a new time window.",
     args: { duration: 2, delay: 0 },
     params: [P.clipId, { key: "duration", label: "New duration (s)", type: "number", def: 2, min: 0.1, max: 60, step: 0.1 }, { key: "delay", label: "Delay (s)", type: "number", def: 0, min: 0, max: 60, step: 0.1 }] },
+  // Clip rigs: any clip — video, image, text or shape — behaves like a part of a puppet.
+  { id: "rig-pose", label: "Pose clips together", group: "Rig", op: "rig_pose", description: "Moves several clips to a pose at once — any mix of position, size, turn and see-through — from where they are now.",
+    args: { rotation: 20, duration: 0.8, delay: 0, easing: "ease-out" },
+    params: [{ key: "clipIds", label: "Clips", type: "text", def: "$selection", placeholder: "$selection" },
+      { key: "x", label: "X (0..1)", type: "number", def: "", min: 0, max: 1, step: 0.01 }, { key: "y", label: "Y (0..1)", type: "number", def: "", min: 0, max: 1, step: 0.01 },
+      { key: "scale", label: "Size", type: "number", def: "", min: 0.1, max: 2, step: 0.05 }, { key: "rotation", label: "Angle (°)", type: "number", def: 20, min: -360, max: 360, step: 5 },
+      { key: "opacity", label: "See-through (0..1)", type: "number", def: "", min: 0, max: 1, step: 0.05 },
+      P.animDelay, { key: "duration", label: "Duration (s)", type: "number", def: 0.8, min: 0.01, max: 60, step: 0.1 },
+      { key: "easing", label: "Easing", type: "select", def: "ease-out", options: ["ease-out", "ease-in", "ease-in-out", "linear", "back-out", "snappy", "anticipate"] }] },
+  { id: "rig-follow", label: "Make a clip follow another", group: "Rig", op: "rig_follow", description: "A clip rides another clip's motion, turning and resizing with it like a hand on an arm.",
+    args: { parentId: "", pivotX: 0, pivotY: 0 },
+    params: [{ key: "childId", label: "Follower", type: "text", def: "$clipId", placeholder: "$clipId or connect a clip" },
+      { key: "parentId", label: "Leader", type: "text", def: "", placeholder: "the clip to follow" },
+      { key: "pivotX", label: "Joint left/right", type: "number", def: 0, min: -1, max: 1, step: 0.01 }, { key: "pivotY", label: "Joint up/down", type: "number", def: 0, min: -1, max: 1, step: 0.01 }] },
+  { id: "rig-play", label: "Play an Animator animation", group: "Rig", op: "rig_bake", description: "Applies an animation you saved in the Animator to your edit. Type the animation's name.",
+    args: { animation: "My animation" },
+    params: [{ key: "animation", label: "Animation name", type: "text", def: "My animation" }, { key: "start", label: "Start (s)", type: "number", def: "", min: 0, max: 86400, step: 0.1 }] },
 ];
 export const BLOCK_MAP = new Map(BLOCK_LIBRARY.map((b) => [b.id, b]));
-export const BLOCK_GROUPS = ["Create", "Edit", "Animate", "Text", "Style", "Clips", "Timing"] as const;
+export const BLOCK_GROUPS = ["Create", "Edit", "Animate", "Rig", "Text", "Style", "Clips", "Timing"] as const;
 /** Blocks kept out of the palette: the raw-JSON op block, the canned motion-preset chips and their
  *  Animate duplicates (presets and the friendly from/to blocks cover them), all still loadable
  *  so older saved tools keep working. */
@@ -1102,7 +1156,7 @@ export function compileGraph(graph: ToolGraph, ctx: ToolContext): TimelineOp[] {
   for (const n of graph.nodes) if (n.type === "function" && n.name) functions.set(n.name, n);
   const ops: TimelineOp[] = [];
   const push = (op: string, args: Record<string, unknown>) => {
-    if (ops.length >= 100) throw new Error("the tool expands to more than 100 operations; the batch limit");
+    if (ops.length >= 100) throw new Error("your blocks expand to more than 100 operations; the batch limit");
     ops.push({ op, args });
   };
   const runChain = (id: string | undefined, vars: ToolVars, visited: Set<string>) => {
@@ -1127,7 +1181,7 @@ export function compileGraph(graph: ToolGraph, ctx: ToolContext): TimelineOp[] {
           else if (src.type === "frame") { if (["start", "delay"].includes(key)) args[key] = (src.frame ?? 0) / Math.max(1, ctx.fps); }
           else if (src.type === "value") { if (!allowed.length || allowed.includes(key)) args[key] = valueNodeValue(src); }
         }
-        push(op, convertOpArgs(op, resolveArgs(args, vars)));
+        push(op, withAnimation(op, convertOpArgs(op, resolveArgs(args, vars)), ctx));
       } else if (node.type === "repeat") {
         const count = Math.max(0, Math.min(1000, Math.round(Number(node.count) || 0)));
         for (let i = 0; i < count; i++) runChain(body.get(id), { ...vars, index: i, count }, new Set(visited));
@@ -1170,7 +1224,36 @@ export function blocksToGraph(blocks: ToolBlock[]): ToolGraph {
 }
 
 /** Run a tool in any mode. */
-export function runTool(tool: CustomTool, ctx: ToolContext): TimelineOp[] {
+/** What "$selection" means when the green Start block runs. */
+export const APPLY_SCOPES = [
+  { id: "selection", label: "Selected clips" },
+  { id: "all", label: "Every clip" },
+  { id: "playhead", label: "Clips under the playhead" },
+  { id: "media", label: "All video & image clips" },
+  { id: "text", label: "All text clips" },
+  { id: "shape", label: "All shapes" },
+] as const;
+export type ApplyScope = typeof APPLY_SCOPES[number]["id"];
+
+export function graphScope(graph: ToolGraph | undefined): ApplyScope {
+  const raw = graph?.nodes.find((n) => n.type === "start")?.args?.scope;
+  return APPLY_SCOPES.some((x) => x.id === raw) ? (raw as ApplyScope) : "selection";
+}
+
+/** The clip ids a scope picks out, in timeline order. */
+export function scopeClipIds(scope: ApplyScope, ctx: ToolContext): string[] {
+  const ordered = [...ctx.clips].sort((a, b) => a.start - b.start);
+  switch (scope) {
+    case "all": return ordered.filter((c) => c.kind !== "audio").map((c) => c.id);
+    case "playhead": return ordered.filter((c) => c.kind !== "audio" && ctx.playhead >= c.start && ctx.playhead < c.start + c.duration).map((c) => c.id);
+    case "media": case "text": case "shape": return ordered.filter((c) => c.kind === scope).map((c) => c.id);
+    default: return ctx.selection;
+  }
+}
+
+export function runTool(tool: CustomTool, ctxIn: ToolContext): TimelineOp[] {
+  const scope = graphScope(tool.graph);
+  const ctx = scope === "selection" ? ctxIn : { ...ctxIn, selection: scopeClipIds(scope, ctxIn) };
   if (tool.mode === "code") return runCodeTool(tool.code ?? "", ctx);
   if (tool.graph) return compileGraph(tool.graph, ctx);
   return compileBlocks(tool.blocks ?? [], ctx);
@@ -1814,9 +1897,9 @@ export function stickerArgs(sticker: Sticker): Record<string, unknown> {
 }
 
 /** Build a context from a live timeline. */
-export function toolContext(timeline: { clips: Clip[]; resolution: { width: number; height: number }; fps?: number }, playhead: number, selection: string[], duration: number): ToolContext {
+export function toolContext(timeline: { clips: Clip[]; resolution: { width: number; height: number }; fps?: number }, playhead: number, selection: string[], duration: number, animations?: Record<string, unknown>): ToolContext {
   const clips = timeline.clips
     .map((c) => ({ id: c.id, kind: (c.track === "audio" ? "audio" : c.shape ? "shape" : c.assetId ? "media" : "text") as "text" | "shape" | "media" | "audio", start: c.start, duration: (c.outPoint - c.inPoint) / (c.speed ?? 1), label: c.label ?? c.text?.slice(0, 40), color: c.shape ? c.shape.fill : c.assetId ? undefined : (c.textColor ?? "#ffffff").toLowerCase(), text: c.text, raw: c }));
-  return { playhead, duration, selection: [...selection], clips, resolution: { ...timeline.resolution }, fps: timeline.fps ?? 30 };
+  return { playhead, duration, selection: [...selection], clips, resolution: { ...timeline.resolution }, fps: timeline.fps ?? 30, ...(animations ? { animations } : {}) };
 }
 
