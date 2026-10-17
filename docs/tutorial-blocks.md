@@ -21,7 +21,7 @@ If you have never used blocks before, press the 🎓 **Tutorial** button in the 
 
 ## Start from the green block
 
-Every set of blocks begins with the green **When Apply is pressed** block. It is already on the canvas when you start. Its **Work on** setting decides what `$selection` means later — leave it on **Selected clips** for now.
+Every set of blocks begins with the green **When Apply is pressed** block. It is already on the canvas when you start. Its **Work on** setting decides what `$selection` means later — set it to **Every clip**, so this set of blocks works on the whole edit without you selecting anything.
 
 Click the set's name in the header and type `Title every clip`. The description is optional; write one if you plan to share it.
 
@@ -51,7 +51,7 @@ Press **▶ Apply to edit**. The title lands at the playhead and every clip in t
 
 If something is wrong, the error bar at the bottom of the studio explains what and jumps to the offending block. Applying is disabled until errors are fixed.
 
-> [!TIP] Change **Work on** on the green block to **Every clip** and press Preview again. The same blocks now style the whole edit without you selecting anything.
+> [!TIP] Switch **Work on** between **Every clip** and **Selected clips** and press Preview each time. The same blocks then work on the whole edit or just what you have selected.
 
 ## Save, share and reuse
 
@@ -63,19 +63,18 @@ Your blocks save to your account as you work. Back in the Studio, the Tools pane
 
 ## Build the same thing with the API
 
-Everything the blocks did is one operations batch. Send this to `POST /api/projects/:id/timeline/ops` with a write key — or paste it into the Code tab and press Apply — and you get the same result.
+Everything the blocks did is one operations batch. Send this to `POST /api/projects/:id/timeline/ops` with a write key and you get the same result.
 
 ```json
 {
   "ops": [
-    {"op": "add_text_clip", "args": {"id": "blocks-title", "text": "Made with blocks", "start": 0, "duration": 5, "x": 0.5, "y": 0.15, "textSize": 5, "font": "poppins", "fontWeight": 700, "textColor": "#ffffff"}},
-    {"op": "apply_motion", "args": {"clipId": "blocks-title", "preset": "spring", "duration": 0.6}},
+    {"op": "add_text_clip", "args": {"id": "blocks-title", "text": "Made with blocks", "start": 0, "duration": 5, "x": 0.5, "y": 0.15, "textSize": 5, "textColor": "#ffffff"}},
     {"op": "update_clips", "args": {"patch": {"fadeIn": 0.5}}}
   ]
 }
 ```
 
-`update_clips` without `clipIds` or `track` hits every clip in the edit, which is what the For each clip block did. The title gets the same Spring preset you could have picked from the Animate category.
+`update_clips` without `clipIds` or `track` hits every clip in the edit, which is what the For each clip block did.
 
 ## Where to go next
 

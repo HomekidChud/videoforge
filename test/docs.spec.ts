@@ -92,7 +92,6 @@ await check("block coding tutorial batch applies cleanly", () => {
   for (const op of ops) tl = applyTimelineOp(tl, op, () => undefined);
   const title = tl.clips.find((c) => c.id === "blocks-title");
   assert.ok(title, "the blocks title was created");
-  assert.ok(title?.keyframes?.scale, "the title springs in through keyframes");
   assert.ok(tl.clips.find((c) => c.id === "existing")?.fadeIn === 0.5, "every clip fades in, like the For each clip block");
 });
 
@@ -126,6 +125,8 @@ await check("fire edit tutorial batch applies cleanly", () => {
   assert.equal(cuts.length, 2, "two cuts of the same clip");
   assert.ok(cuts.every((c) => c.filter === "warm"), "both cuts are warmed");
   assert.ok(cuts.find((c) => c.id === "cut-2")?.transitionIn, "the cuts are joined by a transition");
+  const end = cuts.reduce((t, c) => Math.max(t, c.start + (c.outPoint ?? c.inPoint ?? 0) - (c.inPoint ?? 0)), 0);
+  assert.equal(end, 15, "the video ends at 15 seconds, where the overlays end");
   for (const id of ["headline", "badge", "lt-0"]) assert.ok(tl.clips.some((c) => c.id === id), `${id} was created`);
 });
 

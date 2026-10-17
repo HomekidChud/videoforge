@@ -7,7 +7,7 @@ description: Rig a figure in the Animator, pose it, key the poses and bake the r
 
 ## What you will make
 
-A waving figure: the ready-made stick figure rigged in the Animator, with one arm keyed to wave twice over two seconds, eased so it swings naturally. You pose, key and play inside the Animator, then press **Apply to edit** and the whole motion lands on your timeline as ordinary keyframes.
+A waving figure: the ready-made stick figure rigged in the Animator, with one arm keyed to wave twice in under three seconds, eased so it swings naturally. You pose, key and play inside the Animator, then press **Apply to edit** and the whole motion lands on your timeline as ordinary keyframes.
 
 It takes about ten minutes. Because the result is plain keyframes, the preview, the FFmpeg export and the API all agree with no new renderer.
 
@@ -50,7 +50,7 @@ Useful keys while you work:
 
 Press the green **Apply to edit** button. The Animator closes and the motion is baked onto the clips as ordinary keyframes. Select the forearm in the editor and open **Animate** to see them: position and rotation curves you can trim, retime, or hand-edit like any other keyframes.
 
-Nothing is lost by baking. The animation is also saved with the project, so you can reopen the Animator and keep posing.
+Nothing is lost by baking. The animation stays with this project in your browser, so you can reopen the Animator and keep posing.
 
 ## Build the same thing with the API
 

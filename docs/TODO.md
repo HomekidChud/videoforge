@@ -32,7 +32,7 @@ Tutorials become motion graphics and real video: recordings of VideoForge being 
 - [ ] **Medium.** Recorded walkthroughs of the Studio tour, the Animator, the block studio and the agent API workflow.
 - [ ] **Medium.** Make the recordings with a script (Playwright plus FFmpeg) so they can be rebuilt in one command whenever the interface changes.
 - [ ] **Medium.** More recorded tutorials: a YouTube lower third, kinetic type, a product promo, captions on a talking-head clip, and driving an edit from an agent.
-- [x] More written tutorials: the Animator, block coding and a fire edit built from one clip, each ending in the same build as one API batch a test keeps honest.
+- [x] More written tutorials: the Animator, block coding and a fire edit built from one clip, each with a matching API batch the docs tests apply for real.
 - [ ] **Medium.** Transcripts for every video, so each tutorial also works as text and in search.
 - [ ] **Low.** A short intro film for the docs home page and a recorded changelog for each release.
 - [ ] **Low.** Host videos outside git (a release asset or storage bucket) so the repository stays small.
@@ -178,7 +178,7 @@ What the docs site already does.
 - [x] **Docs search.** Every section is searched, typos are forgiven only for words the docs do not contain, weak matches are trimmed, four pages show first with Show more, and a closest-match fallback appears when no page has every word.
 - [x] **Docs start tidy.** Only Get started is open on arrival, and the group you are reading opens by itself.
 - [x] **Motion graphics tutorial.** An animated intro built step by step in the Studio, plus the same result as one API batch that a test keeps honest.
-- [x] **Three more tutorials.** Block coding in the block studio, a wave in the Animator and a fire edit cut from one clip — each with steps for the editor and the same result as one tested API batch.
+- [x] **Three more tutorials.** Block coding in the block studio, a wave in the Animator and a fire edit cut from one clip — each with step-by-step editor instructions and a matching API batch the docs tests apply for real.
 - [x] **Contribute and Storage pages.** Setup, code layout, tests and recipes for presets, templates, operations and blocks, and a page on disks, backups and the optional MongoDB store.
 - [x] **Short README.** A one-screen overview with a docs index, instead of repeating the docs.
 

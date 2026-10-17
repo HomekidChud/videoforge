@@ -9,7 +9,7 @@ description: Set up the project, find your way around the code, and open a pull 
 
 There are two kinds of contributor, and the rules are strict so that pull requests are small, true and easy to review.
 
-- **Community contributors may only change the docs.** Your pull request must touch nothing outside the `docs/` folder, and it needs a description that says which page, what was wrong and how you checked it. Anything else is closed automatically by the contribution rules workflow. See `CONTRIBUTING.md` in the repository root for the full policy.
+- **Community contributors may only change the docs.** Your pull request must touch nothing outside the `docs/` folder, and it needs a description that says which page, what was wrong and how you checked it. Anything else fails the contribution rules check and is closed by a maintainer. See `CONTRIBUTING.md` in the repository root for the full policy.
 - **Bugs and ideas:** open an issue with what you did, what you expected and what happened. Add the browser and the project JSON if you can. Do not fix code yourself; a maintainer will pick it up.
 - **Maintainers** (the repository owner) may change anything — code, presets, templates and blocks — using the recipes further down this page.
 
@@ -59,7 +59,7 @@ npm run build   # confirms the client and server still bundle
 
 Open a pull request against `main`. Describe what changed and why, and mention how you tested it. Pushes to `main` run `npm run check` and `npm run build` again before the site deploys.
 
-> [!NOTE] `client/src/lib/docs-generated.ts` is generated from `docs/*.md` and is committed on purpose. Run `npm run docs` after editing any docs page and commit the result with it.
+> [!NOTE] `client/src/lib/docs-generated.ts` is generated from `docs/*.md` and is committed on purpose. Community pull requests never touch it: a maintainer runs `npm run docs` and commits the result when your docs change is merged.
 
 ## Run the tests
 

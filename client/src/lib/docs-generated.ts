@@ -279,7 +279,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Start from the green block",
-        "text": "Every set of blocks begins with the green **When Apply is pressed** block. It is already on the canvas when you start. Its **Work on** setting decides what `$selection` means later — leave it on **Selected clips** for now.\n\nClick the set's name in the header and type `Title every clip`. The description is optional; write one if you plan to share it."
+        "text": "Every set of blocks begins with the green **When Apply is pressed** block. It is already on the canvas when you start. Its **Work on** setting decides what `$selection` means later — set it to **Every clip**, so this set of blocks works on the whole edit without you selecting anything.\n\nClick the set's name in the header and type `Title every clip`. The description is optional; write one if you plan to share it."
       },
       {
         "title": "Build the chain",
@@ -301,7 +301,7 @@ export const DOC_PAGES: DocPage[] = [
         "callouts": [
           {
             "kind": "tip",
-            "text": "Change **Work on** on the green block to **Every clip** and press Preview again. The same blocks now style the whole edit without you selecting anything."
+            "text": "Switch **Work on** between **Every clip** and **Selected clips** and press Preview each time. The same blocks then work on the whole edit or just what you have selected."
           }
         ]
       },
@@ -311,8 +311,8 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Build the same thing with the API",
-        "text": "Everything the blocks did is one operations batch. Send this to `POST /api/projects/:id/timeline/ops` with a write key — or paste it into the Code tab and press Apply — and you get the same result.\n\n`update_clips` without `clipIds` or `track` hits every clip in the edit, which is what the For each clip block did. The title gets the same Spring preset you could have picked from the Animate category.",
-        "code": "{\n  \"ops\": [\n    {\"op\": \"add_text_clip\", \"args\": {\"id\": \"blocks-title\", \"text\": \"Made with blocks\", \"start\": 0, \"duration\": 5, \"x\": 0.5, \"y\": 0.15, \"textSize\": 5, \"font\": \"poppins\", \"fontWeight\": 700, \"textColor\": \"#ffffff\"}},\n    {\"op\": \"apply_motion\", \"args\": {\"clipId\": \"blocks-title\", \"preset\": \"spring\", \"duration\": 0.6}},\n    {\"op\": \"update_clips\", \"args\": {\"patch\": {\"fadeIn\": 0.5}}}\n  ]\n}"
+        "text": "Everything the blocks did is one operations batch. Send this to `POST /api/projects/:id/timeline/ops` with a write key and you get the same result.\n\n`update_clips` without `clipIds` or `track` hits every clip in the edit, which is what the For each clip block did.",
+        "code": "{\n  \"ops\": [\n    {\"op\": \"add_text_clip\", \"args\": {\"id\": \"blocks-title\", \"text\": \"Made with blocks\", \"start\": 0, \"duration\": 5, \"x\": 0.5, \"y\": 0.15, \"textSize\": 5, \"textColor\": \"#ffffff\"}},\n    {\"op\": \"update_clips\", \"args\": {\"patch\": {\"fadeIn\": 0.5}}}\n  ]\n}"
       },
       {
         "title": "Where to go next",
@@ -340,7 +340,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T17:48:00Z",
+    "added": "2026-10-17T17:48:00Z"
   },
   {
     "slug": "timeline",
@@ -387,7 +389,7 @@ export const DOC_PAGES: DocPage[] = [
     "sections": [
       {
         "title": "What you will make",
-        "text": "A waving figure: the ready-made stick figure rigged in the Animator, with one arm keyed to wave twice over two seconds, eased so it swings naturally. You pose, key and play inside the Animator, then press **Apply to edit** and the whole motion lands on your timeline as ordinary keyframes.\n\nIt takes about ten minutes. Because the result is plain keyframes, the preview, the FFmpeg export and the API all agree with no new renderer.",
+        "text": "A waving figure: the ready-made stick figure rigged in the Animator, with one arm keyed to wave twice in under three seconds, eased so it swings naturally. You pose, key and play inside the Animator, then press **Apply to edit** and the whole motion lands on your timeline as ordinary keyframes.\n\nIt takes about ten minutes. Because the result is plain keyframes, the preview, the FFmpeg export and the API all agree with no new renderer.",
         "callouts": [
           {
             "kind": "tip",
@@ -433,7 +435,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Apply to edit",
-        "text": "Press the green **Apply to edit** button. The Animator closes and the motion is baked onto the clips as ordinary keyframes. Select the forearm in the editor and open **Animate** to see them: position and rotation curves you can trim, retime, or hand-edit like any other keyframes.\n\nNothing is lost by baking. The animation is also saved with the project, so you can reopen the Animator and keep posing."
+        "text": "Press the green **Apply to edit** button. The Animator closes and the motion is baked onto the clips as ordinary keyframes. Select the forearm in the editor and open **Animate** to see them: position and rotation curves you can trim, retime, or hand-edit like any other keyframes.\n\nNothing is lost by baking. The animation stays with this project in your browser, so you can reopen the Animator and keep posing."
       },
       {
         "title": "Build the same thing with the API",
@@ -466,7 +468,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T17:48:00Z",
+    "added": "2026-10-17T17:48:00Z"
   },
   {
     "slug": "motion-graphics",
@@ -601,7 +605,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Make the second cut",
-        "text": "Right-click the clip and choose **Duplicate**, or select it and press the duplicate button in the inspector. Drag the copy so it starts where the first cut ends, then trim it to about seven seconds and, if the moment you want is later in the source, set its **In** to a different point so the second cut shows new footage.\n\nTwo cuts of the same source back to back is the fastest way to build rhythm from one clip."
+        "text": "Right-click the clip and choose **Duplicate**, or select it and press the duplicate button in the inspector. Drag the copy so it starts where the first cut ends, then trim it to about seven seconds and, if the moment you want is later in the source, set its **In** to a different point so the second cut shows new footage.\n\nTwo cuts of the same source back to back is the fastest way to build rhythm from one clip. With a 0.5 second dissolve joining them, the second cut needs about seven and a half seconds so the video still ends where the overlays do."
       },
       {
         "title": "Warm the whole edit up",
@@ -636,7 +640,7 @@ export const DOC_PAGES: DocPage[] = [
       {
         "title": "Build the same thing with the API",
         "text": "Everything you did in the editor is operations. This batch assumes the clip is uploaded and its asset id is `clip-1` — replace it with the id from `GET /api/media`. Send the ops to `POST /api/projects/:id/timeline/ops` with a write key, then enqueue a render with `POST /api/renders`.\n\n`update_clips` with `clipIds` warms both cuts at once, exactly like selecting them in the editor. The transition, presets and templates are the same operations the Studio sends.",
-        "code": "{\n  \"ops\": [\n    {\"op\": \"add_clip\", \"args\": {\"assetId\": \"clip-1\", \"id\": \"cut-1\", \"start\": 0, \"outPoint\": 8, \"track\": \"video\"}},\n    {\"op\": \"add_clip\", \"args\": {\"assetId\": \"clip-1\", \"id\": \"cut-2\", \"start\": 8, \"inPoint\": 8, \"outPoint\": 15, \"track\": \"video\"}},\n    {\"op\": \"update_clips\", \"args\": {\"clipIds\": [\"cut-1\", \"cut-2\"], \"patch\": {\"filter\": \"warm\"}}},\n    {\"op\": \"set_transition\", \"args\": {\"clipId\": \"cut-2\", \"type\": \"dissolve\", \"duration\": 0.5}},\n    {\"op\": \"add_text_clip\", \"args\": {\"id\": \"headline\", \"text\": \"Fire edit\", \"start\": 0, \"duration\": 15, \"x\": 0.5, \"y\": 0.2, \"textSize\": 10, \"fontWeight\": 700, \"textColor\": \"#ffffff\"}},\n    {\"op\": \"apply_motion\", \"args\": {\"clipId\": \"headline\", \"preset\": \"spring\", \"duration\": 0.9}},\n    {\"op\": \"add_shape_clip\", \"args\": {\"id\": \"badge\", \"start\": 0, \"duration\": 15, \"x\": 0.5, \"y\": 0.68, \"shape\": {\"type\": \"ellipse\", \"width\": 0.07, \"height\": 0.124, \"fill\": \"#f6a447\"}}},\n    {\"op\": \"apply_code_motion\", \"args\": {\"clipIds\": [\"badge\"], \"recipe\": \"float\", \"speed\": 1, \"strength\": 1}},\n    {\"op\": \"add_motion_template\", \"args\": {\"template\": \"lower-third\", \"title\": \"Your name\", \"subtitle\": \"Cut · graded · exported\", \"color\": \"#f6a447\", \"start\": 2, \"duration\": 4, \"idPrefix\": \"lt\"}}\n  ]\n}"
+        "code": "{\n  \"ops\": [\n    {\"op\": \"add_clip\", \"args\": {\"assetId\": \"clip-1\", \"id\": \"cut-1\", \"start\": 0, \"outPoint\": 8, \"track\": \"video\"}},\n    {\"op\": \"add_clip\", \"args\": {\"assetId\": \"clip-1\", \"id\": \"cut-2\", \"start\": 8, \"inPoint\": 8, \"outPoint\": 15.5, \"track\": \"video\"}},\n    {\"op\": \"update_clips\", \"args\": {\"clipIds\": [\"cut-1\", \"cut-2\"], \"patch\": {\"filter\": \"warm\"}}},\n    {\"op\": \"set_transition\", \"args\": {\"clipId\": \"cut-2\", \"type\": \"dissolve\", \"duration\": 0.5}},\n    {\"op\": \"add_text_clip\", \"args\": {\"id\": \"headline\", \"text\": \"Fire edit\", \"start\": 0, \"duration\": 15, \"x\": 0.5, \"y\": 0.2, \"textSize\": 10, \"fontWeight\": 700, \"textColor\": \"#ffffff\"}},\n    {\"op\": \"apply_motion\", \"args\": {\"clipId\": \"headline\", \"preset\": \"spring\", \"duration\": 0.9}},\n    {\"op\": \"add_shape_clip\", \"args\": {\"id\": \"badge\", \"start\": 0, \"duration\": 15, \"x\": 0.5, \"y\": 0.68, \"shape\": {\"type\": \"ellipse\", \"width\": 0.07, \"height\": 0.124, \"fill\": \"#f6a447\"}}},\n    {\"op\": \"apply_code_motion\", \"args\": {\"clipIds\": [\"badge\"], \"recipe\": \"float\", \"speed\": 1, \"strength\": 1}},\n    {\"op\": \"add_motion_template\", \"args\": {\"template\": \"lower-third\", \"title\": \"Your name\", \"subtitle\": \"Cut · graded · exported\", \"color\": \"#f6a447\", \"start\": 2, \"duration\": 4, \"idPrefix\": \"lt\"}}\n  ]\n}"
       },
       {
         "title": "Where to go next",
@@ -664,7 +668,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T17:48:00Z",
+    "added": "2026-10-17T17:48:00Z"
   },
   {
     "slug": "shapes",
@@ -2899,7 +2905,7 @@ export const DOC_PAGES: DocPage[] = [
     "sections": [
       {
         "title": "Ways to help",
-        "text": "There are two kinds of contributor, and the rules are strict so that pull requests are small, true and easy to review.\n\n- **Community contributors may only change the docs.** Your pull request must touch nothing outside the `docs/` folder, and it needs a description that says which page, what was wrong and how you checked it. Anything else is closed automatically by the contribution rules workflow. See `CONTRIBUTING.md` in the repository root for the full policy.\n- **Bugs and ideas:** open an issue with what you did, what you expected and what happened. Add the browser and the project JSON if you can. Do not fix code yourself; a maintainer will pick it up.\n- **Maintainers** (the repository owner) may change anything — code, presets, templates and blocks — using the recipes further down this page.",
+        "text": "There are two kinds of contributor, and the rules are strict so that pull requests are small, true and easy to review.\n\n- **Community contributors may only change the docs.** Your pull request must touch nothing outside the `docs/` folder, and it needs a description that says which page, what was wrong and how you checked it. Anything else fails the contribution rules check and is closed by a maintainer. See `CONTRIBUTING.md` in the repository root for the full policy.\n- **Bugs and ideas:** open an issue with what you did, what you expected and what happened. Add the browser and the project JSON if you can. Do not fix code yourself; a maintainer will pick it up.\n- **Maintainers** (the repository owner) may change anything — code, presets, templates and blocks — using the recipes further down this page.",
         "callouts": [
           {
             "kind": "warning",
@@ -2969,7 +2975,7 @@ export const DOC_PAGES: DocPage[] = [
         "callouts": [
           {
             "kind": "note",
-            "text": "`client/src/lib/docs-generated.ts` is generated from `docs/*.md` and is committed on purpose. Run `npm run docs` after editing any docs page and commit the result with it."
+            "text": "`client/src/lib/docs-generated.ts` is generated from `docs/*.md` and is committed on purpose. Community pull requests never touch it: a maintainer runs `npm run docs` and commits the result when your docs change is merged."
           }
         ]
       },
@@ -3050,7 +3056,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T08:48:53Z",
+    "updated": "2026-10-17T17:48:00Z",
     "added": "2026-10-17T08:48:53Z"
   },
   {
@@ -3354,7 +3360,7 @@ export const DOC_PAGES: DocPage[] = [
           },
           {
             "status": "done",
-            "text": "More written tutorials: the Animator, block coding and a fire edit built from one clip, each ending in the same build as one API batch a test keeps honest."
+            "text": "More written tutorials: the Animator, block coding and a fire edit built from one clip, each with a matching API batch the docs tests apply for real."
           },
           {
             "status": "todo",
@@ -3896,7 +3902,7 @@ export const DOC_PAGES: DocPage[] = [
           },
           {
             "status": "done",
-            "text": "**Three more tutorials.** Block coding in the block studio, a wave in the Animator and a fire edit cut from one clip — each with steps for the editor and the same result as one tested API batch."
+            "text": "**Three more tutorials.** Block coding in the block studio, a wave in the Animator and a fire edit cut from one clip — each with step-by-step editor instructions and a matching API batch the docs tests apply for real."
           },
           {
             "status": "done",
@@ -3946,14 +3952,14 @@ export const DOC_PAGES: DocPage[] = [
       "doing": 0,
       "todo": 46
     },
-    "updated": "2026-10-17T13:19:57Z",
+    "updated": "2026-10-17T17:48:00Z",
     "added": "2026-10-16T00:27:26Z"
   }
 ];
 
 export const CONTRIBUTORS: { name: string; commits: number }[] = [
   {
-    "commits": 65,
+    "commits": 68,
     "name": "HomekidChud"
   },
   {

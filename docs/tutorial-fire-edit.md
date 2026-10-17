@@ -29,7 +29,7 @@ For this tutorial, keep the first cut to about eight seconds: set the clip's **O
 
 Right-click the clip and choose **Duplicate**, or select it and press the duplicate button in the inspector. Drag the copy so it starts where the first cut ends, then trim it to about seven seconds and, if the moment you want is later in the source, set its **In** to a different point so the second cut shows new footage.
 
-Two cuts of the same source back to back is the fastest way to build rhythm from one clip.
+Two cuts of the same source back to back is the fastest way to build rhythm from one clip. With a 0.5 second dissolve joining them, the second cut needs about seven and a half seconds so the video still ends where the overlays do.
 
 ## Warm the whole edit up
 
@@ -77,7 +77,7 @@ Everything you did in the editor is operations. This batch assumes the clip is u
 {
   "ops": [
     {"op": "add_clip", "args": {"assetId": "clip-1", "id": "cut-1", "start": 0, "outPoint": 8, "track": "video"}},
-    {"op": "add_clip", "args": {"assetId": "clip-1", "id": "cut-2", "start": 8, "inPoint": 8, "outPoint": 15, "track": "video"}},
+    {"op": "add_clip", "args": {"assetId": "clip-1", "id": "cut-2", "start": 8, "inPoint": 8, "outPoint": 15.5, "track": "video"}},
     {"op": "update_clips", "args": {"clipIds": ["cut-1", "cut-2"], "patch": {"filter": "warm"}}},
     {"op": "set_transition", "args": {"clipId": "cut-2", "type": "dissolve", "duration": 0.5}},
     {"op": "add_text_clip", "args": {"id": "headline", "text": "Fire edit", "start": 0, "duration": 15, "x": 0.5, "y": 0.2, "textSize": 10, "fontWeight": 700, "textColor": "#ffffff"}},
