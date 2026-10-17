@@ -321,6 +321,12 @@ export default function ApiDocsPage({ params }: { params?: { slug: string } }) {
               <button className="doc-anchor" aria-label={`Copy link to ${s.title}`} title="Copy link to this section" onClick={() => copyLink(id)}><Link2 size={15} /></button>
             </h2>
             <div className="doc-section-body" id={`${id}-body`} {...({ inert: shut ? "" : undefined } as Record<string, string | undefined>)}><div>
+              {s.video && <figure className="doc-video" data-testid={`doc-video-${s.video}`}>
+                <video controls preload="none" playsInline poster={`videos/${s.video}.png`} src={`videos/${s.video}.mp4`} aria-label={`Recording of the step: ${s.title}`}>
+                  <track kind="captions" src={`videos/${s.video}.vtt`} srcLang="en" default />
+                </video>
+                <figcaption>Watch the step, or follow the text below.</figcaption>
+              </figure>}
               {s.text && <DocText text={s.text} page={current} />}
               {s.tasks && <TaskList tasks={s.tasks} stats={s.taskStats} filter={filter} />}
               {s.callouts?.map((c, i) => { const { label, Icon } = CALLOUT[c.kind]; return <aside key={i} className={`doc-callout ${c.kind}`} role="note"><Icon size={17} aria-hidden="true" /><div><b>{label}</b><p><Inline text={c.text} /></p></div></aside>; })}

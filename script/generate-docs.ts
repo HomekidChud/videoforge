@@ -28,7 +28,7 @@ export const DOC_ENDPOINTS = [
 
 
 export type DocTask = { text: string; status: "todo" | "doing" | "done"; priority?: "High" | "Medium" | "Low" };
-export type DocSection = { title: string; text: string; callouts?: { kind: "note" | "tip" | "warning"; text: string }[]; code?: string; language?: string; rows?: string[][]; links?: { label: string; slug: string }[]; tasks?: DocTask[]; taskStats?: { done: number; doing: number; todo: number } };
+export type DocSection = { title: string; text: string; callouts?: { kind: "note" | "tip" | "warning"; text: string }[]; code?: string; language?: string; rows?: string[][]; links?: { label: string; slug: string }[]; tasks?: DocTask[]; taskStats?: { done: number; doing: number; todo: number }; video?: string };
 export type DocPage = { slug: string; group: string; title: string; description: string; sections: DocSection[]; updated?: string; added?: string; taskStats?: { done: number; doing: number; todo: number } };
 
 /** Tables that must always match the code: generated from the shared catalogs. */
@@ -160,6 +160,12 @@ export function parseDocPage(slug: string, md: string): DocPage {
       const text = [m[2], ...quote.slice(1)].join(" ").trim();
       if (!text) throw new Error(`${slug}.md: empty callout in "${current.title}"`);
       current.callouts = [...(current.callouts ?? []), { kind: m[1].toLowerCase() as "note" | "tip" | "warning", text }];
+    } else if (/^\{\{video:([a-z0-9-]+)\}\}$/.test(line.trim())) {
+      // A recorded clip beside the steps: {{video:name}} plays videos/name.mp4 with a poster and captions.
+      flushParagraph();
+      if (!current) throw new Error(`${slug}.md: video marker before any section heading`);
+      current.video = line.trim().slice(8, -2);
+      i++;
     } else if (/^- \[(.+?)\]\(([a-z0-9-]+)\)$/.test(line.trim())) {
       flushParagraph();
       if (!current) throw new Error(`${slug}.md: link before any section heading`);

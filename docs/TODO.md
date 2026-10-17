@@ -25,12 +25,12 @@ Each bar counts finished items in that area, worked out from this page's own sec
 Tutorials become motion graphics and real video: recordings of VideoForge being used, placed next to the steps they show.
 
 - [x] Written motion graphics tutorial with a matching API batch.
-- [ ] **High.** **Up next.** Record a screen capture of the whole motion graphics tutorial, one short clip per section, with the Studio shown at a readable size.
-- [ ] **High.** Play each clip inside the docs page next to the step it shows: a video block with a poster image, captions and play, pause and replay.
+- [x] Record a screen capture of the whole motion graphics tutorial, one short clip per section, with the Studio shown at a readable size.
+- [x] Play each clip inside the docs page next to the step it shows: a video block with a poster image, captions and play, pause and replay.
 - [ ] **High.** Chapters on every tutorial video that link to the page section, and a section link that jumps the video to the right second.
 - [ ] **High.** Loop recordings for every motion preset, template and shape, shown beside its entry in the docs.
 - [ ] **Medium.** Recorded walkthroughs of the Studio tour, the Animator, the block studio and the agent API workflow.
-- [ ] **Medium.** Make the recordings with a script (Playwright plus FFmpeg) so they can be rebuilt in one command whenever the interface changes.
+- [x] Make the recordings with a script (Playwright plus FFmpeg) so they can be rebuilt in one command whenever the interface changes: `npm run videos` records the Studio and rebuilds every clip, cutting and captioning each one through VideoForge's own API and renderer.
 - [ ] **Medium.** More recorded tutorials: a YouTube lower third, kinetic type, a product promo, captions on a talking-head clip, and driving an edit from an agent.
 - [x] More written tutorials: the Animator, block coding and a fire edit built from one clip, each with a matching API batch the docs tests apply for real.
 - [ ] **Medium.** Transcripts for every video, so each tutorial also works as text and in search.
@@ -178,6 +178,7 @@ What the docs site already does.
 - [x] **Docs search.** Every section is searched, typos are forgiven only for words the docs do not contain, weak matches are trimmed, four pages show first with Show more, and a closest-match fallback appears when no page has every word.
 - [x] **Docs start tidy.** Only Get started is open on arrival, and the group you are reading opens by itself.
 - [x] **Motion graphics tutorial.** An animated intro built step by step in the Studio, plus the same result as one API batch that a test keeps honest.
+- [x] **Recorded tutorial.** Every step of the motion graphics tutorial now has a short clip of the Studio doing it: a Playwright capture cut and captioned through VideoForge itself, embedded beside the step with a poster, captions and native controls, under 1 MB for all eleven clips.
 - [x] **Three more tutorials.** Block coding in the block studio, a wave in the Animator and a fire edit cut from one clip — each with step-by-step editor instructions and a matching API batch the docs tests apply for real.
 - [x] **Contribute and Storage pages.** Setup, code layout, tests and recipes for presets, templates, operations and blocks, and a page on disks, backups and the optional MongoDB store.
 - [x] **Short README.** A one-screen overview with a docs index, instead of repeating the docs.

@@ -87,7 +87,7 @@ export const DOC_PAGES: DocPage[] = [
     "sections": [
       {
         "title": "What you will make",
-        "text": "A five second intro: a headline that springs in, an accent bar that wipes open, a tagline that rises, a badge that floats forever and a lower third that arrives at two seconds. You build it in the Studio with the mouse, and the last section shows the same result as one API call.\n\nIt takes about fifteen minutes and needs no uploads. Every layer is a normal clip, so you can change anything afterwards.",
+        "text": "A five second intro: a headline that springs in, an accent bar that wipes open, a tagline that rises, a badge that floats forever and a lower third that arrives at two seconds. It takes about fifteen minutes and needs no uploads. Every layer is a normal clip, so you can change anything afterwards.\n\nEach step below has a short recording of the Studio doing it — watch the clip, then do the same in your own tab.",
         "callouts": [
           {
             "kind": "tip",
@@ -97,77 +97,88 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Start the project",
-        "text": "Open the Studio and sign in. Click the project name at the top left and type `Animated intro`. With nothing selected, the right panel shows Project settings. Leave Canvas on 16:9 HD (1280×720) and Frame rate on 30 fps. Click the Background swatch and choose a dark navy such as `#101826`.\n\nThe black preview turns navy straight away. Everything you add from here sits on top of this colour."
+        "text": "Click the project name at the top left and type `Animated intro`. With nothing selected, the right panel shows Project settings: leave Canvas on 16:9 HD (1280×720) and Frame rate on 30 fps, and set the Background swatch to a dark navy such as `#101826`.",
+        "video": "mg-start"
       },
       {
         "title": "Add a headline",
-        "text": "Click Add title in the top bar. A title appears at the playhead and its settings open on the right. In the Text box, replace the words with `Make your move`.\n\nScroll to Typography. Choose Poppins as the Font and Bold as the weight. Back under Text, raise Size to about 10%. Under Timing set Duration to 5 so it lasts the whole intro, and under Transform set Vertical to 44% so it sits just above the middle.",
+        "text": "Click Add title in the top bar, then type `Make your move` into the Text box. Set Size to about 10%, pick Poppins Bold in Typography, set Vertical to 44% and Duration to 5 seconds so it lasts the whole intro.",
         "callouts": [
           {
             "kind": "note",
             "text": "Size is a percentage of the frame height, and Horizontal and Vertical are percentages of the frame, so the same numbers work at any resolution."
           }
-        ]
+        ],
+        "video": "mg-headline"
       },
       {
         "title": "Make it spring in",
-        "text": "With the headline still selected, open the Motion tab on the right and expand Motion presets. Set Duration to 0.9 and leave Delay at 0 and Strength at 1.0×. Click Spring.\n\nPress Space to play. The headline pops in with a damped bounce. The preset wrote keyframes for Scale and Opacity, and nothing else, so you can still move the headline or change its colour freely.",
+        "text": "Open the Motion tab, expand Motion presets, set Duration to 0.9 and click Spring. Press Space to play and the headline pops in with a damped bounce.",
         "callouts": [
           {
             "kind": "tip",
-            "text": "Click any preset to preview it, then press Ctrl+Z to undo and try another. Presets replace only the properties they animate."
+            "text": "Click any preset to preview it, then press Ctrl+Z and try another. Presets replace only the properties they animate."
           }
-        ]
+        ],
+        "video": "mg-spring"
       },
       {
         "title": "Add an accent bar",
-        "text": "Open the Graphics tab on the left, scroll to Shape primitives and click rectangle. A shape lands on the canvas and its Shape settings open in the Edit tab.\n\nSet Shape width to about 22% and Shape height to 1 or 2%, so it becomes a thin bar. Set the fill to orange `#f6a447` and raise Corner radius a little for rounded ends. Under Timing set Start to 0.3 and Duration to 4.7, then under Transform set Vertical to 56%.\n\nSwitch to the Motion tab, expand Motion presets and click Wipe reveal with a Duration of 0.7. The bar draws itself from left to right.",
+        "text": "Open the Graphics tab and click rectangle. Set Shape width to 22% and height to 1 or 2%, fill it orange `#f6a447`, set Start to 0.3 and Duration to 4.7, and Vertical to 56%. Back in the Motion tab, click Wipe reveal with a Duration of 0.7 and the bar draws itself from left to right.",
         "callouts": [
           {
             "kind": "note",
-            "text": "Shape width and height are fractions of the frame. On a 16:9 canvas, equal percentages do not make a square, which matters for the next circle."
+            "text": "Shape width and height are fractions of the frame, so on a 16:9 canvas equal percentages do not make a square — which matters for the next circle."
           }
-        ]
+        ],
+        "video": "mg-bar"
       },
       {
         "title": "Add a tagline",
-        "text": "Click Add title again. Type `Motion graphics, made in the Studio`. Set Size to about 3.5%, pick Poppins, set the colour to a soft blue grey such as `#9fb3c8`, and set Vertical to 62%. Under Timing set Start to 0.5 and Duration to 4.5.\n\nIn the Motion tab choose the Rise preset with a Duration of 0.6. It lifts into place just after the bar finishes."
+        "text": "Click Add title again and type `Motion graphics, made in the Studio`. Set Size to about 3.5%, Poppins, colour `#9fb3c8`, Vertical to 62%, Start to 0.5 and Duration to 4.5. In the Motion tab choose Rise with a Duration of 0.6.",
+        "video": "mg-tagline"
       },
       {
         "title": "Add a badge that keeps moving",
-        "text": "In Graphics click ellipse. On a 16:9 frame a circle needs a smaller width than height, so set Shape width to 7% and Shape height to 12%. Fill it orange, set Vertical to 22% and Duration to 5.\n\nOpen the Motion tab, expand Animate with code, and under Looping recipe choose Float. Leave Speed and Strength at 1.0× and click Apply recipe. The badge bobs gently for as long as the clip lasts.",
+        "text": "In Graphics click ellipse. A circle on 16:9 needs width 7% and height 12%. Fill it orange, set Vertical to 22% and Duration to 5. In the Motion tab expand Animate with code, choose the Float recipe and click Apply recipe: the badge bobs gently for as long as the clip lasts.",
         "callouts": [
           {
             "kind": "tip",
             "text": "A recipe is a formula, not keyframes, so it keeps looping at any clip length. Click Bake to keyframes if you later want to edit the movement by hand."
           }
-        ]
+        ],
+        "video": "mg-badge"
       },
       {
         "title": "Drop in a lower third",
-        "text": "Click the timeline ruler at 2 seconds to place the playhead. Open the Graphics tab and click Lower third. Under Customize, set Headline to `Ada Lovelace`, Supporting text to `Pioneer of computing`, keep the orange Accent, and set Duration to 3. Click Add to timeline.\n\nThe template expands into three ordinary clips: the plate, the name and the subtitle. Click any of them in the preview or in the timeline to edit it, exactly like the layers you built by hand."
+        "text": "Click the timeline ruler at 2 seconds to place the playhead. In Graphics, click Lower third, set Headline to `Ada Lovelace`, Supporting text to `Pioneer of computing`, keep the orange Accent, set Duration to 3 and click Add to timeline. The template expands into three ordinary clips you can edit like any layer.",
+        "video": "mg-lower-third"
       },
       {
         "title": "Tune the motion on a graph",
-        "text": "Click Animate in the top bar and select the headline. Its clip opens into Scale and Opacity lanes in the timeline, and an Animation panel appears at the bottom right. Choose Scale in the property list, which also shows how many keys it has. The spring is drawn as a curve that overshoots and then settles.\n\nDrag the highest diamond down a little to soften the bounce, or drag a diamond sideways to change its timing. Click Key at playhead to add a new key where the playhead sits. Click Edit in the top bar when you are done."
+        "text": "Click Animate in the top bar and select the headline. Its clip opens into Scale and Opacity lanes, with an Animation panel at the bottom right. The spring is drawn as a curve that overshoots and settles: drag the highest diamond down to soften the bounce, drag sideways to change timing, or click Key at playhead to add a key. Click Edit when you are done.",
+        "video": "mg-graph"
       },
       {
         "title": "Fade everything out",
-        "text": "Select the headline, then drag the Fade out slider in the Edit tab to 0.6 seconds. Do the same for the tagline. Fade out is separate from keyframes, so it never fights the spring you set up earlier.\n\nOpen the Effects tab if you prefer to drag: Fade out under Fades and looks can be dropped straight onto a clip in the timeline or the preview."
+        "text": "Select the headline, then drag the Fade out slider in the Edit tab to 0.6 seconds. Do the same for the tagline. Fade out is separate from keyframes, so it never fights the spring you set up earlier.",
+        "video": "mg-fade"
       },
       {
         "title": "Check it fits and play it back",
-        "text": "With nothing selected, click Fit all layers in the Project panel. This pulls anything that sticks out of the frame back inside. Click the skip-to-start button next to Play, then press Space and watch the whole intro through once.\n\nLook at the save status next to the project name. When it says All changes saved your work is stored with your account."
+        "text": "With nothing selected, click Fit all layers in the Project panel to pull anything sticking out back inside. Click the skip-to-start button next to Play, press Space and watch the whole intro through once. Watch the save status next to the project name: when it says All changes saved, your work is stored with your account.",
+        "video": "mg-playback"
       },
       {
         "title": "Export your video",
-        "text": "Click Export in the top bar. A progress bar shows the render and the MP4 is ready to download when it finishes. The server renders with FFmpeg and downloads each font the first time it is used, so the first render with a new font can take a little longer.",
+        "text": "Click Export in the top bar. A progress bar shows the render and the MP4 is ready to download when it finishes. The server renders with FFmpeg and downloads each font the first time it is used, so a first render with a new font can take a little longer.",
         "callouts": [
           {
             "kind": "note",
             "text": "The preview and the export use the same formulas, but font metrics can differ by a pixel or two. Watch the export once before you publish it."
           }
-        ]
+        ],
+        "video": "mg-export"
       },
       {
         "title": "Build the same thing with the API",
@@ -341,7 +352,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T17:48:00Z",
+    "updated": "2026-10-17T18:00:49Z",
     "added": "2026-10-17T17:48:00Z"
   },
   {
@@ -469,7 +480,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T17:48:00Z",
+    "updated": "2026-10-17T18:00:49Z",
     "added": "2026-10-17T17:48:00Z"
   },
   {
@@ -669,7 +680,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T17:48:00Z",
+    "updated": "2026-10-17T18:00:49Z",
     "added": "2026-10-17T17:48:00Z"
   },
   {
@@ -3056,7 +3067,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T17:48:00Z",
+    "updated": "2026-10-17T18:00:49Z",
     "added": "2026-10-17T08:48:53Z"
   },
   {
@@ -3324,14 +3335,12 @@ export const DOC_PAGES: DocPage[] = [
             "text": "Written motion graphics tutorial with a matching API batch."
           },
           {
-            "status": "todo",
-            "text": "**Up next.** Record a screen capture of the whole motion graphics tutorial, one short clip per section, with the Studio shown at a readable size.",
-            "priority": "High"
+            "status": "done",
+            "text": "Record a screen capture of the whole motion graphics tutorial, one short clip per section, with the Studio shown at a readable size."
           },
           {
-            "status": "todo",
-            "text": "Play each clip inside the docs page next to the step it shows: a video block with a poster image, captions and play, pause and replay.",
-            "priority": "High"
+            "status": "done",
+            "text": "Play each clip inside the docs page next to the step it shows: a video block with a poster image, captions and play, pause and replay."
           },
           {
             "status": "todo",
@@ -3349,9 +3358,8 @@ export const DOC_PAGES: DocPage[] = [
             "priority": "Medium"
           },
           {
-            "status": "todo",
-            "text": "Make the recordings with a script (Playwright plus FFmpeg) so they can be rebuilt in one command whenever the interface changes.",
-            "priority": "Medium"
+            "status": "done",
+            "text": "Make the recordings with a script (Playwright plus FFmpeg) so they can be rebuilt in one command whenever the interface changes: `npm run videos` records the Studio and rebuilds every clip, cutting and captioning each one through VideoForge's own API and renderer."
           },
           {
             "status": "todo",
@@ -3379,9 +3387,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ],
         "taskStats": {
-          "done": 2,
+          "done": 5,
           "doing": 0,
-          "todo": 10
+          "todo": 7
         }
       },
       {
@@ -3902,6 +3910,10 @@ export const DOC_PAGES: DocPage[] = [
           },
           {
             "status": "done",
+            "text": "**Recorded tutorial.** Every step of the motion graphics tutorial now has a short clip of the Studio doing it: a Playwright capture cut and captioned through VideoForge itself, embedded beside the step with a poster, captions and native controls, under 1 MB for all eleven clips."
+          },
+          {
+            "status": "done",
             "text": "**Three more tutorials.** Block coding in the block studio, a wave in the Animator and a fire edit cut from one clip — each with step-by-step editor instructions and a matching API batch the docs tests apply for real."
           },
           {
@@ -3914,7 +3926,7 @@ export const DOC_PAGES: DocPage[] = [
           }
         ],
         "taskStats": {
-          "done": 7,
+          "done": 8,
           "doing": 0,
           "todo": 0
         }
@@ -3948,18 +3960,18 @@ export const DOC_PAGES: DocPage[] = [
       }
     ],
     "taskStats": {
-      "done": 70,
+      "done": 74,
       "doing": 0,
-      "todo": 46
+      "todo": 43
     },
-    "updated": "2026-10-17T17:48:00Z",
+    "updated": "2026-10-17T18:00:49Z",
     "added": "2026-10-16T00:27:26Z"
   }
 ];
 
 export const CONTRIBUTORS: { name: string; commits: number }[] = [
   {
-    "commits": 68,
+    "commits": 69,
     "name": "HomekidChud"
   },
   {

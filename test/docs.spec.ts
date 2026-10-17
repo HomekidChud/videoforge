@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { readFile } from "node:fs/promises";
 import { parseDocPage, readDocPages, generateDocs, validatePages } from "../script/generate-docs";
 import { DOC_PAGES } from "../client/src/lib/docs-content";
@@ -64,6 +66,18 @@ await check("auto tables", async () => {
   assert.ok((ops.rows!.length ?? 0) > 10);
   const endpoints = pages.find((p) => p.slug === "api-reference")!.sections.find((s) => s.rows?.[0][0] === "Method")!;
   assert.ok(endpoints.rows!.some((r) => r[1] === "/api/health"));
+});
+
+// Every {{video}} marker resolves to a real clip, poster and caption track.
+await check("video markers resolve to files", () => {
+  const videos = DOC_PAGES.flatMap((p) => p.sections.filter((s) => s.video).map((s) => ({ page: p.slug, name: s.video! })));
+  assert.ok(videos.length >= 11, `the motion graphics tutorial embeds its clips, got ${videos.length}`);
+  for (const v of videos) {
+    for (const ext of ["mp4", "png", "vtt"]) {
+      const file = path.join("client/public/videos", `${v.name}.${ext}`);
+      assert.ok(fs.existsSync(file), `${v.page}: missing ${file}`);
+    }
+  }
 });
 
 // The tutorial's API batch really builds the intro it describes.
