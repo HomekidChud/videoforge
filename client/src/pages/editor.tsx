@@ -29,20 +29,52 @@ import { animationsByName, loadAnimations, type RigAnimation } from "@shared/rig
 type SaveState = "empty" | "saved" | "dirty" | "saving" | "error" | "readonly";
 type Me = { id: string; scope: "read" | "write" | "admin" };
 
-function uploadWithProgress(files: File[], onProgress: (pct: number) => void): Promise<{ assets: AssetDTO[] }> {
+/** Send one file. Cookies go with it (withCredentials), so a signed-in session works even when the API is on another origin. */
+function uploadOne(file: File, onBytes: (loaded: number) => void): Promise<AssetDTO[]> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest(), form = new FormData(), key = loadStoredKey();
-    files.forEach((f) => form.append("files", f));
+    form.append("files", file);
     xhr.open("POST", `${API_BASE}/api/media/upload`);
+    xhr.withCredentials = true;
     if (key) xhr.setRequestHeader("Authorization", `Bearer ${key}`);
-    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
+    xhr.upload.onprogress = (e) => onBytes(e.lengthComputable ? e.loaded : 0);
     xhr.onload = () => {
       let body: any = {}; try { body = JSON.parse(xhr.responseText); } catch { /* non-json */ }
-      xhr.status >= 200 && xhr.status < 300 ? resolve(body) : reject(new Error(body.message || `Upload failed (${xhr.status})`));
+      if (xhr.status >= 200 && xhr.status < 300) return resolve(body.assets ?? []);
+      const err: Error & { status?: number } = new Error(xhr.status === 401 && !key ? "Your session ended. Sign in again, then retry the upload." : body.message || `Upload failed (${xhr.status})`);
+      err.status = xhr.status; reject(err);
     };
-    xhr.onerror = () => reject(new Error("Network error during upload"));
+    xhr.onerror = () => reject(Object.assign(new Error("Network error during upload"), { status: 0 }));
     xhr.send(form);
   });
+}
+
+/**
+ * Upload several files at once (four connections) and report one overall percentage by bytes.
+ * Small files no longer queue behind a big one, and a dropped connection is retried once.
+ */
+async function uploadWithProgress(files: File[], onProgress: (pct: number) => void): Promise<{ assets: AssetDTO[] }> {
+  const total = files.reduce((n, f) => n + f.size, 0) || 1;
+  const sent = new Array<number>(files.length).fill(0);
+  const report = () => onProgress(Math.min(1, sent.reduce((n, v) => n + v, 0) / total));
+  const out: AssetDTO[][] = new Array(files.length);
+  let next = 0, failure: Error | null = null;
+  // Biggest first, so the longest transfer starts straight away.
+  const order = files.map((_, i) => i).sort((a, b) => files[b].size - files[a].size);
+  const worker = async () => {
+    while (!failure) {
+      const i = order[next++]; if (i === undefined) return;
+      const run = () => uploadOne(files[i], (n) => { sent[i] = n; report(); });
+      try {
+        try { out[i] = await run(); }
+        catch (e: any) { if (e?.status === 0 || e?.status >= 502) { sent[i] = 0; out[i] = await run(); } else throw e; }
+        sent[i] = files[i].size; report();
+      } catch (e: any) { failure = e; }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, files.length) }, worker));
+  if (failure) throw failure;
+  return { assets: out.flat() };
 }
 
 export default function EditorPage() {
@@ -437,7 +469,10 @@ export default function EditorPage() {
     if (!files.length) return toast("Choose video, audio or image files.", "error");
     if (readOnly) return toast("This key is read-only.", "error");
     setUpload({ pct: 0 });
-    try { const r = await uploadWithProgress(files, (pct) => setUpload({ pct })); await qc.invalidateQueries({ queryKey: ["/api/media"] }); toast(`Imported ${r.assets.length} file${r.assets.length > 1 ? "s" : ""}`);
+    try { const r = await uploadWithProgress(files, (pct) => setUpload({ pct }));
+      // Show the new files straight away from the upload response, then let the list refresh quietly.
+      qc.setQueryData<{ assets: AssetDTO[] }>(["/api/media"], (old) => ({ ...(old ?? {}), assets: [...(old?.assets ?? []).filter((x) => !r.assets.some((n) => n.id === x.id)), ...r.assets] }));
+      void qc.invalidateQueries({ queryKey: ["/api/media"] }); toast(`Imported ${r.assets.length} file${r.assets.length > 1 ? "s" : ""}`);
       if (place) { let at = place.start; const added: Clip[] = []; for (const a of r.assets) { const track = a.kind === "audio" ? "audio" : place.track === "audio" ? "video" : place.track; const c = newClip(a, at, track); added.push(c); if (a.kind !== "audio") at = clipEnd(c); } if (added.length) { mutate((t) => ({ ...t, clips: [...t.clips, ...added] })); setSelectedId(added[0].id); } } }
     catch (e: any) { toast(e.message, "error"); } finally { setUpload(null); }
   }

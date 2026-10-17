@@ -204,6 +204,16 @@ async function main() {
     assert(a.duration > 5 && a.duration < 7, `duration ~6s, got ${a.duration}`);
     assert(a.width === 640 && a.height === 480, "dimensions 640x480");
     assert(a.thumbnailUrl?.includes(assetId), "thumbnailUrl present");
+    // Media is served with Range support, so players can seek before the whole file arrives.
+    const part = await fetch(`${H}/api/media/${assetId}/raw`, { headers: { ...AUTH_WRITE, Range: "bytes=0-99" } });
+    assert(part.status === 206 && (await part.arrayBuffer()).byteLength === 100, `range request gives 206 with 100 bytes, got ${part.status}`);
+    // Several files in one request are probed together and all come back.
+    const multi = new FormData();
+    multi.append("files", new File([fs.readFileSync(tmp)], "a.mp4", { type: "video/mp4" }));
+    multi.append("files", new File([fs.readFileSync(tmp)], "b.mp4", { type: "video/mp4" }));
+    const mr = await fetch(`${H}/api/media/upload`, { method: "POST", headers: AUTH_WRITE, body: multi });
+    const mb = await mr.json();
+    assert(mr.status === 201 && mb.assets.length === 2 && mb.assets.every((x: any) => x.width === 640 && x.duration > 5), "two files upload together with their own metadata");
   }
 
   // --- 11. Create a project + add a clip

@@ -55,47 +55,59 @@ function kindFromMime(mime: string, filename: string): "video" | "audio" | "imag
   return "video";
 }
 
+/** One ffprobe call for duration, size and audio, instead of three sequential spawns. */
 async function probe(filepath: string) {
-  const ffprobe = (args: string[]) =>
-    new Promise<string>((resolve, reject) => {
-      const p = spawn("ffprobe", args);
-      let out = "";
-      p.stdout.on("data", (d) => (out += d));
-      p.on("close", (c) => (c === 0 ? resolve(out) : reject(new Error(`ffprobe exit ${c}`))));
+  const out = await new Promise<string>((resolve, reject) => {
+    const p = spawn("ffprobe", [
+      "-v", "error", "-print_format", "json",
+      "-show_entries", "format=duration:stream=codec_type,width,height",
+      filepath,
+    ]);
+    let buf = "";
+    p.stdout.on("data", (d) => (buf += d));
+    p.on("close", (c) => (c === 0 ? resolve(buf) : reject(new Error(`ffprobe exit ${c}`))));
+    p.on("error", reject);
+  });
+  const info = JSON.parse(out || "{}") as { format?: { duration?: string }; streams?: Array<{ codec_type?: string; width?: number; height?: number }> };
+  const dur = parseFloat(info.format?.duration ?? "");
+  const streams = info.streams ?? [];
+  const video = streams.find((s) => s.codec_type === "video" && s.width && s.height);
+  return {
+    duration: isFinite(dur) ? dur : 0,
+    width: video?.width ?? 0,
+    height: video?.height ?? 0,
+    hasAudio: streams.some((s) => s.codec_type === "audio"),
+  };
+}
+
+/** Thumbnails are made right after upload (two at a time) so the media bin never waits on ffmpeg. */
+let thumbActive = 0;
+const thumbWaiting: Array<() => void> = [];
+async function generateThumb(a: Asset): Promise<string> {
+  const thumb = path.join(MEDIA_DIR, `${a.id}_thumb.jpg`);
+  if (fs.existsSync(thumb)) return thumb;
+  if (thumbActive >= 2) await new Promise<void>((r) => thumbWaiting.push(r));
+  thumbActive++;
+  try {
+    if (fs.existsSync(thumb)) return thumb;
+    await new Promise<void>((resolve, reject) => {
+      const p = spawn("ffmpeg", [
+        "-y",
+        ...(a.kind === "image" ? [] : ["-ss", String(Math.min(1, (a.duration || 0) / 2))]),
+        "-i", a.storagePath,
+        "-vframes", "1",
+        "-vf", "scale=320:-2",
+        thumb,
+      ]);
+      p.on("close", (c) => (c === 0 ? resolve() : reject(new Error(`exit ${c}`))));
       p.on("error", reject);
     });
-  const dur = parseFloat(
-    await ffprobe([
-      "-v", "error",
-      "-show_entries", "format=duration",
-      "-of", "default=noprint_wrappers=1:nokey=1",
-      filepath,
-    ]),
-  );
-  let w = 0, h = 0;
-  try {
-    const dims = await ffprobe([
-      "-v", "error",
-      "-select_streams", "v:0",
-      "-show_entries", "stream=width,height",
-      "-of", "csv=p=0",
-      filepath,
-    ]);
-    const m = dims.match(/(\d+),(\d+)/);
-    if (m) { w = parseInt(m[1]); h = parseInt(m[2]); }
-  } catch { /* no video stream */ }
-  let hasAudio = false;
-  try {
-    const a = await ffprobe([
-      "-v", "error",
-      "-select_streams", "a",
-      "-show_entries", "stream=index",
-      "-of", "csv=p=0",
-      filepath,
-    ]);
-    hasAudio = a.trim().length > 0;
-  } catch { /* no audio */ }
-  return { duration: isFinite(dur) ? dur : 0, width: w, height: h, hasAudio };
+    storage.updateAssetThumb(a.id, thumb);
+    return thumb;
+  } finally {
+    thumbActive--;
+    thumbWaiting.shift()?.();
+  }
 }
 
 function assetToJSON(a: Asset) {
@@ -213,7 +225,7 @@ export async function registerRoutes(
     if (!req.headers["content-type"]?.includes("multipart/form-data")) {
       return res.status(400).json({ message: "multipart/form-data required" });
     }
-    const busboy = Busboy({ headers: req.headers as any, limits: { fileSize: MAX_UPLOAD_BYTES, files: 20 } });
+    const busboy = Busboy({ headers: req.headers as any, highWaterMark: 1 << 20, fileHwm: 1 << 20, limits: { fileSize: MAX_UPLOAD_BYTES, files: 20 } });
     type Pending = { id: string; dest: string; filename: string; mime: string; done: Promise<boolean> };
     const pending: Pending[] = [];
     let failed: string | null = null;
@@ -221,7 +233,7 @@ export async function registerRoutes(
       // Stream straight to disk — never buffer whole videos in memory.
       const id = uid();
       const dest = path.join(MEDIA_DIR, id);
-      const out = fs.createWriteStream(dest);
+      const out = fs.createWriteStream(dest, { highWaterMark: 1 << 20 });
       let truncated = false;
       stream.on("limit", () => { truncated = true; failed = `File exceeds the ${Math.round(MAX_UPLOAD_BYTES / 1048576)} MB upload limit.`; });
       stream.pipe(out);
@@ -240,7 +252,8 @@ export async function registerRoutes(
         for (const p of pending) fs.promises.unlink(p.dest).catch(() => {});
         return res.status(failed?.includes("exceeds") ? 413 : 400).json({ message: failed || "Upload failed." });
       }
-      for (const f of pending) {
+      // Probe every file at the same time, then answer; thumbnails finish in the background.
+      const made = await Promise.all(pending.map(async (f) => {
         const kind = kindFromMime(f.mime, f.filename);
         let duration = 0, width = 0, height = 0, hasAudio = 0;
         try {
@@ -248,11 +261,14 @@ export async function registerRoutes(
           duration = kind === "image" ? 0 : p.duration; width = p.width; height = p.height; hasAudio = p.hasAudio ? 1 : 0;
         } catch (e) { console.warn("probe failed:", e); }
         const stat = await fsp.stat(f.dest);
-        const asset = storage.createAsset({
+        return storage.createAsset({
           id: f.id, filename: f.filename, kind, mime: f.mime || "application/octet-stream",
           duration, width, height, hasAudio, sizeBytes: stat.size, storagePath: f.dest, thumbPath: null, createdAt: now(),
         });
+      }));
+      for (const asset of made) {
         results.push(assetToJSON(asset));
+        if (asset.kind !== "audio") generateThumb(asset).catch(() => { /* made on first request instead */ });
       }
       res.status(201).json({ assets: results });
     });
@@ -281,39 +297,20 @@ export async function registerRoutes(
   app.get("/api/media/:id/raw", requireMediaAccess("asset"), (req, res) => {
     const a = storage.getAsset(String(req.params.id));
     if (!a) return res.status(404).json({ message: "asset not found" });
-    const stat = fs.statSync(a.storagePath);
+    // sendFile answers Range requests, so players can seek without downloading the whole file first.
     res.setHeader("Content-Type", a.mime);
-    res.setHeader("Content-Length", stat.size);
-    res.setHeader("Accept-Ranges", "bytes");
-    fs.createReadStream(a.storagePath).pipe(res);
+    res.sendFile(path.resolve(a.storagePath), { dotfiles: "allow", cacheControl: false }, (err) => { if (err && !res.headersSent) res.status(404).json({ message: "media file missing" }); });
   });
 
   // thumbnail (frame at 1s, or full image) — accepts Bearer key or signed ?st=
   app.get("/api/media/:id/thumb", requireMediaAccess("asset"), async (req, res) => {
     const a = storage.getAsset(String(req.params.id));
     if (!a) return res.status(404).json({ message: "asset not found" });
-    const thumb = path.join(MEDIA_DIR, `${a.id}_thumb.jpg`);
-    if (!fs.existsSync(thumb)) {
-      try {
-        await new Promise<void>((resolve, reject) => {
-          const p = spawn("ffmpeg", [
-            "-y",
-            ...(a.kind === "image" ? [] : ["-ss", String(Math.min(1, (a.duration || 0) / 2))]),
-            "-i", a.storagePath,
-            "-vframes", "1",
-            "-vf", "scale=320:-2",
-            thumb,
-          ]);
-          p.on("close", (c) => (c === 0 ? resolve() : reject(new Error(`exit ${c}`))));
-          p.on("error", reject);
-        });
-        storage.updateAssetThumb(a.id, thumb);
-      } catch (e) {
-        console.warn("thumb gen failed", e);
-        return res.status(404).json({ message: "thumbnail unavailable" });
-      }
-    }
+    let thumb: string;
+    try { thumb = await generateThumb(a); }
+    catch (e) { console.warn("thumb gen failed", e); return res.status(404).json({ message: "thumbnail unavailable" }); }
     res.setHeader("Content-Type", "image/jpeg");
+    res.setHeader("Cache-Control", "private, max-age=86400");
     fs.createReadStream(thumb).pipe(res);
   });
 
