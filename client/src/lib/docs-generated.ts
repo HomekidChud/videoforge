@@ -2669,7 +2669,7 @@ export const DOC_PAGES: DocPage[] = [
     "sections": [
       {
         "title": "Where we are",
-        "text": "**Overall: 44 of 103 done, 43%.** █████████░░░░░░░░░░░\n\nNothing is being built right now, and 59 items are still to do. Done items are ticked, items being worked on carry an In progress label, items first in line carry an Up next label, and every open item has a priority of High, Medium or Low. Each item below ships with its own tests and a commit to main, so this page always matches the repo.\n\nThe next three pushes are real tutorial videos, a calmer editor interface and a much stronger docs site. They are broken down further down this page."
+        "text": "**Overall: 44 of 113 done, 39%.** ████████░░░░░░░░░░░░\n\nNothing is being built right now, and 69 items are still to do. Done items are ticked, items being worked on carry an In progress label, items first in line carry an Up next label, and every open item has a priority of High, Medium or Low. Each item below ships with its own tests and a commit to main, so this page always matches the repo.\n\nThe next pushes are real tutorial videos, a calmer editor interface, a much stronger docs site and a todo list whose checkboxes and bars calculate themselves. They are broken down further down this page."
       },
       {
         "title": "Progress by area",
@@ -2739,6 +2739,13 @@ export const DOC_PAGES: DocPage[] = [
             "░░░░░░░░ 0%"
           ],
           [
+            "Calculated todo list",
+            "0",
+            "0",
+            "10",
+            "░░░░░░░░ 0%"
+          ],
+          [
             "Docs: quality and reach",
             "0",
             "0",
@@ -2749,14 +2756,14 @@ export const DOC_PAGES: DocPage[] = [
             "Everything",
             "44",
             "0",
-            "59",
-            "███░░░░░ 43%"
+            "69",
+            "███░░░░░ 39%"
           ]
         ]
       },
       {
         "title": "In progress",
-        "text": "Work that has started and is not finished. Nothing is in progress at the moment. When a task starts it moves here with an In progress label, and these three are first in line:\n\n- ☐ **High.** **Up next.** Record a screen capture of the whole motion graphics tutorial, one short clip per section, with the Studio shown at a readable size.\n- ☐ **High.** **Up next.** Audit every panel and the top bar, listing what is used daily, what is rare and what can move into a menu.\n- ☐ **High.** **Up next.** Copy button and syntax highlighting on every code block."
+        "text": "Work that has started and is not finished. Nothing is in progress at the moment. When a task starts it moves here with an In progress label, and these five are first in line:\n\n- ☐ **High.** **Up next.** Record a screen capture of the whole motion graphics tutorial, one short clip per section, with the Studio shown at a readable size.\n- ☐ **High.** **Up next.** Audit every panel and the top bar, listing what is used daily, what is rare and what can move into a menu.\n- ☐ **High.** **Up next.** Copy button and syntax highlighting on every code block.\n- ☐ **High.** **Up next.** Draw `- [ ]` and `- [x]` items as real checkboxes in the docs page, read-only and labelled for screen readers, instead of the ☐ and ☑ text symbols.\n- ☐ **High.** **Up next.** Calculate progress from the checkboxes at build time, per section and overall, so no bar, percentage or count is typed by hand."
       },
       {
         "title": "Next: tutorial videos",
@@ -2773,6 +2780,10 @@ export const DOC_PAGES: DocPage[] = [
       {
         "title": "Next: docs live and generated",
         "text": "Pages that run, update themselves and can be read by agents. ░░░░░░░░ 0 of 8 done.\n\n- ☐ **High.** Try it panel on each endpoint: paste a key, send a real request and see the response.\n- ☐ **High.** Interactive examples that embed the real preview, so a page shows a preset or template playing live.\n- ☐ **High.** An OpenAPI file generated from the operation list, linked from the API reference.\n- ☐ **Medium.** Generate the changelog page from commit messages.\n- ☐ **Medium.** Docs versions, so a self-hosted older release reads the matching pages.\n- ☐ **Medium.** A Markdown copy of every page and an llms.txt, so agents can read the docs directly.\n- ☐ **Medium.** Spanish docs that follow the Spanish block labels already in the studio.\n- ☐ **Low.** A page that shows the live status of the hosted deployment."
+      },
+      {
+        "title": "Next: calculated todo list",
+        "text": "Make this page's checkboxes and progress bars real controls that work themselves out, instead of symbols and numbers typed by hand. `░░░░░░░░` 0 of 10 done.\n\n- ☐ **High.** **Up next.** Draw `- [ ]` and `- [x]` items as real checkboxes in the docs page, read-only and labelled for screen readers, instead of the ☐ and ☑ text symbols.\n- ☐ **High.** **Up next.** Calculate progress from the checkboxes at build time, per section and overall, so no bar, percentage or count is typed by hand.\n- ☐ **High.** Generate the Progress by area table from the page's own sections, with done, in progress and to do counts worked out from the items.\n- ☐ **High.** Draw each bar as a real progress element with an accessible label such as 44 of 112 done, so it animates, scales and reads out properly.\n- ☐ **Medium.** Status syntax in the markdown: `[ ]` to do, `[~]` in progress and `[x]` done, each with its own icon and counted separately in the bars.\n- ☐ **Medium.** Parse the priority (High, Medium, Low) out of each item so the page can sort, filter and count by priority.\n- ☐ **Medium.** Filter controls at the top of the page: All, Open, In progress and Done, plus priority and area, remembered per browser.\n- ☐ **Medium.** Fail the docs build when a hand-written number on the page disagrees with the checkboxes, and add a test that the calculated counts match.\n- ☐ **Low.** Show the overall progress next to the Bucket list entry in the sidebar.\n- ☐ **Low.** Link each item to its issue or commit, and offer to fill the list from GitHub issues."
       },
       {
         "title": "Next: docs quality and reach",
