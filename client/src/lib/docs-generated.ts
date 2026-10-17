@@ -42,8 +42,7 @@ export const DOC_PAGES: DocPage[] = [
         "code": "Discover → Compose → Validate → Inspect → Render"
       }
     ],
-    "updated": "2026-10-17T20:03:54Z",
-    "added": "2026-10-15T22:20:52+01:00"
+    "gitUpdated": "2026-10-17T20:03:54Z"
   },
   {
     "slug": "quickstart",
@@ -76,8 +75,7 @@ export const DOC_PAGES: DocPage[] = [
         "code": "curl \"$BASE/api/projects/$PROJECT/frame?t=1&width=640\" \\\n  -H \"Authorization: Bearer $KEY\" -o frame.png\ncurl -X POST \"$BASE/api/renders\" \\\n  -H \"Authorization: Bearer $KEY\" -H \"Content-Type: application/json\" \\\n  -d \"{\\\"projectId\\\":\\\"$PROJECT\\\"}\"\nexport JOB=\"<jobId-from-response>\"\ncurl \"$BASE/api/renders/$JOB\" -H \"Authorization: Bearer $KEY\"\n# Once status is done:\ncurl \"$BASE/api/renders/$JOB/download\" \\\n  -H \"Authorization: Bearer $KEY\" -o motion.mp4"
       }
     ],
-    "updated": "2026-10-16T06:24:05Z",
-    "added": "2026-10-15T22:20:52+01:00"
+    "gitUpdated": "2026-10-16T06:24:05Z"
   },
   {
     "slug": "motion-graphics-tutorial",
@@ -202,8 +200,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T20:03:54Z",
-    "added": "2026-10-17T08:48:53Z"
+    "gitUpdated": "2026-10-17T20:03:54Z"
   },
   {
     "slug": "authentication",
@@ -255,8 +252,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T20:03:54Z",
-    "added": "2026-10-15T22:20:52+01:00"
+    "gitUpdated": "2026-10-17T20:03:54Z"
   },
   {
     "slug": "tutorial-blocks",
@@ -343,8 +339,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T20:03:54Z",
-    "added": "2026-10-17T17:48:00Z"
+    "gitUpdated": "2026-10-17T20:03:54Z"
   },
   {
     "slug": "timeline",
@@ -380,8 +375,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T08:48:53Z",
-    "added": "2026-10-15T22:20:52+01:00"
+    "gitUpdated": "2026-10-17T08:48:53Z"
   },
   {
     "slug": "tutorial-animator",
@@ -472,8 +466,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T20:03:54Z",
-    "added": "2026-10-17T17:48:00Z"
+    "gitUpdated": "2026-10-17T20:03:54Z"
   },
   {
     "slug": "motion-graphics",
@@ -579,8 +572,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T08:48:53Z",
-    "added": "2026-10-15T22:20:52+01:00"
+    "gitUpdated": "2026-10-17T08:48:53Z"
   },
   {
     "slug": "tutorial-fire-edit",
@@ -673,8 +665,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T20:03:54Z",
-    "added": "2026-10-17T17:48:00Z"
+    "gitUpdated": "2026-10-17T20:03:54Z"
   },
   {
     "slug": "shapes",
@@ -737,8 +728,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T08:48:53Z",
-    "added": "2026-10-15T22:20:52+01:00"
+    "gitUpdated": "2026-10-17T08:48:53Z"
   },
   {
     "slug": "studio-tour",
@@ -863,8 +853,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T20:03:54Z",
-    "added": "2026-10-17T20:03:54Z"
+    "gitUpdated": "2026-10-17T22:02:27Z"
   },
   {
     "slug": "keyframes",
@@ -942,8 +931,7 @@ export const DOC_PAGES: DocPage[] = [
         "code": "{\n  \"op\": \"stagger_clips\",\n  \"args\": {\n    \"clipIds\": [\n      \"word-a\",\n      \"word-b\",\n      \"word-c\"\n    ],\n    \"start\": 0,\n    \"delay\": 0.15\n  }\n}"
       }
     ],
-    "updated": "2026-10-17T08:48:53Z",
-    "added": "2026-10-15T22:20:52+01:00"
+    "gitUpdated": "2026-10-17T08:48:53Z"
   },
   {
     "slug": "motion-presets",
@@ -1162,8 +1150,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T08:48:53Z",
-    "added": "2026-10-15T22:20:52+01:00"
+    "gitUpdated": "2026-10-17T08:48:53Z"
   },
   {
     "slug": "fit-and-layout",
@@ -1212,8 +1199,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T20:03:54Z",
-    "added": "2026-10-15T22:20:52+01:00"
+    "gitUpdated": "2026-10-17T20:03:54Z"
   },
   {
     "slug": "fonts-and-text",
@@ -1318,8 +1304,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T20:03:54Z",
-    "added": "2026-10-15T22:29:58+01:00"
+    "gitUpdated": "2026-10-17T20:03:54Z"
   },
   {
     "slug": "animate-with-code",
@@ -1591,8 +1576,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T08:48:53Z",
-    "added": "2026-10-15T22:20:52+01:00"
+    "gitUpdated": "2026-10-17T08:48:53Z"
   },
   {
     "slug": "transitions",
@@ -1666,8 +1650,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T08:48:53Z",
-    "added": "2026-10-15T22:20:52+01:00"
+    "gitUpdated": "2026-10-17T08:48:53Z"
   },
   {
     "slug": "cookbook",
@@ -1739,8 +1722,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T20:03:54Z",
-    "added": "2026-10-17T13:09:37Z"
+    "gitUpdated": "2026-10-17T20:03:54Z"
   },
   {
     "slug": "examples",
@@ -1853,8 +1835,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T08:48:53Z",
-    "added": "2026-10-15T22:20:52+01:00"
+    "gitUpdated": "2026-10-17T08:48:53Z"
   },
   {
     "slug": "editor",
@@ -1960,7 +1941,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Save and export",
-        "text": "Projects autosave as you edit. Check the save status before leaving. Export queues a server-side MP4 job. Public sharing requires an admin to change visibility and a completed render. A public share link does not expose your API key or source footage.",
+        "text": "Projects autosave as you edit. Check the save status before leaving. Export is a menu, not a single button: pick a quality (Draft for the fastest render, Standard, or High for the most detail) and a resolution (the project's own, or 480p/720p/1080p with the aspect kept), then start the export. Your choices are remembered for next time, and a failed save stops the export rather than rendering something stale. The download supports resuming, so a dropped connection does not restart from zero. Public sharing requires an admin to change visibility and a completed render. A public share link does not expose your API key or source footage.\n\nThe studio bar also shows a live clock with the time of day, and a language selector that switches the Studio chrome and the block studio between English and Español together.",
         "links": [
           {
             "label": "Motion graphics tutorial",
@@ -1985,8 +1966,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T08:48:53Z",
-    "added": "2026-10-15T22:20:52+01:00"
+    "gitUpdated": "2026-10-17T08:48:53Z"
   },
   {
     "slug": "animator",
@@ -2170,8 +2150,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T08:48:53Z",
-    "added": "2026-10-17T07:51:59Z"
+    "gitUpdated": "2026-10-17T08:48:53Z"
   },
   {
     "slug": "custom-tools",
@@ -2404,8 +2383,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T20:03:54Z",
-    "added": "2026-10-15T22:35:29+01:00"
+    "gitUpdated": "2026-10-17T20:03:54Z"
   },
   {
     "slug": "keyboard-shortcuts",
@@ -2552,8 +2530,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T20:03:54Z",
-    "added": "2026-10-17T20:03:54Z"
+    "gitUpdated": "2026-10-17T22:02:27Z"
   },
   {
     "slug": "agent-workflow",
@@ -2589,8 +2566,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T08:48:53Z",
-    "added": "2026-10-15T22:20:52+01:00"
+    "gitUpdated": "2026-10-17T08:48:53Z"
   },
   {
     "slug": "batch-operations",
@@ -2814,8 +2790,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T08:48:53Z",
-    "added": "2026-10-15T22:20:52+01:00"
+    "gitUpdated": "2026-10-17T08:48:53Z"
   },
   {
     "slug": "api-reference",
@@ -2997,8 +2972,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T13:09:37Z",
-    "added": "2026-10-15T22:20:52+01:00"
+    "gitUpdated": "2026-10-17T13:09:37Z"
   },
   {
     "slug": "rendering",
@@ -3024,8 +2998,7 @@ export const DOC_PAGES: DocPage[] = [
         "text": "This release does not provide arbitrary SVG paths, Lottie import, 3D, expressions, nested compositions or motion blur. Shape fill and size are static; transforms animate. Preview and export can differ slightly in font metrics, cubic easing approximation and shape edge antialiasing. Inspect exported frames for final approval."
       }
     ],
-    "updated": "2026-10-17T08:48:53Z",
-    "added": "2026-10-15T22:20:52+01:00"
+    "gitUpdated": "2026-10-17T08:48:53Z"
   },
   {
     "slug": "self-hosting",
@@ -3066,8 +3039,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T08:48:53Z",
-    "added": "2026-10-15T22:20:52+01:00"
+    "gitUpdated": "2026-10-17T08:48:53Z"
   },
   {
     "slug": "storage-and-durability",
@@ -3172,8 +3144,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T08:48:53Z",
-    "added": "2026-10-17T08:48:53Z"
+    "gitUpdated": "2026-10-17T08:48:53Z"
   },
   {
     "slug": "contribute",
@@ -3334,8 +3305,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T20:03:54Z",
-    "added": "2026-10-17T08:48:53Z"
+    "gitUpdated": "2026-10-17T20:03:54Z"
   },
   {
     "slug": "troubleshooting",
@@ -3392,8 +3362,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T20:03:54Z",
-    "added": "2026-10-17T13:09:37Z"
+    "gitUpdated": "2026-10-17T20:03:54Z"
   },
   {
     "slug": "faq",
@@ -3440,8 +3409,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T20:03:54Z",
-    "added": "2026-10-17T13:09:37Z"
+    "gitUpdated": "2026-10-17T20:03:54Z"
   },
   {
     "slug": "glossary",
@@ -3542,8 +3510,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T13:09:37Z",
-    "added": "2026-10-17T13:09:37Z"
+    "gitUpdated": "2026-10-17T13:09:37Z"
   },
   {
     "slug": "status",
@@ -3576,8 +3543,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T13:19:57Z",
-    "added": "2026-10-17T13:09:37Z"
+    "gitUpdated": "2026-10-17T13:19:57Z"
   },
   {
     "slug": "TODO",
@@ -3683,6 +3649,26 @@ export const DOC_PAGES: DocPage[] = [
           },
           {
             "status": "done",
+            "text": "Export is a menu, not a button: quality (Draft/Standard/High) and resolution (project/480p/720p/1080p, aspect kept) are configured before a render starts, the choices are remembered, and a failed save stops the export."
+          },
+          {
+            "status": "done",
+            "text": "Faster time to download: Draft renders encode with the ultrafast preset, and the download endpoint answers Range requests so a dropped connection resumes instead of restarting."
+          },
+          {
+            "status": "done",
+            "text": "A live clock in the studio bar showing the time of day."
+          },
+          {
+            "status": "done",
+            "text": "A language selector in the studio bar that switches the Studio chrome and the block studio between English and Español together."
+          },
+          {
+            "status": "done",
+            "text": "Smoother preview playback: freeze segments hold an exact frame instead of drifting, mid-playback drift correction no longer stacks seeks, and the selection frame is not measured on every animation frame."
+          },
+          {
+            "status": "done",
             "text": "Inspector with progressive disclosure: the common controls first, advanced groups folded, and a search box inside the inspector."
           },
           {
@@ -3726,7 +3712,7 @@ export const DOC_PAGES: DocPage[] = [
           }
         ],
         "taskStats": {
-          "done": 11,
+          "done": 16,
           "doing": 0,
           "todo": 3
         }
@@ -3777,6 +3763,10 @@ export const DOC_PAGES: DocPage[] = [
             "text": "New and Updated badges on pages and sidebar entries."
           },
           {
+            "status": "done",
+            "text": "Badges are opt-in frontmatter (`added:` / `updated:`) validated by the build, so migrated or established pages stop showing New just because the files moved; the footer keeps the last-commit date as a plain fact."
+          },
+          {
             "status": "todo",
             "text": "Click-to-zoom images, a print stylesheet and an offline copy of the docs.",
             "priority": "Low"
@@ -3788,7 +3778,7 @@ export const DOC_PAGES: DocPage[] = [
           }
         ],
         "taskStats": {
-          "done": 9,
+          "done": 10,
           "doing": 0,
           "todo": 3
         }
@@ -4217,18 +4207,17 @@ export const DOC_PAGES: DocPage[] = [
       }
     ],
     "taskStats": {
-      "done": 89,
+      "done": 95,
       "doing": 0,
       "todo": 29
     },
-    "updated": "2026-10-17T18:48:19Z",
-    "added": "2026-10-16T00:27:26Z"
+    "gitUpdated": "2026-10-17T22:02:27Z"
   }
 ];
 
 export const CONTRIBUTORS: { name: string; commits: number }[] = [
   {
-    "commits": 71,
+    "commits": 75,
     "name": "HomekidChud"
   },
   {

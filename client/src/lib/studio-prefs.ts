@@ -1,6 +1,8 @@
 /** Small, per-browser Studio preferences: layout preset, Simple or Advanced mode, tour and recent commands. */
 export type Preset = "edit" | "animate" | "graphics" | "audio" | "blocks";
 export type Mode = "simple" | "advanced";
+export type ExportQualityPref = "draft" | "standard" | "high";
+export type ExportResolutionPref = "project" | "480p" | "720p" | "1080p";
 
 export const PRESETS: { id: Preset; label: string; hint: string }[] = [
   { id: "edit", label: "Edit", hint: "Media, timeline and inspector" },
@@ -24,4 +26,9 @@ export const prefs = {
   setToured: (v: boolean) => write("vf:toured", v),
   recent: () => read<string[]>("vf:recent-commands", []),
   pushRecent: (id: string) => write("vf:recent-commands", [id, ...read<string[]>("vf:recent-commands", []).filter((x) => x !== id)].slice(0, 5)),
+  /** Last choices in the export menu, so the next export starts where the last one left off. */
+  exportQuality: () => { const q = read<ExportQualityPref>("vf:export-quality", "standard"); return ["draft", "standard", "high"].includes(q) ? q : "standard"; },
+  setExportQuality: (q: ExportQualityPref) => write("vf:export-quality", q),
+  exportResolution: () => { const r = read<ExportResolutionPref>("vf:export-resolution", "project"); return ["project", "480p", "720p", "1080p"].includes(r) ? r : "project"; },
+  setExportResolution: (r: ExportResolutionPref) => write("vf:export-resolution", r),
 };

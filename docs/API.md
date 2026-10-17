@@ -675,8 +675,10 @@ Example: trim:
 Queue a render job for a project. **Scope: `write`.** Fire-and-forget; poll the job.
 
 ```json
-{ "projectId": "prj_abc" }
+{ "projectId": "prj_abc", "options": { "quality": "draft", "resolution": "720p" } }
 ```
+
+Both options are optional and come from the Studio's export menu. `quality` is `draft` (fastest encode, lower detail), `standard` (the default) or `high` (best detail, slowest). `resolution` is `480p`, `720p` or `1080p`; the project aspect is preserved, so 720p is 1280×720 in landscape and 720×1280 in portrait. Omit both to render at the project's own resolution and standard quality.
 
 Response (HTTP 201):
 

@@ -5,6 +5,7 @@ import { clipDuration, clipEnd, timelineDuration, type Clip, type Timeline } fro
 import { incomingTransition } from "@shared/transitions";
 import { ANIMATABLE, type AnimationProperty } from "@shared/animation";
 import { api } from "@/lib/api";
+import { useT } from "@/lib/lang";
 import type { Peer } from "@/components/forge-presence";
 import { clampClipPatch, round, timecode, type AssetDTO } from "@/lib/editor-model";
 
@@ -55,6 +56,7 @@ function packRows(clips: Clip[], timeline: Timeline) {
 }
 
 export default function ForgeTimeline({ collapsed = [], onToggleLane, animationMode=false, onKeyframeFocus, timeline, assets, selectedId, selectedIds, peers, follow, onSelectMany, onCursor, time, playing, pps, snapping, readOnly, mediaUrl, onTrack, onFit, onAddMarker, onSelect, onSeek, onDropAsset, onDropEffect, onDropFiles, onMoveMarker, gesture, onZoom }: Props) {
+  const t = useT();
   const scroller = useRef<HTMLDivElement>(null), lanes = useRef(new Map<string, HTMLDivElement>()), drag = useRef<Drag | null>(null);
   const [width, setWidth] = useState(900), [hoverClip, setHoverClip] = useState<string | null>(null), [hoverLane, setHoverLane] = useState<string | null>(null);
   const markerDrag = useRef<string | null>(null), marqueeRef = useRef<Marquee | null>(null), [marquee, setMarquee] = useState<Marquee | null>(null);
@@ -154,8 +156,8 @@ export default function ForgeTimeline({ collapsed = [], onToggleLane, animationM
 
   return <div className="timeline-shell">
     <div className="timeline-toolbar"><span className="mono time-readout" data-testid="text-timecode">{timecode(time, timeline.fps)}</span><span className="muted mono"> / {timecode(duration, timeline.fps)}</span><div className="flex-spacer"/>
-      <button className="icon-btn" onClick={onAddMarker} disabled={readOnly} aria-label="Add marker at playhead" title="Add marker (M)"><Flag size={15} /></button><button className="icon-btn" onClick={onFit} aria-label="Fit timeline" title="Fit timeline to window"><Maximize2 size={15} /></button>
-      <label className="zoom-control">Zoom<input type="range" aria-label="Timeline zoom" min={8} max={260} value={pps} onChange={(e) => onZoom(Number(e.target.value))} /></label></div>
+      <button className="icon-btn" onClick={onAddMarker} disabled={readOnly} aria-label={t("timeline.addMarker", "Add marker at playhead")} title="Add marker (M)"><Flag size={15} /></button><button className="icon-btn" onClick={onFit} aria-label={t("timeline.fit", "Fit timeline")} title={t("timeline.fitTitle", "Fit timeline to window")}><Maximize2 size={15} /></button>
+      <label className="zoom-control">{t("timeline.zoom", "Zoom")}<input type="range" aria-label="Timeline zoom" min={8} max={260} value={pps} onChange={(e) => onZoom(Number(e.target.value))} /></label></div>
     <TimelineMinimap clips={timeline.clips} total={total} pps={pps} scroller={scroller} />
     <div className="timeline-scroll" ref={scroller} onPointerMove={trackCursor} onPointerLeave={() => onCursor(null)} onWheel={(e) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); onZoom(Math.min(260, Math.max(8, Math.round(pps * (e.deltaY < 0 ? 1.15 : 0.87))))); } }} data-testid="timeline">
       <div className="timeline-inner" style={{ width: LABEL_W + total * pps }}>
@@ -165,6 +167,7 @@ export default function ForgeTimeline({ collapsed = [], onToggleLane, animationM
             {(timeline.markers ?? []).map((m) => <button key={m.id} className="marker" style={{ left: m.time * pps, color: m.color }} title={`${m.label} · ${timecode(m.time, timeline.fps)}`} onPointerDown={(e) => markerDown(e, m.id, m.time)} onPointerMove={markerMove} onPointerUp={markerUp} onPointerCancel={markerUp} data-testid={`marker-${m.id}`}><Flag size={11} fill="currentColor" /></button>)}
           </div></div>
         {LANES.map((lane) => {
+          const laneLabel = t(`lane.${lane.id}`, lane.label), laneHint = t(`lane.${lane.id}.hint`, lane.hint);
           const clips = timeline.clips.filter((c) => c.track === lane.id);
           // Graphics retain their document-order lane when moved in time. These
           // are clip lanes, not a new compositing stack or user-defined tracks.
@@ -174,13 +177,13 @@ export default function ForgeTimeline({ collapsed = [], onToggleLane, animationM
           for(const c of clips){graphicRows.set(c.id,graphicHeight/58);graphicHeight+=58+properties(c).length*30;}
           const packed = lane.id === "overlay" ? { rows: graphicRows, count: Math.max(58,graphicHeight)/58 } : packRows(clips, timeline);
           return <div className={`lane-row ${collapsed.includes(lane.id) ? "collapsed" : ""}`} key={lane.id} style={collapsed.includes(lane.id) ? { minHeight: 34, maxHeight: 34, overflow: "hidden" } : { minHeight: packed.count * 58 + (lane.id==="overlay"?30:0) }}><div className={`lane-label ${lane.id==="overlay"?"overlay-lane-names":""}`}>
-            <div className={lane.id==="overlay"?"overlay-lane-heading":"track-lane-heading"}><b className="lane-icon">{lane.id === "overlay" ? <Layers size={14} /> : lane.id === "video" ? <Film size={14} /> : <Music2 size={14} />}</b><span>{lane.id==="overlay"?"Graphics":lane.label}</span>{onToggleLane && <button className={`lane-toggle lane-collapse ${collapsed.includes(lane.id) ? "on" : ""}`} aria-label={collapsed.includes(lane.id) ? `Expand ${lane.label}` : `Collapse ${lane.label}`} aria-expanded={!collapsed.includes(lane.id)} onClick={() => onToggleLane(lane.id)} data-testid={`collapse-${lane.id}`}><ChevronDown size={13} /></button>}{lane.id === "audio" ? <button className={`lane-toggle ${timeline.tracks?.audio?.muted ? "on" : ""}`} aria-label={timeline.tracks?.audio?.muted ? "Unmute audio track" : "Mute audio track"} aria-pressed={!!timeline.tracks?.audio?.muted} disabled={readOnly} onClick={() => onTrack("audio", { muted: !timeline.tracks?.audio?.muted })}>{timeline.tracks?.audio?.muted ? <VolumeX size={13} /> : <Volume2 size={13} />}</button> : <button className={`lane-toggle ${timeline.tracks?.[lane.id]?.hidden ? "on" : ""}`} aria-label={timeline.tracks?.[lane.id]?.hidden ? `Show ${lane.label}` : `Hide ${lane.label}`} aria-pressed={!!timeline.tracks?.[lane.id]?.hidden} disabled={readOnly} onClick={() => onTrack(lane.id, { hidden: !timeline.tracks?.[lane.id]?.hidden })}>{timeline.tracks?.[lane.id]?.hidden ? <EyeOff size={13} /> : <Eye size={13} />}</button>}</div>
+            <div className={lane.id==="overlay"?"overlay-lane-heading":"track-lane-heading"}><b className="lane-icon">{lane.id === "overlay" ? <Layers size={14} /> : lane.id === "video" ? <Film size={14} /> : <Music2 size={14} />}</b><span>{laneLabel}</span>{onToggleLane && <button className={`lane-toggle lane-collapse ${collapsed.includes(lane.id) ? "on" : ""}`} aria-label={collapsed.includes(lane.id) ? `Expand ${laneLabel}` : `Collapse ${laneLabel}`} aria-expanded={!collapsed.includes(lane.id)} onClick={() => onToggleLane(lane.id)} data-testid={`collapse-${lane.id}`}><ChevronDown size={13} /></button>}{lane.id === "audio" ? <button className={`lane-toggle ${timeline.tracks?.audio?.muted ? "on" : ""}`} aria-label={timeline.tracks?.audio?.muted ? `Unmute ${laneLabel}` : `Mute ${laneLabel}`} aria-pressed={!!timeline.tracks?.audio?.muted} disabled={readOnly} onClick={() => onTrack("audio", { muted: !timeline.tracks?.audio?.muted })}>{timeline.tracks?.audio?.muted ? <VolumeX size={13} /> : <Volume2 size={13} />}</button> : <button className={`lane-toggle ${timeline.tracks?.[lane.id]?.hidden ? "on" : ""}`} aria-label={timeline.tracks?.[lane.id]?.hidden ? `Show ${laneLabel}` : `Hide ${laneLabel}`} aria-pressed={!!timeline.tracks?.[lane.id]?.hidden} disabled={readOnly} onClick={() => onTrack(lane.id, { hidden: !timeline.tracks?.[lane.id]?.hidden })}>{timeline.tracks?.[lane.id]?.hidden ? <EyeOff size={13} /> : <Eye size={13} />}</button>}</div>
             {lane.id==="overlay"&&clips.map((c,i)=><div key={c.id}><button className={`clip-lane-name ${selectedIds.includes(c.id)?"active":""}`} title={c.label??c.text??byId.get(c.assetId)?.filename??"Overlay"} onClick={e=>onSelect(c.id,e.shiftKey?"toggle":"replace")} data-testid={`layer-select-${c.id}`}><small>{String(i+1).padStart(2,"0")}</small><span>{c.label??c.text??byId.get(c.assetId)?.filename??"Overlay"}</span></button>
               {properties(c).map(p=><div key={p} className="property-lane-label">{ANIMATABLE[p].label}</div>)}
             </div>)}
           </div>
             <div className={`lane lane-${lane.id} ${hoverLane === lane.id ? "drop-over" : ""}`} ref={(el) => { if (el) lanes.current.set(lane.id, el); }} onDragOver={(e) => overLane(e, lane.id)} onDragLeave={(e) => { if (e.currentTarget === e.target) setHoverLane(null); }} onDrop={(e) => dropOn(e, lane.id)} onPointerDown={(e) => { if (e.target === e.currentTarget && e.button === 0) { e.currentTarget.setPointerCapture(e.pointerId); const m = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, moved: false, base: e.shiftKey ? selectedIds : [] }; marqueeRef.current = m; } }} onPointerMove={marqueeMove} onPointerUp={marqueeUp} onPointerCancel={marqueeUp} data-testid={`lane-${lane.id}`}>
-              {!clips.length && <div className="lane-hint">{lane.hint}</div>}
+              {!clips.length && <div className="lane-hint">{laneHint}</div>}
               {lane.id==="overlay"&&clips.flatMap(c=>properties(c).map((p,i)=><div key={`${c.id}-${p}`} className="property-key-lane" style={{top:(packed.rows.get(c.id)??0)*58+58+i*30}} data-testid={`property-lane-${c.id}-${p}`}>
                 {c.keyframes?.[p]?.map((k,ki)=><button key={ki} className={`property-key ${Math.abs(time-c.start-k.time)<1/timeline.fps?"at-playhead":""}`} style={{left:Math.max(8,(c.start+k.time)*pps)}} aria-label={`${ANIMATABLE[p].label} key at ${k.time.toFixed(2)} seconds, value ${k.value}`} title={`${ANIMATABLE[p].label}: ${k.value} · ${k.time.toFixed(2)}s`} onPointerDown={e=>e.stopPropagation()} onClick={()=>{onSelect(c.id);onSeek(c.start+k.time);onKeyframeFocus?.(c.id,p,k.time);}} data-testid={`property-key-${c.id}-${p}-${ki}`}/>)}
               </div>))}

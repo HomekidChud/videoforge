@@ -160,12 +160,21 @@ function transformFilters(c:Clip, width:number, height:number, dur:number, text=
 
 export type RenderPlan = { args: string[]; total: number; tempFiles: string[]; filter: string };
 
+/** Export quality presets from the Studio export menu. Draft trades some fidelity for the
+ *  fastest encode, High trades encode time for detail; Standard is the previous behaviour. */
+export type RenderQuality = "draft" | "standard" | "high";
+export const RENDER_QUALITY: Record<RenderQuality, { preset: string; crf: string }> = {
+  draft: { preset: "ultrafast", crf: "26" },
+  standard: { preset: "veryfast", crf: "20" },
+  high: { preset: "medium", crf: "18" },
+};
+
 /**
  * Compose every clip onto a black canvas at its timeline position.
  * video/overlay tracks are layered (overlay above video), audio from every
  * unmuted clip is delayed to its start and mixed, text clips are drawn last.
  */
-export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset>, mediaDir: string, tmpDir: string, jobId: string, outPath: string, options: {frameAt?:number;width?:number} = {}): RenderPlan {
+export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset>, mediaDir: string, tmpDir: string, jobId: string, outPath: string, options: {frameAt?:number;width?:number;quality?:RenderQuality} = {}): RenderPlan {
   const tl = normalizeTimeline(rawTimeline);
   const W = options.width ? Math.round(options.width/2)*2 : tl.resolution.width, H = options.width ? Math.round(tl.resolution.height*W/tl.resolution.width/2)*2 : tl.resolution.height, fps = tl.fps;
   const total = Math.max(0.1, timelineDuration(tl));
@@ -510,7 +519,7 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     ...graphArgs,
     ...(options.frameAt === undefined ? maps : ["-map","[vout]","-ss",String(options.frameAt),"-frames:v","1"]),
     ...(options.frameAt === undefined ? ["-t", String(f(total)),
-    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+    "-c:v", "libx264", "-preset", RENDER_QUALITY[options.quality ?? "standard"].preset, "-crf", RENDER_QUALITY[options.quality ?? "standard"].crf, "-pix_fmt", "yuv420p",
     ...(audioLabels.length ? ["-c:a", "aac", "-b:a", "192k"] : []),
     "-movflags", "+faststart"] : ["-c:v","png","-update","1"]),
     outPath,

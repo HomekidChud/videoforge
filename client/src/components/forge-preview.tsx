@@ -7,6 +7,7 @@ import { clipDuration, clipEnd, rampSourceAt, rampSpeedAt, type Clip, type Timel
 import { textLayout } from "@shared/layout";
 import { getFont } from "@shared/fonts";
 import type { AssetDTO } from "@/lib/editor-model";
+import { useT } from "@/lib/lang";
 import type { TimelineGesture } from "@/components/forge-timeline";
 
 export function previewFilter(c:Clip,scaleBlur=1) {
@@ -46,10 +47,16 @@ function MediaLayer({clip,asset,time,playing,source,hidden,muted,onError,timelin
     el.playbackRate=rate;
     el.muted=clip.muted||muted;
     el.volume=Math.min(1,Math.max(0,ev.volume*envelope(clip,time)*transitionAudio(timeline,clip,time)));
-    if(active && (!playing || Math.abs(el.currentTime-desired)>.2) && Number.isFinite(desired)) {
-      try { el.currentTime=desired; } catch { /* metadata not loaded */ }
+    if(active && Number.isFinite(desired)) {
+      const drift=Math.abs(el.currentTime-desired);
+      const frozen=rate<=0.01; // a freeze segment (speed ramp at ~0) holds one exact frame
+      // While paused (scrubbing) sync exactly. While playing, only correct drift that
+      // has grown large, and never stack a second seek on one still in flight: those
+      // mid-playback seeks are what read as stutter. A freeze pauses and pins the frame.
+      const wantSeek=!playing?(drift>0.001):frozen?(drift>0.05):(!el.seeking&&drift>0.5);
+      if(wantSeek){ try { el.currentTime=desired; } catch { /* metadata not loaded */ } }
     }
-    if(active&&playing&&el.paused) el.play().catch(()=>{}); else if(!active||!playing) el.pause();
+    if(active&&playing&&rate>0.01&&el.paused) el.play().catch(()=>{}); else if(!active||!playing||rate<=0.01) el.pause();
   };
   useEffect(sync,[time,playing,clip,source,muted]);
   useEffect(()=>{setFailed(false);},[source]);
@@ -88,6 +95,7 @@ function cycledColor(cycle: { steps: string[]; duration?: number } | undefined, 
 }
 
 export default function ForgePreview({timeline,assets,time,playing,selectedId,readOnly,gesture,mediaUrl,onError,onValues,onSelect,muted,onDropEffect,peers,onCursor,emptyActions}:PreviewProps) {
+  const t = useT();
   const [dropHot,setDropHot]=useState(false);
   const area=useRef<HTMLDivElement>(null),stage=useRef<HTMLDivElement>(null);
   const [size,setSize]=useState({width:640,height:360}),[box,setBox]=useState<{l:number;t:number;w:number;h:number}|null>(null);
@@ -101,8 +109,10 @@ export default function ForgePreview({timeline,assets,time,playing,selectedId,re
   const ordered=[...timeline.clips].sort((a,b)=>a.track===b.track?((a.z??0)-(b.z??0))||(a.start-b.start):a.track==="video"?-1:b.track==="video"?1:0);
   const selected=timeline.clips.find(c=>c.id===selectedId),selectedActive=!!selected&&time>=selected.start&&time<clipEnd(selected)&&selected.track!=="audio"&&!hiddenTrack(selected);
   // Measure the selected layer so the on-canvas handles follow rotation, scale and keyframes.
+  // Skipped while playing: the frame is hidden then, and measuring every animation
+  // frame forced a layout read per frame.
   useLayoutEffect(()=>{
-    const root=stage.current;if(!root||!selected||!selectedActive){setBox(prev=>prev?null:prev);return;}
+    const root=stage.current;if(!root||!selected||!selectedActive||playing){setBox(prev=>prev?null:prev);return;}
     const el=root.querySelector(`[data-layer="${selected.id}"]`) as HTMLElement|null;if(!el){setBox(prev=>prev?null:prev);return;}
     const r=el.getBoundingClientRect(),s=root.getBoundingClientRect();
     // object-fit: contain footage fills the frame element, so use the intrinsic video rect when possible
@@ -161,7 +171,7 @@ export default function ForgePreview({timeline,assets,time,playing,selectedId,re
       {overlayItems.map((it)=>it.node)}
       {box&&!playing&&<div className="selection-frame" style={{left:box.l,top:box.t,width:box.w,height:box.h}} onPointerDown={e=>startDrag(e,"move")} data-testid="selection-frame"><span className="scale-handle" onPointerDown={e=>startDrag(e,"scale")} aria-label="Drag to scale"/></div>}
       {peers&&<PreviewCursors peers={peers}/>}
-      {!timeline.clips.length&&<div className="preview-empty"><Film size={28}/><h3>Your next story starts here.</h3><p>Import media or add a title to begin.</p>{emptyActions&&<div className="preview-empty-actions">{emptyActions}</div>}</div>}
+      {!timeline.clips.length&&<div className="preview-empty"><Film size={28}/><h3>{t("preview.emptyTitle", "Your next story starts here.")}</h3><p>{t("preview.emptyHint", "Import media or add a title to begin.")}</p>{emptyActions&&<div className="preview-empty-actions">{emptyActions}</div>}</div>}
     </div><span className="preview-resolution mono">{timeline.resolution.width} × {timeline.resolution.height} · {timeline.fps} FPS</span>
   </div>;
 }

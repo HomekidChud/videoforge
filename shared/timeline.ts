@@ -283,6 +283,18 @@ export function normalizeTimeline(raw: any): Timeline {
   return { version: 4, background: /^#[0-9a-fA-F]{6}$/.test(raw.background) ? raw.background : "#000000", markers, tracks, fps: Math.round(num(raw.fps, 1, 60, 30)), resolution: { width: w, height: h }, clips };
 }
 
+/** Export presets offered by the Studio export menu. The target sits on the short side of
+ *  the frame, so 720p is 1280×720 in landscape and 720×1280 in portrait; the project aspect
+ *  is always preserved. "Project" (no scaling) is the default and not listed here. */
+export const EXPORT_RESOLUTIONS = ["480p", "720p", "1080p"] as const;
+export type ExportResolution = (typeof EXPORT_RESOLUTIONS)[number];
+export function exportDimensions(project: { width: number; height: number }, target: ExportResolution): { width: number; height: number } {
+  const short = Number(target.replace("p", ""));
+  const aspect = project.width / Math.max(1, project.height);
+  const even = (n: number) => Math.max(2, Math.round(n / 2) * 2);
+  return aspect >= 1 ? { width: even(short * aspect), height: even(short) } : { width: even(short), height: even(short / aspect) };
+}
+
 // Effective values with defaults applied (normalizeClip omits defaults).
 export const clipX = (c: Clip) => c.x ?? 0.5;
 export const clipY = (c: Clip) => c.y ?? (!c.assetId && !c.shape ? 0.82 : 0.5);
