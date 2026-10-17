@@ -49,6 +49,18 @@ row inside the table body:
 Available markers: `endpoints`, `ops`, `templates`, `animatable`, `presets`,
 `functions`, `recipes`, `transitions`, `examples`.
 
+## Search and navigation
+
+The sidebar starts with only Get started open; every other group opens when you
+click it or visit one of its pages. Press `/` or Ctrl+K to search. Search reads
+every section of every page, not just titles, so write section titles that say
+what the section is for:
+
+- It ranks titles above body text, and needs every word you type to match.
+- It forgives small typos and matches the start of a word while you type.
+- Results are grouped by page with the matching sections underneath, each with a snippet and highlighted words. Enter opens the selected result and jumps to that section.
+- Chips filter by group, and your recent searches are kept in your browser.
+
 ## Building
 
 `npm run docs` (also part of `npm run check` and `npm run build`) compiles

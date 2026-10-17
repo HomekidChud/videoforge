@@ -6,9 +6,12 @@ import { DOC_PAGES } from "@/lib/docs-content";
 import type { DocSection } from "@/lib/docs-content";
 import MotionDemo from "@/components/motion-demo";
 import ExampleGallery from "@/components/example-gallery";
+import DocsSearchDialog from "@/components/docs-search-dialog";
 
 const REPO = "https://github.com/HomekidChud/videoforge";
-const GROUPS_KEY = "vf.docs.groups.v1";
+const GROUPS_KEY = "vf.docs.groups.v2";
+/** Only this group starts open; the rest wait until you open them (or open the page you are on). */
+const OPEN_BY_DEFAULT = "Get started";
 const sectionId = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 
 /** Words in a page, so every guide can say how long it takes to read. */
@@ -57,15 +60,15 @@ export default function ApiDocsPage({ params }: { params?: { slug: string } }) {
   const slug = rawPage || "api-reference";
   const current = DOC_PAGES.find((p) => p.slug === slug);
   const groups = useMemo(() => Array.from(new Set(DOC_PAGES.map((p) => p.group))), []);
-  const [searchOpen, setSearchOpen] = useState(false), [query, setQuery] = useState(""), [menu, setMenu] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false), [menu, setMenu] = useState(false);
   const [groupState, setGroupState] = useState<Record<string, boolean>>(loadGroups);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [active, setActive] = useState(""), [progress, setProgress] = useState(0), [showTop, setShowTop] = useState(false), [toast, setToast] = useState("");
   const [, navigate] = useLocation();
-  const searchRef = useRef<HTMLInputElement>(null), searchButton = useRef<HTMLButtonElement>(null), toastTimer = useRef<number>();
+  const searchButton = useRef<HTMLButtonElement>(null), toastTimer = useRef<number>();
   usePageTitle(current ? `${current.title} · Docs` : "Page not found · Docs");
 
-  const groupOpen = (g: string) => groupState[g] ?? true;
+  const groupOpen = (g: string) => groupState[g] ?? (g === OPEN_BY_DEFAULT || g === current?.group);
   const setGroups = (next: Record<string, boolean>) => { setGroupState(next); try { localStorage.setItem(GROUPS_KEY, JSON.stringify(next)); } catch { /* storage is optional */ } };
   const toggleGroup = (g: string) => setGroups({ ...groupState, [g]: !groupOpen(g) });
   const allGroupsOpen = groups.every(groupOpen);
@@ -78,11 +81,12 @@ export default function ApiDocsPage({ params }: { params?: { slug: string } }) {
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setSearchOpen((o) => !o); }
+      const typing = /^(input|textarea|select)$/i.test((e.target as HTMLElement)?.tagName ?? "") || (e.target as HTMLElement)?.isContentEditable;
+      if (e.key === "/" && !typing && !e.ctrlKey && !e.metaKey) { e.preventDefault(); setSearchOpen(true); }
       if (e.key === "Escape") { setSearchOpen(false); setMenu(false); searchButton.current?.focus(); }
     };
     window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h);
   }, []);
-  useEffect(() => { if (searchOpen) searchRef.current?.focus(); }, [searchOpen]);
 
   // New page: close the mobile menu, open the page's group, reset sections and honour a section link.
   useEffect(() => {
@@ -113,9 +117,13 @@ export default function ApiDocsPage({ params }: { params?: { slug: string } }) {
     return () => io.disconnect();
   }, [current, collapsed.size]);
 
-  const filtered = DOC_PAGES.filter((p) => `${p.title} ${p.description} ${p.sections.map((s) => s.title + " " + s.text + " " + s.code + " " + s.rows?.flat().join(" ")).join(" ")}`.toLowerCase().includes(query.toLowerCase()));
   const index = DOC_PAGES.findIndex((p) => p.slug === slug), previous = DOC_PAGES[index - 1], next = DOC_PAGES[index + 1];
-  const choose = (s: string) => { navigate(`/docs/${s}`); setSearchOpen(false); setQuery(""); };
+  const closeSearch = () => { setSearchOpen(false); searchButton.current?.focus(); };
+  const openFromSearch = (target: string, anchor: string | null) => {
+    setSearchOpen(false);
+    if (target === slug && anchor) { setCollapsed((c) => { if (!c.has(anchor)) return c; const n = new Set(c); n.delete(anchor); return n; }); window.setTimeout(() => document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth" }), 40); }
+    navigate(`/docs/${target}${anchor ? `#${anchor}` : ""}`);
+  };
 
   const ids = current?.sections.map((s) => sectionId(s.title)) ?? [];
   const allCollapsed = ids.length > 0 && ids.every((id) => collapsed.has(id));
@@ -181,9 +189,6 @@ export default function ApiDocsPage({ params }: { params?: { slug: string } }) {
     </div>
     {showTop && <button className="docs-top" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} aria-label="Back to top" data-testid="docs-top"><ArrowUp size={18} /></button>}
     <div className={`docs-toast ${toast ? "show" : ""}`} role="status" aria-live="polite">{toast && <><Check size={15} /> {toast}</>}</div>
-    {searchOpen && <div className="search-backdrop" onClick={() => { setSearchOpen(false); searchButton.current?.focus(); }}><div className="search-dialog" role="dialog" aria-modal="true" aria-label="Search documentation" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === "Tab") { const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>("input,button")); const first = items[0], last = items[items.length - 1]; if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); } else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); } } }}>
-      <div className="search-input-row"><Search size={20} /><input ref={searchRef} aria-label="Search documentation" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search guides, operations, endpoints..." onKeyDown={(e) => { if (e.key === "Enter" && filtered[0]) choose(filtered[0].slug); }} data-testid="docs-search-input" /><button className="public-icon" aria-label="Close search" onClick={() => { setSearchOpen(false); searchButton.current?.focus(); }}><X size={18} /></button></div>
-      <div className="search-results">{filtered.length ? filtered.map((p) => <button key={p.slug} onClick={() => choose(p.slug)}><span>{p.group}</span><b>{p.title}</b><p>{p.description}</p><ArrowRight size={17} /></button>) : <p className="search-empty">No matches. Try “shape”, “keyframes” or “render”.</p>}</div><div className="search-footer">Enter to open first result · Escape to close</div>
-    </div></div>}
+    {searchOpen && <DocsSearchDialog pages={DOC_PAGES} onClose={closeSearch} onGo={openFromSearch} />}
   </PublicSite>;
 }
