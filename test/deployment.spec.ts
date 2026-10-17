@@ -33,7 +33,13 @@ const test = (name: string, fn: () => void | Promise<void | typeof SKIP>) => {
       if (r === SKIP) { skipped++; console.log(`SKIP: ${name}`); }
       else { passed++; console.log(`PASS: ${name}`); }
     }
-    catch (e: any) { failed++; console.log(`FAIL: ${name}: ${e.message}`); }
+    catch (e: any) {
+      failed++;
+      // The harness writes the spawned servers' output to /tmp; show it so CI failures are diagnosable.
+      let tail = "";
+      try { tail = fs.readFileSync("/tmp/vf_deployment_server.log", "utf-8").split("\n").slice(-25).join("\n"); } catch {}
+      console.log(`FAIL: ${name}: ${e.message}${tail ? `\n--- server log tail ---\n${tail}` : ""}`);
+    }
   })();
 };
 
