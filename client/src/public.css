@@ -104,8 +104,10 @@
 .doc-table-wrap :is(th,td){padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--color-border);vertical-align:top;overflow-wrap:anywhere;min-width:100px}.doc-table-wrap td{color:var(--color-muted)}
 .doc-table-wrap code{font-family:var(--font-code);font-size:var(--text-xs);color:var(--color-text);white-space:normal}.doc-table-wrap tr:last-child td{border-bottom:0}
 .doc-link-cards{display:flex;flex-direction:column;margin-top:var(--space-6);border-top:1px solid var(--color-border)}.doc-link-cards a{display:flex;align-items:center;justify-content:space-between;font-size:var(--text-sm);padding:var(--space-4) 0;border-bottom:1px solid var(--color-border);font-weight:600}.doc-link-cards a:hover{color:var(--color-accent)}
-.doc-edit-row{margin-top:var(--space-16);display:flex;align-items:center;justify-content:space-between;gap:var(--space-4);font-size:var(--text-xs);color:var(--color-muted)}
-.doc-edit-row a{display:flex;align-items:center;gap:var(--space-2);min-height:44px}.doc-edit-row a:hover{color:var(--color-accent)}
+.doc-feedback{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-3);margin-top:var(--space-8);padding-top:var(--space-4);border-top:1px solid var(--color-border);font-size:var(--text-sm);color:var(--color-muted)}
+.doc-feedback button{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-muted);border-radius:6px;padding:var(--space-1) var(--space-3);min-height:36px;font-size:var(--text-xs)}
+.doc-feedback button:hover{color:var(--color-accent);border-color:var(--color-accent)}
+.doc-feedback-thanks{color:var(--color-text)}
 .docs-pagination{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4);margin-top:var(--space-6)}.docs-pagination a{padding:var(--space-5);border:1px solid var(--color-border);border-radius:6px;display:flex;gap:var(--space-4);align-items:center}
 .docs-pagination a:last-child{text-align:right;justify-content:flex-end}.docs-pagination a:hover{border-color:var(--color-accent)}.docs-pagination small{font-size:var(--text-xs);display:block;color:var(--color-muted);margin-bottom:var(--space-1)}.docs-pagination b{font-size:var(--text-sm)}
 .docs-mobile-bar{display:none}.search-backdrop{position:fixed;inset:0;z-index:50;background:#0d15256b;backdrop-filter:blur(3px);display:flex;align-items:flex-start;justify-content:center;padding:12vh var(--space-4) var(--space-4)}
@@ -148,7 +150,7 @@
   .docs-mobile-bar button{background:transparent;color:var(--color-text);border:0;display:flex;align-items:center;gap:var(--space-2);min-height:40px;font-size:var(--text-xs);white-space:nowrap}.docs-mobile-bar>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--color-muted)}
   .docs-layout{display:block}.docs-sidebar{display:none}.docs-sidebar.open{display:block;position:fixed;top:121px;left:0;width:min(320px,90vw);height:calc(100dvh - 121px);background:var(--color-bg);z-index:18;box-shadow:12px 0 40px #0002}
   .docs-article{padding:var(--space-8) var(--space-5) var(--space-12)}.docs-article section{scroll-margin-top:140px}.doc-anchor{opacity:1}.docs-article h1{font-size:var(--text-xl)}
-  .docs-pagination{grid-template-columns:1fr}.doc-edit-row{flex-wrap:wrap}.doc-table-wrap :is(th,td){padding:var(--space-3);min-width:96px}
+  .docs-pagination{grid-template-columns:1fr}.doc-table-wrap :is(th,td){padding:var(--space-3);min-width:96px}
   .code-block pre{padding:var(--space-4);font-size:var(--text-xs)}.search-backdrop{padding-top:var(--space-5)}.search-dialog{max-height:90dvh}.search-footer{font-size:var(--text-xs)}
 }
 @media(prefers-reduced-motion:reduce){.public-site *{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
@@ -291,7 +293,6 @@
 .doc-feedback{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-3);margin-top:var(--space-8);padding-top:var(--space-4);border-top:1px solid var(--color-border);font-size:var(--text-sm);color:var(--color-muted)}
 .doc-feedback button{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--color-border);background:transparent;color:var(--color-muted);border-radius:6px;padding:var(--space-1) var(--space-3);min-height:36px;font-size:var(--text-xs)}
 .doc-feedback button:hover{color:var(--color-accent);border-color:var(--color-accent)}
-.doc-feedback a{margin-left:auto;color:var(--color-accent);font-size:var(--text-xs)}
 .doc-feedback-thanks{color:var(--color-text)}
 
 /* Sidebar New/Upd badges */

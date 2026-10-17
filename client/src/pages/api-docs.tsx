@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowLeft, ArrowRight, ArrowUp, ArrowUpRight, Bot, Check, ChevronRight, Clapperboard, Clock, Info, Lightbulb, Link2, Menu, Pencil, Search, ThumbsDown, ThumbsUp, TriangleAlert, Wrench, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUp, ArrowUpRight, Bot, Check, ChevronRight, Clapperboard, Clock, Info, Lightbulb, Link2, Menu, Search, ThumbsDown, ThumbsUp, TriangleAlert, Wrench, X } from "lucide-react";
 import { useLocation } from "wouter";
 import { PublicSite, PublicHeader, CodeBlock, usePageTitle } from "@/components/forge-public";
 import { DOC_PAGES, CONTRIBUTORS } from "@/lib/docs-content";
@@ -254,7 +254,6 @@ export default function ApiDocsPage({ params }: { params?: { slug: string } }) {
 
   const updated = current?.updated ? new Date(current.updated) : null;
   const badge = pageBadge(current ?? {});
-  const issueUrl = current ? `${REPO}/issues/new?title=${encodeURIComponent(`Docs feedback: ${current.title}`)}&body=${encodeURIComponent(`Page: #/docs/${slug}\n\nWhat could be better?\n`)}` : "";
   const vote = (v: "yes" | "no") => { setHelpful(v); try { localStorage.setItem(`vf.docs.feedback.${slug}`, JSON.stringify(v)); } catch { /* storage is optional */ } };
   useEffect(() => { saveFilter(filter); }, [filter]);
 
@@ -341,9 +340,7 @@ export default function ApiDocsPage({ params }: { params?: { slug: string } }) {
             <button onClick={() => vote("yes")} data-testid="doc-feedback-yes"><ThumbsUp size={14} /> Yes</button>
             <button onClick={() => vote("no")} data-testid="doc-feedback-no"><ThumbsDown size={14} /> No</button>
           </> : <span className="doc-feedback-thanks">Thanks for the feedback.</span>}
-          <a href={issueUrl} target="_blank" rel="noreferrer">Improve this page on GitHub</a>
         </div>
-        <div className="doc-edit-row"><a href={`${REPO}/edit/main/docs/${current.slug}.md`} target="_blank" rel="noreferrer" data-testid="doc-edit"><Pencil size={14} /> Edit this page on GitHub</a><span>Timeline schema v4 · motion engine v2</span></div>
         <nav className="docs-pagination" aria-label="Guide navigation">{previous ? <a href={`#/docs/${previous.slug}`}><ArrowLeft size={17} /><div><small>Previous</small><b>{previous.title}</b></div></a> : <span />}{next ? <a href={`#/docs/${next.slug}`}><div><small>Next</small><b>{next.title}</b></div><ArrowRight size={17} /></a> : <a href="#/editor"><div><small>Start creating</small><b>Open Studio</b></div><ArrowUpRight size={17} /></a>}</nav>
       </> : <><h1>That guide doesn’t exist.</h1><p>Choose a topic from the sidebar, or return to the introduction.</p><a className="public-button" href="#/docs/introduction">Read the introduction</a></>}</main>
       <aside className="docs-toc"><nav aria-label="On this page"><b>On this page</b>{current?.sections.map((s) => { const id = sectionId(s.title); return <button key={s.title} className={active === id ? "on" : ""} aria-current={active === id ? "location" : undefined} onClick={() => jump(id)}>{s.title}</button>; })}{slug === "examples" && <button onClick={() => document.getElementById("gallery")?.scrollIntoView({ behavior: "smooth" })}>Live gallery</button>}{slug === "motion-graphics" && <button onClick={() => document.getElementById("playground")?.scrollIntoView({ behavior: "smooth" })}>Motion playground</button>}</nav><div className="toc-callout"><span>CREATE WITH CODE</span><p>Your agent’s next composition starts with one request.</p><a href="#/docs/quickstart">Read the quickstart <ArrowRight size={14} /></a></div></aside>
