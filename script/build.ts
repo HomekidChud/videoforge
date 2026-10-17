@@ -2,6 +2,7 @@ import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
 import { rm, readFile } from "node:fs/promises";
 import { generateDocs } from "./generate-docs";
+import { generateOpenAPI } from "./generate-openapi";
 
 // server deps to bundle to reduce openat(2) syscalls
 // which helps cold start times
@@ -32,8 +33,9 @@ const allowlist = [
 ];
 
 async function buildAll() {
-  // Docs pages come from docs/*.md; compile them before the client build.
+  // Docs pages come from docs/*.md; compile them (and openapi.json) before the client build.
   await generateDocs();
+  await generateOpenAPI();
   await rm("dist", { recursive: true, force: true });
 
   console.log("building client...");

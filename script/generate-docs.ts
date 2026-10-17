@@ -1,6 +1,7 @@
 // Generates client/src/lib/docs-generated.ts from the markdown files in docs/.
 // Docs content lives in docs/*.md so contributors can edit it without touching app code.
 // Run with: npm run docs  (also runs as part of npm run check and npm run build)
+import { execSync } from "node:child_process";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { capabilities } from "../shared/capabilities";
@@ -26,8 +27,9 @@ export const DOC_ENDPOINTS = [
 ];
 
 
-export type DocSection = { title: string; text: string; callouts?: { kind: "note" | "tip" | "warning"; text: string }[]; code?: string; language?: string; rows?: string[][]; links?: { label: string; slug: string }[] };
-export type DocPage = { slug: string; group: string; title: string; description: string; sections: DocSection[] };
+export type DocTask = { text: string; status: "todo" | "doing" | "done"; priority?: "High" | "Medium" | "Low" };
+export type DocSection = { title: string; text: string; callouts?: { kind: "note" | "tip" | "warning"; text: string }[]; code?: string; language?: string; rows?: string[][]; links?: { label: string; slug: string }[]; tasks?: DocTask[] };
+export type DocPage = { slug: string; group: string; title: string; description: string; sections: DocSection[]; updated?: string; added?: string; taskStats?: { done: number; doing: number; todo: number } };
 
 /** Tables that must always match the code: generated from the shared catalogs. */
 const AUTO_ROWS: Record<string, () => string[][]> = {
@@ -49,6 +51,24 @@ function splitRow(line: string): string[] {
   return inner.split("|").map(cell);
 }
 
+/** A task line: `- [ ] to do`, `- [~] in progress`, `- [x] done`, with an optional `**High.**` priority prefix. */
+const taskOf = (line: string): { status: "todo" | "doing" | "done"; text: string } | null => {
+  const m = line.match(/^- \[( |x|~)\]\s+(.*)$/);
+  if (!m) return null;
+  return { status: m[1] === "x" ? "done" : m[1] === "~" ? "doing" : "todo", text: m[2].trim() };
+};
+const parseTask = (raw: string): DocTask => {
+  const p = raw.match(/^\*\*(High|Medium|Low)\.\*\*\s*/);
+  return { status: "todo", text: p ? raw.slice(p[0].length) : raw, ...(p ? { priority: p[1] as DocTask["priority"] } : {}) };
+};
+const sectionStats = (page: DocPage) => {
+  let done = 0, doing = 0, todo = 0;
+  for (const s of page.sections) for (const t of s.tasks ?? []) {
+    if (t.status === "done") done++; else if (t.status === "doing") doing++; else todo++;
+  }
+  return { done, doing, todo };
+};
+
 /** Parse one markdown document into a DocPage. Throws readable errors for malformed input. */
 export function parseDocPage(slug: string, md: string): DocPage {
   const lines = md.replace(/\r/g, "").split("\n");
@@ -68,15 +88,19 @@ export function parseDocPage(slug: string, md: string): DocPage {
   const flushParagraph = () => {
     if (current && paragraph.length) {
       // Prose lines join into one paragraph; "- item" lines stay one per line. Pieces are split by a blank line.
-      const pieces: string[] = []; let prose: string[] = [], items: string[] = [];
+      const pieces: string[] = []; let prose: string[] = [], items: string[] = [], tasks: { status: "todo" | "doing" | "done"; text: string }[] = [];
       const endProse = () => { if (prose.length) pieces.push(prose.join(" ")); prose = []; };
       const endItems = () => { if (items.length) pieces.push(items.join("\n")); items = []; };
+      const endTasks = () => { if (tasks.length) { current!.tasks = [...(current!.tasks ?? []), ...tasks.map((t) => ({ ...parseTask(t.text), status: t.status }))]; tasks = []; } };
       for (const l of paragraph) {
-        if (/^- /.test(l)) { endProse(); items.push(l); }
+        const t = taskOf(l);
+        if (t) { endProse(); endItems(); tasks.push(t); }
+        else if (tasks.length && !/^- /.test(l)) { tasks[tasks.length - 1].text += ` ${l}`; }
+        else if (/^- /.test(l)) { endProse(); items.push(l); }
         else if (items.length && !/^- /.test(l)) { items[items.length - 1] += ` ${l}`; }
         else prose.push(l);
       }
-      endProse(); endItems();
+      endProse(); endItems(); endTasks();
       const text = pieces.join("\n\n").trim();
       if (text) current.text = current.text ? `${current.text}\n\n${text}` : text;
       paragraph = [];
@@ -162,6 +186,36 @@ export function parseDocPage(slug: string, md: string): DocPage {
   return { slug, group: fm.group, title: fm.title, description: fm.description, sections };
 }
 
+/** Git dates for a docs page; absent in shallow checkouts, so every failure is tolerated. */
+const gitDates = (file: string): { updated?: string; added?: string } => {
+  const run = (args: string) => { try { return execSync(`git ${args}`, { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim() || undefined; } catch { return undefined; } };
+  return { updated: run(`log -1 --format=%cI -- ${file}`), added: run(`log --diff-filter=A --format=%cI -1 -- ${file}`) };
+};
+
+/** Checksums of the hand-written numbers on a task page: fail the build when they disagree with the checkboxes. */
+export function validateTaskPage(slug: string, md: string, stats: { done: number; doing: number; todo: number }): void {
+  const total = stats.done + stats.doing + stats.todo;
+  const pct = total ? Math.round((100 * stats.done) / total) : 0;
+  for (const m of md.matchAll(/(\d+)\s+of\s+(\d+)\s+(?:items?|done)/gi)) {
+    if (Number(m[1]) !== stats.done || Number(m[2]) !== total) throw new Error(`${slug}.md: says ${m[1]} of ${m[2]}, but the checkboxes say ${stats.done} of ${total} — remove the hand-written number or fix the checkboxes`);
+  }
+  for (const m of md.matchAll(/(\d+)%/g)) {
+    if (Number(m[1]) !== pct) throw new Error(`${slug}.md: says ${m[1]}%, but the checkboxes say ${pct}% — remove the hand-written number or fix the checkboxes`);
+  }
+  for (const bar of md.matchAll(/[█░]{8,}/g)) {
+    const filled = [...bar[0]].filter((c) => c === "█").length;
+    const want = Math.round((bar[0].length * stats.done) / Math.max(1, total));
+    if (filled !== want) throw new Error(`${slug}.md: a progress bar has ${filled} filled blocks, but ${want} is correct — remove the hand-written bar or fix the checkboxes`);
+  }
+  const seen = new Set<string>();
+  const tasks = [...md.matchAll(/^- \[( |x|~)\]\s+(.*)$/gm)].map((m) => m[2].replace(/\*\*(High|Medium|Low)\.\*\*\s*/, "").toLowerCase().replace(/\s+/g, " ").trim());
+  for (const t of tasks) {
+    if (!t) throw new Error(`${slug}.md: a task has no text`);
+    if (seen.has(t)) throw new Error(`${slug}.md: the item "${t.slice(0, 60)}" appears twice — each item must be listed once so the counts stay honest`);
+    seen.add(t);
+  }
+}
+
 /** Read every docs/*.md page, in frontmatter order, and return the page list. */
 export async function readDocPages(): Promise<DocPage[]> {
   const entries = await readdir("docs", { withFileTypes: true });
@@ -174,6 +228,14 @@ export async function readDocPages(): Promise<DocPage[]> {
     if (!md.startsWith("---")) continue;
     const page = parseDocPage(slug, md);
     const orderMatch = md.match(/^order:\s*(\d+)\s*$/m);
+    const hasTasks = page.sections.some((s) => s.tasks?.length);
+    if (hasTasks) {
+      page.taskStats = sectionStats(page);
+      validateTaskPage(slug, md, page.taskStats);
+    }
+    const dates = gitDates(path.join("docs", entry.name));
+    if (dates.updated) page.updated = dates.updated;
+    if (dates.added) page.added = dates.added;
     pages.push({ order: orderMatch ? Number(orderMatch[1]) : 999, page });
   }
   pages.sort((a, b) => a.order - b.order || a.page.slug.localeCompare(b.page.slug));
@@ -188,6 +250,14 @@ export function validatePages(pages: DocPage[]) {
   for (const p of pages) for (const s of p.sections) for (const l of s.links ?? []) if (!slugs.has(l.slug)) throw new Error(`${p.slug}.md links to unknown page "${l.slug}"`);
 }
 
+/** Everyone who has landed a commit, from the git history. Empty in shallow checkouts. */
+const gitContributors = (): { name: string; commits: number }[] => {
+  try {
+    const out = execSync("git shortlog -sn --no-merges HEAD", { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] });
+    return out.split("\n").map((l) => l.match(/^\s*(\d+)\s+(.+)$/)).filter((m): m is RegExpMatchArray => !!m).map((m) => ({ commits: Number(m[1]), name: m[2].trim() }));
+  } catch { return []; }
+};
+
 /** Write the generated module. Returns the pages that were baked. */
 export async function generateDocs(): Promise<DocPage[]> {
   const pages = await readDocPages();
@@ -196,9 +266,21 @@ export async function generateDocs(): Promise<DocPage[]> {
 import type { DocPage } from "./docs-content";
 
 export const DOC_PAGES: DocPage[] = ${JSON.stringify(pages, null, 2)};
+
+export const CONTRIBUTORS: { name: string; commits: number }[] = ${JSON.stringify(gitContributors(), null, 2)};
 `;
   await mkdir(path.dirname("client/src/lib/docs-generated.ts"), { recursive: true });
   await writeFile("client/src/lib/docs-generated.ts", body, "utf-8");
+  // llms.txt: the same pages as a plain index, so agents can read the docs without a browser.
+  // The rest of the file (discovery, creative loop) is hand-written and preserved.
+  const pageList = [...pages.map((p) => `- [${p.title}](./#/docs/${p.slug}): ${p.description}`), "- [Repository reference](https://github.com/HomekidChud/videoforge/blob/main/docs/API.md)", "- Markdown source for every page: https://github.com/HomekidChud/videoforge/tree/main/docs"];
+  let llms = await readFile("client/public/llms.txt", "utf-8").catch(() => "");
+  const heading = "## Documentation\n\n";
+  const list = `${heading}${pageList.join("\n")}\n`;
+  const start = llms.indexOf(heading), next = llms.indexOf("\n## ", start + heading.length);
+  if (start >= 0) llms = next >= 0 ? llms.slice(0, start) + list + llms.slice(next + 1) : llms.slice(0, start) + list;
+  else llms = `${list}\n## Discovery\n\nUse Authorization: Bearer <scoped-key>. BASE is the user's API server.\n`;
+  await writeFile("client/public/llms.txt", llms, "utf-8");
   return pages;
 }
 

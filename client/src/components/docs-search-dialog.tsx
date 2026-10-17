@@ -1,16 +1,10 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, CornerDownLeft, Hash, History, Search, X } from "lucide-react";
+import { ArrowRight, CornerDownLeft, Hash, Search, X } from "lucide-react";
 import type { DocPage } from "@/lib/docs-content";
 import { countByGroup, highlightRuns, queryTokens, searchDocs } from "@/lib/docs-search";
 
-const RECENT_KEY = "vf.docs.recent.v1";
 /** Pages shown at first; the rest wait behind "Show more" so a search reads like an answer, not a dump. */
 const FIRST_PAGES = 4;
-const SUGGESTIONS = ["quickstart", "keyframes", "animator", "render", "authentication", "shapes"];
-
-const loadRecent = (): string[] => { try { return (JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]") as string[]).slice(0, 5); } catch { return []; } };
-const saveRecent = (list: string[]) => { try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch { /* storage is optional */ } };
-
 function Marked({ text, tokens }: { text: string; tokens: string[] }) {
   return <>{highlightRuns(text, tokens).map((r, i) => r.hit ? <mark key={i}>{r.text}</mark> : <Fragment key={i}>{r.text}</Fragment>)}</>;
 }
@@ -23,7 +17,7 @@ export default function DocsSearchDialog({ pages, onClose, onGo }: {
   onGo: (slug: string, anchor: string | null) => void;
 }) {
   const [query, setQuery] = useState(""), [group, setGroup] = useState<string | null>(null), [cursor, setCursor] = useState(0);
-  const [recent, setRecent] = useState<string[]>(loadRecent), [showAll, setShowAll] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   const input = useRef<HTMLInputElement>(null), list = useRef<HTMLDivElement>(null);
   useEffect(() => { input.current?.focus(); }, []);
 
@@ -49,14 +43,7 @@ export default function DocsSearchDialog({ pages, onClose, onGo }: {
   useEffect(() => { setCursor(0); setShowAll(false); if (list.current) list.current.scrollTop = 0; }, [query, group]);
   useEffect(() => { list.current?.querySelector<HTMLElement>(`[data-idx="${cursor}"]`)?.scrollIntoView({ block: "nearest" }); }, [cursor]);
 
-  const remember = () => {
-    const q = query.trim();
-    if (q.length < 2) return;
-    const next = [q, ...recent.filter((r) => r.toLowerCase() !== q.toLowerCase())].slice(0, 5);
-    setRecent(next); saveRecent(next);
-  };
-  const go = (item: Item) => { remember(); onGo(item.slug, item.anchor); };
-  const forget = () => { setRecent([]); saveRecent([]); };
+  const go = (item: Item) => { onGo(item.slug, item.anchor); };
 
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") { e.preventDefault(); setCursor((c) => Math.min(items.length - 1, c + 1)); }
@@ -104,18 +91,7 @@ export default function DocsSearchDialog({ pages, onClose, onGo }: {
         </> : <div className="search-empty">
           <p>Nothing matches “{query.trim()}”{group ? ` in ${group}` : ""}.</p>
           {group && <button className="sr-link" onClick={() => setGroup(null)}>Search all of the docs</button>}
-          <div className="sr-suggest">{SUGGESTIONS.map((s) => <button key={s} onClick={() => { setGroup(null); setQuery(s); input.current?.focus(); }}>{s}</button>)}</div>
-        </div>) : <div className="sr-idle">
-          <p className="sr-hint">Type what you are looking for, like a button name, an operation or a question.</p>
-          {recent.length > 0 && <div className="sr-block">
-            <div className="sr-label"><span><History size={13} /> Recent</span><button onClick={forget}>Clear</button></div>
-            <div className="sr-suggest">{recent.map((r) => <button key={r} onClick={() => { setQuery(r); input.current?.focus(); }}>{r}</button>)}</div>
-          </div>}
-          <div className="sr-block">
-            <div className="sr-label"><span>Try</span></div>
-            <div className="sr-suggest">{SUGGESTIONS.map((s) => <button key={s} onClick={() => { setQuery(s); input.current?.focus(); }}>{s}</button>)}</div>
-          </div>
-        </div>}
+        </div>) : null}
       </div>
       <div className="search-footer">
         <span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd><CornerDownLeft size={11} /></kbd> open</span><span><kbd>Esc</kbd> close</span>

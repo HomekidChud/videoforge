@@ -1,18 +1,26 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, ArrowUp, ArrowUpRight, Check, ChevronRight, Clock, Info, Lightbulb, Link2, Menu, Pencil, Search, TriangleAlert, X } from "lucide-react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ArrowLeft, ArrowRight, ArrowUp, ArrowUpRight, Bot, Check, ChevronRight, Clapperboard, Clock, Info, Lightbulb, Link2, Menu, Pencil, Search, ThumbsDown, ThumbsUp, TriangleAlert, Wrench, X } from "lucide-react";
 import { useLocation } from "wouter";
 import { PublicSite, PublicHeader, CodeBlock, usePageTitle } from "@/components/forge-public";
-import { DOC_PAGES } from "@/lib/docs-content";
-import type { DocSection } from "@/lib/docs-content";
+import { DOC_PAGES, CONTRIBUTORS } from "@/lib/docs-content";
+import type { DocPage, DocSection, DocTask } from "@/lib/docs-content";
+import { GLOSSARY, glossaryRuns } from "@/lib/glossary";
 import MotionDemo from "@/components/motion-demo";
 import ExampleGallery from "@/components/example-gallery";
 import DocsSearchDialog from "@/components/docs-search-dialog";
 
 const REPO = "https://github.com/HomekidChud/videoforge";
+const HOSTED = "https://videoforge-api-s54w.onrender.com";
 const GROUPS_KEY = "vf.docs.groups.v2";
+const TASKS_KEY = "vf.docs.tasks.v1";
 /** Only this group starts open; the rest wait until you open them (or open the page you are on). */
 const OPEN_BY_DEFAULT = "Get started";
 const sectionId = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
+type TaskFilter = { status: "all" | "open" | "doing" | "done"; priority: "all" | "High" | "Medium" | "Low" | "none"; area: string };
+const DEFAULT_FILTER: TaskFilter = { status: "all", priority: "all", area: "all" };
+const loadFilter = (): TaskFilter => { try { return { ...DEFAULT_FILTER, ...JSON.parse(localStorage.getItem(TASKS_KEY) ?? "{}") as Partial<TaskFilter> }; } catch { return DEFAULT_FILTER; }; };
+const saveFilter = (f: TaskFilter) => { try { localStorage.setItem(TASKS_KEY, JSON.stringify(f)); } catch { /* storage is optional */ } };
 
 /** Words in a page, so every guide can say how long it takes to read. */
 const readingMinutes = (sections: DocSection[]) => {
@@ -31,13 +39,22 @@ function Inline({ text }: { text: string }) {
       const href = link[2], external = /^https?:/.test(href);
       return <a key={i} href={external ? href : href.startsWith("#") ? `#/docs/${href.slice(1)}` : `#/docs/${href}`} {...(external ? { target: "_blank", rel: "noreferrer" } : {})}>{link[1]}</a>;
     }
-    return part;
+    return <Fragment key={i}><GlossaryText text={part} /></Fragment>;
   })}</>;
 }
 
-/** A section's text: blank-line separated paragraphs, and "- item" lines become a list. */
-function DocText({ text }: { text: string }) {
+/** Plain text with glossary words as hoverable definitions. */
+function GlossaryText({ text }: { text: string }) {
+  return <>{glossaryRuns(text).map((run, i) => typeof run === "string" ? run : (
+    <span key={i} className="gl-term" tabIndex={0} title={GLOSSARY[run.term.toLowerCase()]}>{run.term}</span>
+  ))}</>;
+}
+
+/** A section's text: blank-line separated paragraphs, "- item" lines become a list, and the todo page's calculated markers. */
+function DocText({ text, page }: { text: string; page: DocPage }) {
   return <>{text.split("\n\n").map((block, i) => {
+    if (block === "{{progress-overall}}" && page.taskStats) return <OverallProgress key={i} stats={page.taskStats} />;
+    if (block === "{{progress-table}}" && page) return <ProgressTable key={i} sections={page.sections} />;
     const lines = block.split("\n");
     if (lines.every((l) => l.startsWith("- "))) return <ul key={i}>{lines.map((l, j) => <li key={j}><Inline text={l.slice(2)} /></li>)}</ul>;
     return <p key={i}><Inline text={block} /></p>;
@@ -49,6 +66,91 @@ const CALLOUT = {
   tip: { label: "Tip", Icon: Lightbulb },
   warning: { label: "Careful", Icon: TriangleAlert },
 } as const;
+
+/** One checkbox item on a task page: read-only, labelled for screen readers. */
+function TaskItem({ task, status }: { task: DocTask; status: TaskFilter["status"] }) {
+  const visible = status === "all"
+    || (status === "open" ? task.status !== "done" : status === "doing" ? task.status === "doing" : task.status === "done");
+  if (!visible) return null;
+  return <li className={`todo-item ${task.status}`} data-testid={`todo-item-${task.status}`}>
+    <label>
+      <input type="checkbox" readOnly checked={task.status === "done"} aria-label={`${task.text}${task.status === "doing" ? " — in progress" : ""}`} data-testid="todo-checkbox" />
+      <span className="todo-text"><Inline text={task.text} /></span>
+    </label>
+    {task.priority && <span className={`todo-pri ${task.priority.toLowerCase()}`}>{task.priority}</span>}
+    {task.status === "doing" && <span className="todo-doing">In progress</span>}
+  </li>;
+}
+
+/** A section's checklist with its calculated progress bar and counts. */
+function TaskList({ tasks, filter }: { tasks: DocTask[]; filter: TaskFilter }) {
+  const done = tasks.filter((t) => t.status === "done").length, total = tasks.length;
+  const pct = total ? Math.round((100 * done) / total) : 0;
+  const priorityOk = (t: DocTask) => filter.priority === "all" || (filter.priority === "none" ? !t.priority : t.priority === filter.priority);
+  const shown = tasks.filter(priorityOk);
+  return <div className="todo-list" data-testid="todo-list">
+    <div className="todo-head">
+      <div className="todo-bar" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done} aria-label={`${done} of ${total} items done`}><i style={{ width: `${pct}%` }} /></div>
+      <span className="todo-count">{done} of {total} done</span>
+    </div>
+    <ul>{shown.map((t, i) => <TaskItem key={`${t.text.slice(0, 40)}${i}`} task={t} status={filter.status} />)}</ul>
+    {!shown.some((t) => filter.status === "all" || (filter.status === "open" ? t.status !== "done" : filter.status === "doing" ? t.status === "doing" : t.status === "done")) && shown.length > 0 && <p className="todo-none">No items match the status filter — showing every priority.</p>}
+    {shown.length === 0 && <p className="todo-none">No items match this filter.</p>}
+  </div>;
+}
+
+/** The overall bar on a task page: counts and percentage worked out from the checkboxes. */
+function OverallProgress({ stats }: { stats: { done: number; doing: number; todo: number } }) {
+  const total = stats.done + stats.doing + stats.todo, pct = total ? Math.round((100 * stats.done) / total) : 0;
+  return <div className="todo-overall" data-testid="todo-overall">
+    <div className="todo-bar big" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={stats.done} aria-label={`${stats.done} of ${total} items done, ${pct} percent`}><i style={{ width: `${pct}%` }} /></div>
+    <p className="todo-overall-text"><b>{stats.done} of {total} done</b><span className="todo-pct">{pct}%</span><span className="todo-sub">{stats.doing} in progress · {stats.todo} to do</span></p>
+  </div>;
+}
+
+/** The Progress by area table, generated from the page's own sections. */
+function ProgressTable({ sections }: { sections: DocSection[] }) {
+  const rows = sections.filter((s) => s.tasks?.length);
+  return <div className="doc-table-wrap todo-table" data-testid="todo-table"><table>
+    <thead><tr><th scope="col">Area</th><th scope="col">Done</th><th scope="col">In progress</th><th scope="col">To do</th><th scope="col">Progress</th></tr></thead>
+    <tbody>{rows.map((s) => {
+      const done = s.tasks!.filter((t) => t.status === "done").length, doing = s.tasks!.filter((t) => t.status === "doing").length, todo = s.tasks!.length - done - doing;
+      const pct = Math.round((100 * done) / s.tasks!.length);
+      return <tr key={s.title}><td>{s.title}</td><td>{done}</td><td>{doing}</td><td>{todo}</td>
+        <td><span className="todo-bar" role="progressbar" aria-valuemin={0} aria-valuemax={s.tasks!.length} aria-valuenow={done} aria-label={`${done} of ${s.tasks!.length} done`}><i style={{ width: `${pct}%` }} /></span> <span className="todo-pct">{pct}%</span></td></tr>;
+    })}</tbody>
+  </table></div>;
+}
+
+/** Role cards for the docs home page: one short path per kind of reader. */
+function RoleCards() {
+  const roles = [
+    { Icon: Clapperboard, title: "Studio user", text: "Cut footage, build motion graphics and export an MP4 in the browser.", href: "#/docs/motion-graphics-tutorial", cta: "Take the tutorial" },
+    { Icon: Bot, title: "Agent builder", text: "Drive the same timeline over HTTP: scoped keys, atomic batches, renders.", href: "#/docs/agent-workflow", cta: "See the workflow" },
+    { Icon: Wrench, title: "Contributor", text: "Add a preset, template, operation or block — every table is generated and tested.", href: "#/docs/contribute", cta: "Start contributing" },
+  ] as const;
+  return <div className="role-cards" data-testid="role-cards">{roles.map((r) => <a key={r.title} className="role-card" href={r.href}><r.Icon size={20} aria-hidden="true" /><b>{r.title}</b><p>{r.text}</p><span>{r.cta} <ArrowRight size={15} /></span></a>)}</div>;
+}
+
+/** Live status of the hosted deployment, checked from the browser. */
+function StatusPanel() {
+  const [state, setState] = useState<"checking" | "up" | "down">("checking"), [ms, setMs] = useState<number | null>(null);
+  useEffect(() => {
+    const t0 = performance.now();
+    fetch(`${HOSTED}/api/health`, { signal: AbortSignal.timeout(8000) })
+      .then((r) => { setMs(Math.round(performance.now() - t0)); setState(r.ok ? "up" : "down"); })
+      .catch(() => setState("down"));
+  }, []);
+  return <div className="status-panel" data-testid="status-panel">
+    <span className={`status-dot ${state}`} aria-hidden="true" />
+    <div>
+      <b>{state === "checking" ? "Checking the hosted API…" : state === "up" ? "Hosted API is up" : "Hosted API is not responding"}</b>
+      {state === "up" && ms !== null && <p>Answered the health check in {ms} ms.</p>}
+      {state === "down" && <p>It may be sleeping (free hosting pauses idle servers) — retry in a minute, or <a href="#/docs/self-hosting">run your own</a>.</p>}
+      <p className="status-note">Checked live from your browser against <code>{HOSTED}</code>. The health endpoint is public; everything else needs a key issued by that deployment.</p>
+    </div>
+  </div>;
+}
 
 function loadGroups(): Record<string, boolean> {
   try { return JSON.parse(localStorage.getItem(GROUPS_KEY) ?? "{}") as Record<string, boolean>; } catch { return {}; }
@@ -64,9 +166,14 @@ export default function ApiDocsPage({ params }: { params?: { slug: string } }) {
   const [groupState, setGroupState] = useState<Record<string, boolean>>(loadGroups);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [active, setActive] = useState(""), [progress, setProgress] = useState(0), [showTop, setShowTop] = useState(false), [toast, setToast] = useState("");
+  const [filter, setFilter] = useState<TaskFilter>(loadFilter);
+  const [helpful, setHelpful] = useState<null | "yes" | "no">(() => { try { return JSON.parse(localStorage.getItem(`vf.docs.feedback.${slug}`) ?? "null"); } catch { return null; } });
   const [, navigate] = useLocation();
   const searchButton = useRef<HTMLButtonElement>(null), toastTimer = useRef<number>();
   usePageTitle(current ? `${current.title} · Docs` : "Page not found · Docs");
+
+  const taskAreas = useMemo(() => (current?.sections ?? []).filter((s) => s.tasks?.length).map((s) => s.title), [current]);
+  const hasTasks = taskAreas.length > 0;
 
   const groupOpen = (g: string) => groupState[g] ?? (g === OPEN_BY_DEFAULT || g === current?.group);
   const setGroups = (next: Record<string, boolean>) => { setGroupState(next); try { localStorage.setItem(GROUPS_KEY, JSON.stringify(next)); } catch { /* storage is optional */ } };
@@ -91,6 +198,7 @@ export default function ApiDocsPage({ params }: { params?: { slug: string } }) {
   // New page: close the mobile menu, open the page's group, reset sections and honour a section link.
   useEffect(() => {
     setMenu(false); setCollapsed(new Set()); setActive("");
+    setHelpful(() => { try { return JSON.parse(localStorage.getItem(`vf.docs.feedback.${slug}`) ?? "null"); } catch { return null; } });
     if (current && groupState[current.group] === false) setGroups({ ...groupState, [current.group]: true });
     if (rawAnchor) window.setTimeout(() => document.getElementById(rawAnchor)?.scrollIntoView({ behavior: "smooth" }), 60);
     else window.scrollTo(0, 0);
@@ -137,6 +245,13 @@ export default function ApiDocsPage({ params }: { params?: { slug: string } }) {
     try { await navigator.clipboard.writeText(url); say("Link copied"); } catch { say("Copy the address bar to share this section"); }
   };
 
+  const updated = current?.updated ? new Date(current.updated) : null;
+  const added = current?.added ? new Date(current.added) : null;
+  const ageDays = (d: Date) => Math.floor((Date.now() - d.getTime()) / 86_400_000);
+  const badge = added && ageDays(added) <= 30 ? "New" : updated && ageDays(updated) <= 30 ? "Updated" : null;
+  const issueUrl = current ? `${REPO}/issues/new?title=${encodeURIComponent(`Docs feedback: ${current.title}`)}&body=${encodeURIComponent(`Page: #/docs/${slug}\n\nWhat could be better?\n`)}` : "";
+  const vote = (v: "yes" | "no") => { setHelpful(v); try { localStorage.setItem(`vf.docs.feedback.${slug}`, JSON.stringify(v)); } catch { /* storage is optional */ } };
+
   return <PublicSite><a className="public-skip" href="#/" onClick={(e) => { e.preventDefault(); document.getElementById("docs-content")?.focus(); }}>Skip to content</a>
     <div className="docs-progress" aria-hidden="true"><i style={{ transform: `scaleX(${progress})` }} /></div>
     <PublicHeader docs><button className="docs-search" ref={searchButton} onClick={() => setSearchOpen(true)} data-testid="docs-search"><Search size={17} /><span>Search documentation</span><kbd>Ctrl K</kbd></button></PublicHeader>
@@ -151,7 +266,10 @@ export default function ApiDocsPage({ params }: { params?: { slug: string } }) {
               <ChevronRight size={15} className="chev" /><span>{group}</span><em className={hasCurrent && !open ? "here" : ""}>{pages.length}</em>
             </button>
             <div className="docs-group-body" id={`docs-group-${sectionId(group)}`} {...({ inert: open ? undefined : "" } as Record<string, string | undefined>)}><div>
-              {pages.map((p) => <a key={p.slug} href={`#/docs/${p.slug}`} aria-current={p.slug === slug ? "page" : undefined} className={p.slug === slug ? "selected" : ""} data-testid={`docs-link-${p.slug}`}>{p.title}</a>)}
+              {pages.map((p) => {
+                const st = p.taskStats, pct = st ? Math.round((100 * st.done) / (st.done + st.doing + st.todo)) : null;
+                return <a key={p.slug} href={`#/docs/${p.slug}`} aria-current={p.slug === slug ? "page" : undefined} className={p.slug === slug ? "selected" : ""} data-testid={`docs-link-${p.slug}`}>{p.title}{pct !== null && <em className="pct" title={`${st!.done} of ${st!.done + st!.doing + st!.todo} items done`}>{pct}%</em>}</a>;
+              })}
             </div></div>
           </div>;
         })}</nav>
@@ -159,20 +277,39 @@ export default function ApiDocsPage({ params }: { params?: { slug: string } }) {
       </aside>
       <main className="docs-article" id="docs-content" tabIndex={-1}>{current ? <>
         <div className="docs-breadcrumb"><a href="#/docs/introduction">Documentation</a> <span>/</span> {current.group} <span>/</span> <b>{current.title}</b></div>
-        <h1>{current.title}</h1><p className="doc-lede">{current.description}</p>
+        <h1>{current.title}{badge && <span className="doc-badge" data-testid="doc-badge">{badge}</span>}</h1><p className="doc-lede">{current.description}</p>
         <div className="doc-meta" data-testid="doc-meta">
           <span><Clock size={14} /> {readingMinutes(current.sections)} min read</span><span>{current.sections.length} {current.sections.length === 1 ? "section" : "sections"}</span>
+          {updated && <span className="doc-updated" data-testid="doc-updated" title={updated.toISOString().slice(0, 10)}>Updated {updated.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}</span>}
           {current.sections.length > 1 && <button onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(ids))} data-testid="docs-toggle-sections"><ChevronRight size={14} className={`chev ${allCollapsed ? "" : "down"}`} />{allCollapsed ? "Expand all sections" : "Collapse all sections"}</button>}
         </div>
+        {hasTasks && <div className="todo-filters" role="group" aria-label="Filter the todo list" data-testid="todo-filters">
+          <div className="tf-status">
+            {([["all", "All"], ["open", "Open"], ["doing", "In progress"], ["done", "Done"]] as const).map(([v, label]) => <button key={v} className={filter.status === v ? "on" : ""} aria-pressed={filter.status === v} onClick={() => setFilter({ ...filter, status: v })} data-testid={`todo-filter-${v}`}>{label}</button>)}
+          </div>
+          <label className="tf-select">Priority
+            <select value={filter.priority} onChange={(e) => setFilter({ ...filter, priority: e.target.value as TaskFilter["priority"] })} data-testid="todo-filter-priority">
+              <option value="all">All</option><option value="High">High</option><option value="Medium">Medium</option><option value="Low">Low</option><option value="none">None</option>
+            </select>
+          </label>
+          <label className="tf-select">Area
+            <select value={filter.area} onChange={(e) => setFilter({ ...filter, area: e.target.value })} data-testid="todo-filter-area">
+              <option value="all">All areas</option>
+              {taskAreas.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </label>
+        </div>}
+        {slug === "introduction" && <RoleCards />}
         {current.sections.map((s) => {
-          const id = sectionId(s.title), shut = collapsed.has(id);
-          return <section key={s.title} id={id} className={shut ? "shut" : ""} data-testid={`doc-section-${id}`}>
+          const id = sectionId(s.title), shut = collapsed.has(id), inArea = filter.area === "all" || filter.area === s.title;
+          return <section key={s.title} id={id} className={shut ? "shut" : ""} data-testid={`doc-section-${id}`} hidden={hasTasks && s.tasks?.length && !inArea ? true : undefined}>
             <h2>
               <button className="doc-fold" aria-expanded={!shut} aria-controls={`${id}-body`} onClick={() => toggleSection(id)}><ChevronRight size={18} className={`chev ${shut ? "" : "down"}`} /><span>{s.title}</span></button>
               <button className="doc-anchor" aria-label={`Copy link to ${s.title}`} title="Copy link to this section" onClick={() => copyLink(id)}><Link2 size={15} /></button>
             </h2>
             <div className="doc-section-body" id={`${id}-body`} {...({ inert: shut ? "" : undefined } as Record<string, string | undefined>)}><div>
-              {s.text && <DocText text={s.text} />}
+              {s.text && <DocText text={s.text} page={current} />}
+              {s.tasks && <TaskList tasks={s.tasks} filter={filter} />}
               {s.callouts?.map((c, i) => { const { label, Icon } = CALLOUT[c.kind]; return <aside key={i} className={`doc-callout ${c.kind}`} role="note"><Icon size={17} aria-hidden="true" /><div><b>{label}</b><p><Inline text={c.text} /></p></div></aside>; })}
               {s.code && <CodeBlock code={s.code} label={s.language ?? "JSON"} />}
               {s.rows && <div className="doc-table-wrap"><table><thead><tr>{s.rows[0].map((c) => <th key={c}>{c}</th>)}</tr></thead><tbody>{s.rows.slice(1).map((row, i) => <tr key={i}>{row.map((c, j) => <td key={j}>{j === 0 ? <code>{c}</code> : c}</td>)}</tr>)}</tbody></table></div>}
@@ -182,6 +319,16 @@ export default function ApiDocsPage({ params }: { params?: { slug: string } }) {
         })}
         {slug === "motion-graphics" && <section id="playground"><h2><span className="doc-plain">Try the motion playground</span></h2><p>Switch templates, change the headline, pause playback or scrub through the composition. This is a local preview; it does not create a project or send requests to your server.</p><MotionDemo compact /></section>}
         {slug === "examples" && <section id="gallery"><h2><span className="doc-plain">Live gallery</span></h2><p>Pick an example to play it. Each one runs on the same timeline engine as Studio and the FFmpeg renderer, and its ops are shown below. Press Copy and POST them to a project to build it yourself.</p><ExampleGallery /></section>}
+        {slug === "status" && <section id="live-status"><h2><span className="doc-plain">Live status</span></h2><p>The check runs in your browser against the hosted deployment.</p><StatusPanel /></section>}
+        {slug === "contribute" && CONTRIBUTORS.length > 0 && <section id="contributors"><h2><span className="doc-plain">Contributors</span></h2><p>Everyone who has landed a commit on this repository, straight from the git history.</p><ul className="contrib-list" data-testid="contrib-list">{CONTRIBUTORS.map((c) => <li key={c.name}><span className="contrib-count">{c.commits}</span> {c.name}</li>)}</ul></section>}
+        <div className="doc-feedback" data-testid="doc-feedback">
+          {helpful === null ? <>
+            <span>Is this page helpful?</span>
+            <button onClick={() => vote("yes")} data-testid="doc-feedback-yes"><ThumbsUp size={14} /> Yes</button>
+            <button onClick={() => vote("no")} data-testid="doc-feedback-no"><ThumbsDown size={14} /> No</button>
+          </> : <span className="doc-feedback-thanks">Thanks for the feedback.</span>}
+          <a href={issueUrl} target="_blank" rel="noreferrer">Improve this page on GitHub</a>
+        </div>
         <div className="doc-edit-row"><a href={`${REPO}/edit/main/docs/${current.slug}.md`} target="_blank" rel="noreferrer" data-testid="doc-edit"><Pencil size={14} /> Edit this page on GitHub</a><span>Timeline schema v4 · motion engine v2</span></div>
         <nav className="docs-pagination" aria-label="Guide navigation">{previous ? <a href={`#/docs/${previous.slug}`}><ArrowLeft size={17} /><div><small>Previous</small><b>{previous.title}</b></div></a> : <span />}{next ? <a href={`#/docs/${next.slug}`}><div><small>Next</small><b>{next.title}</b></div><ArrowRight size={17} /></a> : <a href="#/editor"><div><small>Start creating</small><b>Open Studio</b></div><ArrowUpRight size={17} /></a>}</nav>
       </> : <><h1>That guide doesn’t exist.</h1><p>Choose a topic from the sidebar, or return to the introduction.</p><a className="public-button" href="#/docs/introduction">Read the introduction</a></>}</main>

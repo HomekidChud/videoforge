@@ -41,7 +41,9 @@ export const DOC_PAGES: DocPage[] = [
         "language": "WORKFLOW",
         "code": "Discover → Compose → Validate → Inspect → Render"
       }
-    ]
+    ],
+    "updated": "2026-10-17T08:48:53Z",
+    "added": "2026-10-15T22:20:52+01:00"
   },
   {
     "slug": "quickstart",
@@ -73,7 +75,9 @@ export const DOC_PAGES: DocPage[] = [
         "language": "SHELL",
         "code": "curl \"$BASE/api/projects/$PROJECT/frame?t=1&width=640\" \\\n  -H \"Authorization: Bearer $KEY\" -o frame.png\ncurl -X POST \"$BASE/api/renders\" \\\n  -H \"Authorization: Bearer $KEY\" -H \"Content-Type: application/json\" \\\n  -d \"{\\\"projectId\\\":\\\"$PROJECT\\\"}\"\nexport JOB=\"<jobId-from-response>\"\ncurl \"$BASE/api/renders/$JOB\" -H \"Authorization: Bearer $KEY\"\n# Once status is done:\ncurl \"$BASE/api/renders/$JOB/download\" \\\n  -H \"Authorization: Bearer $KEY\" -o motion.mp4"
       }
-    ]
+    ],
+    "updated": "2026-10-16T06:24:05Z",
+    "added": "2026-10-15T22:20:52+01:00"
   },
   {
     "slug": "motion-graphics-tutorial",
@@ -196,7 +200,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T08:48:53Z",
+    "added": "2026-10-17T08:48:53Z"
   },
   {
     "slug": "authentication",
@@ -247,7 +253,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T08:48:53Z",
+    "added": "2026-10-15T22:20:52+01:00"
   },
   {
     "slug": "timeline",
@@ -282,7 +290,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T08:48:53Z",
+    "added": "2026-10-15T22:20:52+01:00"
   },
   {
     "slug": "motion-graphics",
@@ -387,7 +397,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T08:48:53Z",
+    "added": "2026-10-15T22:20:52+01:00"
   },
   {
     "slug": "shapes",
@@ -449,7 +461,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T08:48:53Z",
+    "added": "2026-10-15T22:20:52+01:00"
   },
   {
     "slug": "keyframes",
@@ -526,7 +540,9 @@ export const DOC_PAGES: DocPage[] = [
         "text": "Pass unique clipIds in your desired order. stagger_clips sets the first start, then offsets every following clip by delay seconds. This operation retimes clips without changing their clip-local animation curves.",
         "code": "{\n  \"op\": \"stagger_clips\",\n  \"args\": {\n    \"clipIds\": [\n      \"word-a\",\n      \"word-b\",\n      \"word-c\"\n    ],\n    \"start\": 0,\n    \"delay\": 0.15\n  }\n}"
       }
-    ]
+    ],
+    "updated": "2026-10-17T08:48:53Z",
+    "added": "2026-10-15T22:20:52+01:00"
   },
   {
     "slug": "motion-presets",
@@ -744,7 +760,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T08:48:53Z",
+    "added": "2026-10-15T22:20:52+01:00"
   },
   {
     "slug": "fit-and-layout",
@@ -792,7 +810,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T08:48:53Z",
+    "added": "2026-10-15T22:20:52+01:00"
   },
   {
     "slug": "fonts-and-text",
@@ -896,7 +916,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T08:48:53Z",
+    "added": "2026-10-15T22:29:58+01:00"
   },
   {
     "slug": "animate-with-code",
@@ -1167,7 +1189,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T08:48:53Z",
+    "added": "2026-10-15T22:20:52+01:00"
   },
   {
     "slug": "transitions",
@@ -1237,6 +1261,79 @@ export const DOC_PAGES: DocPage[] = [
           {
             "label": "Using the editor",
             "slug": "editor"
+          }
+        ]
+      }
+    ],
+    "updated": "2026-10-17T08:48:53Z",
+    "added": "2026-10-15T22:20:52+01:00"
+  },
+  {
+    "slug": "cookbook",
+    "group": "Examples",
+    "title": "Cookbook",
+    "description": "Short recipes: one goal, one atomic batch each.",
+    "sections": [
+      {
+        "title": "How to use these recipes",
+        "text": "Every recipe is one atomic batch: POST it to `/api/projects/:id/timeline/ops` with `dryRun: true` first, look at the returned timeline, then send it for real. Replace the ids with yours."
+      },
+      {
+        "title": "A lower third in one request",
+        "text": "The fastest way to a professional title: one template call places, styles and animates it.",
+        "code": "{\n  \"ops\": [\n    { \"op\": \"add_motion_template\", \"args\": { \"template\": \"lower-third\", \"title\": \"Ada Lovelace\", \"subtitle\": \"Pioneer of computing\", \"color\": \"#f6a447\", \"start\": 0, \"duration\": 4 } }\n  ]\n}"
+      },
+      {
+        "title": "Stagger a row of titles",
+        "text": "Give a list of clips the same entrance with a delay between them: title bars that cascade in.",
+        "code": "{\n  \"ops\": [\n    { \"op\": \"stagger_clips\", \"args\": { \"clipIds\": [\"t1\", \"t2\", \"t3\"], \"delay\": 0.25, \"start\": 1 } }\n  ]\n}"
+      },
+      {
+        "title": "Cut out the dead air",
+        "text": "Split at the boring moment, then ripple the rest closed — no gap left behind.",
+        "code": "{\n  \"ops\": [\n    { \"op\": \"split_clip\", \"args\": { \"clipId\": \"intro\", \"at\": 12.4 } },\n    { \"op\": \"ripple_delete\", \"args\": { \"clipId\": \"intro-2\" } }\n  ]\n}"
+      },
+      {
+        "title": "Constant speed and a freeze",
+        "text": "A clip's speed is a field like any other: set it once, or ramp it with the Speed steps block in Studio for freeze frames and slow motion.",
+        "code": "{\n  \"ops\": [\n    { \"op\": \"update_clip\", \"args\": { \"clipId\": \"b-roll\", \"speed\": 1.5 } }\n  ]\n}"
+      },
+      {
+        "title": "A caption that stays readable",
+        "text": "Text wraps and shrinks to fit its box; give it a background and place it once.",
+        "code": "{\n  \"ops\": [\n    { \"op\": \"add_text_clip\", \"args\": { \"text\": \"Chapter one: the problem\", \"start\": 0, \"duration\": 6, \"textSize\": 0.06, \"textBg\": \"#101826cc\", \"x\": 0.5, \"y\": 0.9 } }\n  ]\n}"
+      },
+      {
+        "title": "Everything inside the frame",
+        "text": "One call refits every clip that crosses the edges — media, text and shapes alike, with a margin.",
+        "code": "{\n  \"ops\": [\n    { \"op\": \"fit_all\", \"args\": { \"margin\": 0.03 } }\n  ]\n}"
+      },
+      {
+        "title": "A badge that floats, then keyframes",
+        "text": "Drive any property with a formula of time, then bake it into editable keyframes when you are happy.",
+        "code": "{\n  \"ops\": [\n    { \"op\": \"animate_code\", \"args\": { \"clipId\": \"badge\", \"expressions\": { \"y\": \"0.15 + 0.01 * sin(t * 2)\" } } },\n    { \"op\": \"bake_expression\", \"args\": { \"clipId\": \"badge\", \"property\": \"y\" } }\n  ]\n}"
+      },
+      {
+        "title": "Check before you render",
+        "text": "Two GETs save a render: a frame at the moment you care about, and the full storyboard.",
+        "language": "SHELL",
+        "code": "curl \"$BASE/api/projects/$ID/frame?t=3&width=640\" -o frame.png\ncurl \"$BASE/api/projects/$ID/storyboard?count=6\" -o sheet.png",
+        "links": [
+          {
+            "label": "Examples gallery",
+            "slug": "examples"
+          },
+          {
+            "label": "Batch operations",
+            "slug": "batch-operations"
+          },
+          {
+            "label": "Motion presets & sequencing",
+            "slug": "motion-presets"
+          },
+          {
+            "label": "Animate with code",
+            "slug": "animate-with-code"
           }
         ]
       }
@@ -1352,7 +1449,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T08:48:53Z",
+    "added": "2026-10-15T22:20:52+01:00"
   },
   {
     "slug": "editor",
@@ -1482,7 +1581,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T08:48:53Z",
+    "added": "2026-10-15T22:20:52+01:00"
   },
   {
     "slug": "animator",
@@ -1665,7 +1766,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T08:48:53Z",
+    "added": "2026-10-17T07:51:59Z"
   },
   {
     "slug": "custom-tools",
@@ -1897,7 +2000,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T08:48:53Z",
+    "added": "2026-10-15T22:35:29+01:00"
   },
   {
     "slug": "agent-workflow",
@@ -1932,7 +2037,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T08:48:53Z",
+    "added": "2026-10-15T22:20:52+01:00"
   },
   {
     "slug": "batch-operations",
@@ -2155,7 +2262,9 @@ export const DOC_PAGES: DocPage[] = [
           ]
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T08:48:53Z",
+    "added": "2026-10-15T22:20:52+01:00"
   },
   {
     "slug": "api-reference",
@@ -2324,7 +2433,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Detailed repository reference",
-        "text": "The repository's docs/API.md retains the expanded endpoint contracts, key restrictions, security notes and deployment guidance. The motion graphics additions are also documented there.",
+        "text": "The repository's docs/API.md retains the expanded endpoint contracts, key restrictions, security notes and deployment guidance. The motion graphics additions are also documented there.\n\nAn [OpenAPI description generated from this endpoint list and the operation catalog](https://homekidchud.github.io/videoforge/openapi.json) is served alongside the docs; operation arguments are documented as prose in each operation's description, exactly as `GET /api/capabilities` reports them.",
         "links": [
           {
             "label": "Your first composition",
@@ -2336,7 +2445,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T08:48:53Z",
+    "added": "2026-10-15T22:20:52+01:00"
   },
   {
     "slug": "rendering",
@@ -2361,7 +2472,9 @@ export const DOC_PAGES: DocPage[] = [
         "title": "Known boundaries",
         "text": "This release does not provide arbitrary SVG paths, Lottie import, 3D, expressions, nested compositions or motion blur. Shape fill and size are static; transforms animate. Preview and export can differ slightly in font metrics, cubic easing approximation and shape edge antialiasing. Inspect exported frames for final approval."
       }
-    ]
+    ],
+    "updated": "2026-10-17T08:48:53Z",
+    "added": "2026-10-15T22:20:52+01:00"
   },
   {
     "slug": "self-hosting",
@@ -2401,7 +2514,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T08:48:53Z",
+    "added": "2026-10-15T22:20:52+01:00"
   },
   {
     "slug": "storage-and-durability",
@@ -2505,7 +2620,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T08:48:53Z",
+    "added": "2026-10-17T08:48:53Z"
   },
   {
     "slug": "contribute",
@@ -2659,6 +2776,242 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
+    ],
+    "updated": "2026-10-17T08:48:53Z",
+    "added": "2026-10-17T08:48:53Z"
+  },
+  {
+    "slug": "troubleshooting",
+    "group": "Resources",
+    "title": "Troubleshooting",
+    "description": "Fixes for the errors people actually hit: uploads, renders, keys and self-hosting.",
+    "sections": [
+      {
+        "title": "Setup and first boot",
+        "text": "The server needs Node 20 or newer, plus `ffmpeg` and `ffprobe` on PATH. If either binary is missing, uploads fail with a probe error and renders never start.\n\nThe first boot prints an owner key and writes it to `data/OWNER_KEY.txt`. The first account must be created with it; after that, delete the file and keep the key in a password manager. If the file is gone and no account exists, set `VIDEOFORGE_BOOTSTRAP_KEY` and restart to print a fresh one.",
+        "callouts": [
+          {
+            "kind": "note",
+            "text": "`ffmpeg -version` and `ffprobe -version` should both print a version. On Ubuntu, `apt install ffmpeg` installs both. On macOS, `brew install ffmpeg`."
+          }
+        ]
+      },
+      {
+        "title": "Uploads and media",
+        "text": "**Upload fails with \"probe\" or \"unsupported\".** Every file is probed once on upload. Video and audio need a codec FFmpeg can decode: MP4/H.264, MOV, WebM and MP3/WAV/AAC/M4A are the safe choices. A zero-byte or partially uploaded file also fails here — check the file plays locally first.\n\n**The thumbnail or waveform never appears.** Thumbnails are made straight after upload; if the file is still uploading elsewhere or the disk is full, they are skipped. Re-upload the file once the underlying problem is fixed.\n\n**Media plays in the browser but not in the export.** The browser plays many codecs FFmpeg's default build cannot decode. Re-encode the source with `ffmpeg -i input -c:v libx264 -c:a aac output.mp4` and swap the asset."
+      },
+      {
+        "title": "Renders",
+        "text": "**A render stays queued.** Renders run one at a time by default and need disk space in `data/renders`. Check the server logs for the FFmpeg error line; the most common causes are a full disk, a missing binary and a clip whose asset was deleted.\n\n**The render looks different from the preview.** Report it with the project ID — preview and export share the same engine, so a mismatch is a bug, not a tuning knob. Before reporting, check the project still validates with `POST /api/projects/:id/timeline/validate`.\n\n**Renders are slow.** Render time scales with clip count, effects and resolution. Render at 720p while composing, and switch the project resolution up for the final pass. `GET /api/renders/:id` reports progress so you can poll instead of guessing."
+      },
+      {
+        "title": "Keys and sign-in",
+        "text": "**401 from the hosted deployment.** Keys are issued per deployment: a key from your local server never works on the hosted one, and the reverse. Create a key on the deployment you are calling.\n\n**403 with a scope error.** The key's scope is too small: read keys cannot upload or edit, write keys cannot manage other keys. The error names the missing scope; recreate the key with it or use an admin key.\n\n**Sessions signed out after a restart.** Sessions live in SQLite, so restarts keep them. If everyone is signed out, the SQLite file changed or was restored from a different backup — sign in again.\n\n**First account: \"owner key required\".** That is by design. Use the key from `data/OWNER_KEY.txt` (or `VIDEOFORGE_BOOTSTRAP_KEY`) for the first account only."
+      },
+      {
+        "title": "API and agents",
+        "text": "**409 on a timeline edit.** The batch was sent without `expectedUpdatedAt`, or another edit landed first. GET the project, read `updatedAt`, and send it with the next batch — the atomic batches page explains the pattern.\n\n**An operation name is rejected.** Operation names come from `GET /api/capabilities`; never invent one. The validation error names the closest known operation if there is a typo.\n\n**dryRun says OK but the real batch fails.** dryRun validates the timeline shape; it cannot catch a missing asset or a key restriction such as `allowUpload: false`. Run the real batch and read the error body."
+      },
+      {
+        "title": "Self-hosting",
+        "text": "**The frontend cannot reach the API.** If the frontend is hosted separately, `VITE_API_BASE` must be set at build time to the API origin, and `CORS_ORIGIN` on the backend must allow the frontend origin. The frontend alone cannot render video — FFmpeg must stay with the API.\n\n**Data directories.** `data/` (SQLite), `data/media` (uploads) and `data/renders` (exports) hold everything. Back them up together, restore them together, and never serve them statically. The Storage & durability page covers backups and the optional MongoDB store.",
+        "links": [
+          {
+            "label": "Storage & durability",
+            "slug": "storage-and-durability"
+          },
+          {
+            "label": "Authentication & scopes",
+            "slug": "authentication"
+          },
+          {
+            "label": "Rendering & inspection",
+            "slug": "rendering"
+          },
+          {
+            "label": "Self-hosting",
+            "slug": "self-hosting"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "faq",
+    "group": "Resources",
+    "title": "FAQ",
+    "description": "Short answers to the questions that come up most.",
+    "sections": [
+      {
+        "title": "General",
+        "text": "**Is my footage uploaded anywhere?** No. Your self-hosted server stores uploads in `data/media` on your own disk. The hosted deployment is for trying the API; self-host to control the data.\n\n**Can I use it without an account?** Yes. The Studio, docs and share pages never require a sign-in. An account is only needed to keep projects and keys; the first account requires the owner key from first boot.\n\n**What formats can I import?** Anything FFmpeg can decode: MP4, MOV, WebM for video, MP3, WAV, AAC, M4A for audio, plus images. If the browser can play it but the export cannot, re-encode to H.264 + AAC.\n\n**What do I need to run it?** Node 20 or newer and `ffmpeg`/`ffprobe` on PATH. That is the whole list; SQLite is bundled, no other database is required."
+      },
+      {
+        "title": "Studio",
+        "text": "**Where does my project go?** Autosave writes it to the server as you work; the timeline is the single source of truth for Studio, API and renders alike.\n\n**What is the difference between the three tracks?** Video is full-frame footage and images, overlay is picture-in-picture clips, titles and shapes stacked by z-order, audio is music and voice-over.\n\n**Can I undo everything?** Yes — undo and redo cover drops, deletes, pastes, drags and quick typing, in Studio and in the block studio.\n\n**How do I export?** Export renders an MP4 with FFmpeg server-side. Queue it from Export, watch progress, then download the finished file."
+      },
+      {
+        "title": "Motion graphics",
+        "text": "**What is a motion preset?** A ready-made entrance, exit, attention or camera move applied to a clip — animate one thing or stagger many.\n\n**What are keyframes and formulas?** Keyframes set a property at moments in time with easing between them; formulas (expressions) drive a property with code of time. Both preview live and both render in FFmpeg.\n\n**What does the Animator do?** It poses clips together as a rig and bakes the result into ordinary keyframes — so preview and export need nothing new."
+      },
+      {
+        "title": "API and agents",
+        "text": "**How do agents authenticate?** With scoped API keys: `Authorization: Bearer <key>`. Scopes are read, write or admin, with per-key restrictions for expiry, projects, rate, uploads, rendering and deletion.\n\n**How do I make several edits safely?** Send them as one atomic batch to `/api/projects/:id/timeline/ops` with `dryRun: true` first, then for real with `expectedUpdatedAt` so a stale write fails with 409 instead of clobbering.\n\n**Can I see what I built before rendering?** Yes: `GET /frame?t=1.5` returns a composed PNG, `GET /state?t=1.5` returns the animated values, and `GET /storyboard` returns a contact sheet.\n\n**Is there an OpenAPI file?** Yes — an OpenAPI description generated from the operation list is served at <https://homekidchud.github.io/videoforge/openapi.json> and linked from the HTTP API reference."
+      },
+      {
+        "title": "Self-hosting",
+        "text": "**Can I host the frontend separately from the API?** Yes. Build the frontend with `VITE_API_BASE`, set `CORS_ORIGIN` on the backend, and keep FFmpeg with the API — the frontend cannot render video on its own.\n\n**How do I back up?** Back up the `data` directory (SQLite, `data/media`, `data/renders`) together. The Storage & durability page covers the backup recipes and the optional MongoDB store.",
+        "links": [
+          {
+            "label": "Troubleshooting",
+            "slug": "troubleshooting"
+          },
+          {
+            "label": "Authentication & scopes",
+            "slug": "authentication"
+          },
+          {
+            "label": "Batch operations",
+            "slug": "batch-operations"
+          },
+          {
+            "label": "Self-hosting",
+            "slug": "self-hosting"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "glossary",
+    "group": "Resources",
+    "title": "Glossary",
+    "description": "The words this documentation uses, each with a one-line meaning.",
+    "sections": [
+      {
+        "title": "How to use it",
+        "text": "Hover a dotted-underlined word anywhere in the docs to see its meaning; this page collects them all."
+      },
+      {
+        "title": "Timeline",
+        "text": "The words of the edit itself.",
+        "rows": [
+          [
+            "Term",
+            "Meaning"
+          ],
+          [
+            "timeline",
+            "The whole edit: clips, their order and their animated properties. Studio, the API and the renderer all read the same one."
+          ],
+          [
+            "clip",
+            "One building block of the timeline: media, text or a shape, with its own timing, transform and effects."
+          ],
+          [
+            "track",
+            "A layer of the timeline: video, overlay or audio. Clips sit on tracks and stack by z-order."
+          ],
+          [
+            "z-order",
+            "The stacking rank of a clip, from -100 to 100. Overlays draw in one order in preview and export alike."
+          ],
+          [
+            "keyframe",
+            "A value for a property at one moment in time. The engine eases from one keyframe to the next."
+          ],
+          [
+            "easing",
+            "The curve a property follows between two keyframes: linear, springy, bouncy and more."
+          ],
+          [
+            "expression",
+            "A formula of time that drives a property live in the preview and compiles to FFmpeg."
+          ],
+          [
+            "preset",
+            "A ready-made entrance, exit, attention or camera move applied to a clip."
+          ],
+          [
+            "template",
+            "A composed motion-graphics block such as a lower third or title card, added with one operation."
+          ],
+          [
+            "scope",
+            "What a key may do: read, write or admin. API keys are scoped; accounts have roles."
+          ],
+          [
+            "rig",
+            "A poseable group of clips in the Animator: each part has a joint, an optional parent and its own keys."
+          ],
+          [
+            "dope sheet",
+            "The Animator's key list: one row per part, one column per moment in time."
+          ],
+          [
+            "block",
+            "A drag-and-drop node in the block studio that builds timeline operations without code."
+          ],
+          [
+            "render",
+            "The FFmpeg pass that turns a timeline into an MP4 server-side."
+          ],
+          [
+            "storyboard",
+            "A PNG contact sheet of evenly spaced frames, one request for the whole edit."
+          ]
+        ],
+        "links": [
+          {
+            "label": "Keyframes",
+            "slug": "keyframes"
+          },
+          {
+            "label": "Shapes",
+            "slug": "shapes"
+          },
+          {
+            "label": "Batch operations",
+            "slug": "batch-operations"
+          },
+          {
+            "label": "Animator",
+            "slug": "animator"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "status",
+    "group": "Resources",
+    "title": "Live status",
+    "description": "Whether the hosted deployment is up right now, checked from your browser.",
+    "sections": [
+      {
+        "title": "What you are looking at",
+        "text": "The hosted API server is <https://videoforge-api-s54w.onrender.com>. It is the deployment the introduction, quickstart and self-hosting pages point to, and it sleeps when idle: free hosting pauses inactive servers, so the first request after a pause can take a few seconds to wake it.\n\nIf it stays down, the deployment is broken rather than asleep — check the repository's GitHub Pages deployment, or run your own server from the self-hosting guide.",
+        "callouts": [
+          {
+            "kind": "tip",
+            "text": "Self-hosting is the supported way to use VideoForge: your uploads stay on your disk, renders use your FFmpeg, and nothing sleeps."
+          }
+        ],
+        "links": [
+          {
+            "label": "Self-hosting",
+            "slug": "self-hosting"
+          },
+          {
+            "label": "Troubleshooting",
+            "slug": "troubleshooting"
+          },
+          {
+            "label": "Quickstart",
+            "slug": "quickstart"
+          }
+        ]
+      }
     ]
   },
   {
@@ -2669,150 +3022,602 @@ export const DOC_PAGES: DocPage[] = [
     "sections": [
       {
         "title": "Where we are",
-        "text": "**Overall: 44 of 113 done, 39%.** ████████░░░░░░░░░░░░\n\nNothing is being built right now, and 69 items are still to do. Done items are ticked, items being worked on carry an In progress label, items first in line carry an Up next label, and every open item has a priority of High, Medium or Low. Each item below ships with its own tests and a commit to main, so this page always matches the repo.\n\nThe next pushes are real tutorial videos, a calmer editor interface, a much stronger docs site and a todo list whose checkboxes and bars calculate themselves. They are broken down further down this page."
+        "text": "{{progress-overall}}\n\nNothing is in progress right now. When a task starts it is marked here with an In progress label, and items first in line carry an Up next label. Every open item has a priority of High, Medium or Low, and each item ships with its own tests and a commit to main, so this page always matches the repo.\n\nEvery count, bar and percentage on this page is calculated from the checkboxes below at build time, so none of it is typed by hand. Use the filters to show everything, only the open items, the work in progress or what is done, and narrow the list by priority or area."
       },
       {
         "title": "Progress by area",
-        "text": "Each bar counts finished items in that area. The block studio and the shipped docs are complete, and the rest is the work ahead.",
-        "rows": [
-          [
-            "Area",
-            "Done",
-            "In progress",
-            "To do",
-            "Progress"
-          ],
-          [
-            "Block studio",
-            "30",
-            "0",
-            "0",
-            "████████ 100%"
-          ],
-          [
-            "Animator and rigs",
-            "3",
-            "0",
-            "6",
-            "██░░░░░░ 33%"
-          ],
-          [
-            "Docs shipped",
-            "6",
-            "0",
-            "0",
-            "████████ 100%"
-          ],
-          [
-            "Accounts and media",
-            "4",
-            "0",
-            "3",
-            "█████░░░ 57%"
-          ],
-          [
-            "Tutorial videos",
-            "1",
-            "0",
-            "10",
-            "█░░░░░░░ 9%"
-          ],
-          [
-            "Editor UI revamp",
-            "0",
-            "0",
-            "14",
-            "░░░░░░░░ 0%"
-          ],
-          [
-            "Docs: reading and navigation",
-            "0",
-            "0",
-            "12",
-            "░░░░░░░░ 0%"
-          ],
-          [
-            "Docs: live and generated",
-            "0",
-            "0",
-            "8",
-            "░░░░░░░░ 0%"
-          ],
-          [
-            "Calculated todo list",
-            "0",
-            "0",
-            "10",
-            "░░░░░░░░ 0%"
-          ],
-          [
-            "Docs: quality and reach",
-            "0",
-            "0",
-            "6",
-            "░░░░░░░░ 0%"
-          ],
-          [
-            "Everything",
-            "44",
-            "0",
-            "69",
-            "███░░░░░ 39%"
-          ]
-        ]
-      },
-      {
-        "title": "In progress",
-        "text": "Work that has started and is not finished. Nothing is in progress at the moment. When a task starts it moves here with an In progress label, and these five are first in line:\n\n- ☐ **High.** **Up next.** Record a screen capture of the whole motion graphics tutorial, one short clip per section, with the Studio shown at a readable size.\n- ☐ **High.** **Up next.** Audit every panel and the top bar, listing what is used daily, what is rare and what can move into a menu.\n- ☐ **High.** **Up next.** Copy button and syntax highlighting on every code block.\n- ☐ **High.** **Up next.** Draw `- [ ]` and `- [x]` items as real checkboxes in the docs page, read-only and labelled for screen readers, instead of the ☐ and ☑ text symbols.\n- ☐ **High.** **Up next.** Calculate progress from the checkboxes at build time, per section and overall, so no bar, percentage or count is typed by hand."
+        "text": "Each bar counts finished items in that area, worked out from this page's own sections.\n\n{{progress-table}}"
       },
       {
         "title": "Next: tutorial videos",
-        "text": "Tutorials become motion graphics and real video: recordings of VideoForge being used, placed next to the steps they show. █░░░░░░░ 1 of 11 done.\n\n- ☑ Written motion graphics tutorial with a matching API batch.\n- ☐ **High.** **Up next.** Record a screen capture of the whole motion graphics tutorial, one short clip per section, with the Studio shown at a readable size.\n- ☐ **High.** Play each clip inside the docs page next to the step it shows: a video block with a poster image, captions and play, pause and replay.\n- ☐ **High.** Chapters on every tutorial video that link to the page section, and a section link that jumps the video to the right second.\n- ☐ **High.** Loop recordings for every motion preset, template and shape, shown beside its entry in the docs.\n- ☐ **Medium.** Recorded walkthroughs of the Studio tour, the Animator, the block studio and the agent API workflow.\n- ☐ **Medium.** Make the recordings with a script (Playwright plus FFmpeg) so they can be rebuilt in one command whenever the interface changes.\n- ☐ **Medium.** More tutorials: Animator rig, blocks and Apply to edit, a YouTube lower third, kinetic type, a product promo, captions on a talking-head clip, and driving an edit from an agent.\n- ☐ **Medium.** Transcripts for every video, so each tutorial also works as text and in search.\n- ☐ **Low.** A short intro film for the docs home page and a recorded changelog for each release.\n- ☐ **Low.** Host videos outside git (a release asset or storage bucket) so the repository stays small."
+        "text": "Tutorials become motion graphics and real video: recordings of VideoForge being used, placed next to the steps they show.",
+        "tasks": [
+          {
+            "status": "done",
+            "text": "Written motion graphics tutorial with a matching API batch."
+          },
+          {
+            "status": "todo",
+            "text": "**Up next.** Record a screen capture of the whole motion graphics tutorial, one short clip per section, with the Studio shown at a readable size.",
+            "priority": "High"
+          },
+          {
+            "status": "todo",
+            "text": "Play each clip inside the docs page next to the step it shows: a video block with a poster image, captions and play, pause and replay.",
+            "priority": "High"
+          },
+          {
+            "status": "todo",
+            "text": "Chapters on every tutorial video that link to the page section, and a section link that jumps the video to the right second.",
+            "priority": "High"
+          },
+          {
+            "status": "todo",
+            "text": "Loop recordings for every motion preset, template and shape, shown beside its entry in the docs.",
+            "priority": "High"
+          },
+          {
+            "status": "todo",
+            "text": "Recorded walkthroughs of the Studio tour, the Animator, the block studio and the agent API workflow.",
+            "priority": "Medium"
+          },
+          {
+            "status": "todo",
+            "text": "Make the recordings with a script (Playwright plus FFmpeg) so they can be rebuilt in one command whenever the interface changes.",
+            "priority": "Medium"
+          },
+          {
+            "status": "todo",
+            "text": "More tutorials: Animator rig, blocks and Apply to edit, a YouTube lower third, kinetic type, a product promo, captions on a talking-head clip, and driving an edit from an agent.",
+            "priority": "Medium"
+          },
+          {
+            "status": "todo",
+            "text": "Transcripts for every video, so each tutorial also works as text and in search.",
+            "priority": "Medium"
+          },
+          {
+            "status": "todo",
+            "text": "A short intro film for the docs home page and a recorded changelog for each release.",
+            "priority": "Low"
+          },
+          {
+            "status": "todo",
+            "text": "Host videos outside git (a release asset or storage bucket) so the repository stays small.",
+            "priority": "Low"
+          }
+        ]
       },
       {
         "title": "Next: editor UI revamp",
-        "text": "The editor has grown crowded. The goal is a calmer layout where the common controls are obvious and the rest is one step away. ░░░░░░░░ 0 of 14 done.\n\n- ☐ **High.** **Up next.** Audit every panel and the top bar, listing what is used daily, what is rare and what can move into a menu.\n- ☐ **High.** Calmer top bar: keep Edit and Animate, Add title, Project and Export in view and move the rest into a single More menu.\n- ☐ **High.** Workspace presets (Edit, Animate, Graphics, Audio, Blocks) that show only the panels each job needs, and remember the last one.\n- ☐ **High.** A command palette on Ctrl+K for every Studio action, with recent commands and shortcuts shown beside each.\n- ☐ **High.** Inspector with progressive disclosure: the common controls first, advanced groups folded, and a search box inside the inspector.\n- ☐ **Medium.** Icon dock for the left panels (Media, Effects, Blocks, Graphics, Tools, Projects) with tooltips, instead of a block of text tabs.\n- ☐ **Medium.** Simple and Advanced modes, so a first-time user sees a small set of tools and can switch the rest on.\n- ☐ **Medium.** One spacing, type and colour scale shared by the Studio, Animator and block studio, built from the same design tokens.\n- ☐ **Medium.** Timeline polish: tidier track headers, collapsible tracks, a minimap for long projects and clearer selection.\n- ☐ **Medium.** Keyboard shortcut sheet on the ? key, and an editor tour for first-time users.\n- ☐ **Medium.** Better empty states for media, graphics and the timeline, each with one clear next action.\n- ☐ **Low.** A mobile editor layout built around one panel at a time.\n- ☐ **Low.** A light theme for the Studio.\n- ☐ **Low.** Screenshot checks at three window sizes in CI, so the layout cannot drift back into clutter."
+        "text": "The editor has grown crowded. The goal is a calmer layout where the common controls are obvious and the rest is one step away.",
+        "tasks": [
+          {
+            "status": "todo",
+            "text": "**Up next.** Audit every panel and the top bar, listing what is used daily, what is rare and what can move into a menu.",
+            "priority": "High"
+          },
+          {
+            "status": "todo",
+            "text": "Calmer top bar: keep Edit and Animate, Add title, Project and Export in view and move the rest into a single More menu.",
+            "priority": "High"
+          },
+          {
+            "status": "todo",
+            "text": "Workspace presets (Edit, Animate, Graphics, Audio, Blocks) that show only the panels each job needs, and remember the last one.",
+            "priority": "High"
+          },
+          {
+            "status": "todo",
+            "text": "A command palette on Ctrl+K for every Studio action, with recent commands and shortcuts shown beside each.",
+            "priority": "High"
+          },
+          {
+            "status": "todo",
+            "text": "Inspector with progressive disclosure: the common controls first, advanced groups folded, and a search box inside the inspector.",
+            "priority": "High"
+          },
+          {
+            "status": "todo",
+            "text": "Icon dock for the left panels (Media, Effects, Blocks, Graphics, Tools, Projects) with tooltips, instead of a block of text tabs.",
+            "priority": "Medium"
+          },
+          {
+            "status": "todo",
+            "text": "Simple and Advanced modes, so a first-time user sees a small set of tools and can switch the rest on.",
+            "priority": "Medium"
+          },
+          {
+            "status": "todo",
+            "text": "One spacing, type and colour scale shared by the Studio, Animator and block studio, built from the same design tokens.",
+            "priority": "Medium"
+          },
+          {
+            "status": "todo",
+            "text": "Timeline polish: tidier track headers, collapsible tracks, a minimap for long projects and clearer selection.",
+            "priority": "Medium"
+          },
+          {
+            "status": "todo",
+            "text": "Keyboard shortcut sheet on the ? key, and an editor tour for first-time users.",
+            "priority": "Medium"
+          },
+          {
+            "status": "todo",
+            "text": "Better empty states for media, graphics and the timeline, each with one clear next action.",
+            "priority": "Medium"
+          },
+          {
+            "status": "todo",
+            "text": "A mobile editor layout built around one panel at a time.",
+            "priority": "Low"
+          },
+          {
+            "status": "todo",
+            "text": "A light theme for the Studio.",
+            "priority": "Low"
+          },
+          {
+            "status": "todo",
+            "text": "Screenshot checks at three window sizes in CI, so the layout cannot drift back into clutter.",
+            "priority": "Low"
+          }
+        ]
       },
       {
         "title": "Next: docs reading and navigation",
-        "text": "Small features that make the docs faster to read and easier to trust. ░░░░░░░░ 0 of 12 done.\n\n- ☐ **High.** Previous and next links at the bottom of every page, in reading order.\n- ☐ **High.** **Up next.** Copy button and syntax highlighting on every code block.\n- ☐ **High.** Language tabs on API examples: curl, JavaScript and Python side by side.\n- ☐ **High.** Is this page helpful? buttons, and a link that opens a prefilled GitHub issue for the page.\n- ☐ **Medium.** Last updated date on every page, taken from git.\n- ☐ **Medium.** Roles on the home page: cards for Studio user, agent builder and contributor, each with a short path.\n- ☐ **Medium.** Troubleshooting and FAQ pages, plus a cookbook of short recipes.\n- ☐ **Medium.** A glossary with hover definitions for words like clip, track, keyframe, scope and rig.\n- ☐ **Medium.** Keyboard shortcuts page generated from the Studio's own shortcut list.\n- ☐ **Medium.** New and Updated badges on pages and sidebar entries.\n- ☐ **Low.** Click-to-zoom images, a print stylesheet and an offline copy of the docs.\n- ☐ **Low.** Docs search: remember filters, show a preview of the section on hover and add a / hint on every page."
+        "text": "Small features that make the docs faster to read and easier to trust.",
+        "tasks": [
+          {
+            "status": "done",
+            "text": "Previous and next links at the bottom of every page, in reading order."
+          },
+          {
+            "status": "done",
+            "text": "Copy button and syntax highlighting on every code block."
+          },
+          {
+            "status": "todo",
+            "text": "Language tabs on API examples: curl, JavaScript and Python side by side.",
+            "priority": "High"
+          },
+          {
+            "status": "done",
+            "text": "Is this page helpful? buttons, and a link that opens a prefilled GitHub issue for the page."
+          },
+          {
+            "status": "done",
+            "text": "Last updated date on every page, taken from git."
+          },
+          {
+            "status": "done",
+            "text": "Roles on the docs home page: cards for Studio user, agent builder and contributor, each with a short path."
+          },
+          {
+            "status": "done",
+            "text": "Troubleshooting and FAQ pages, plus a cookbook of short recipes."
+          },
+          {
+            "status": "done",
+            "text": "A glossary with hover definitions for words like clip, track, keyframe, scope and rig."
+          },
+          {
+            "status": "todo",
+            "text": "Keyboard shortcuts page generated from the Studio's own shortcut list.",
+            "priority": "Medium"
+          },
+          {
+            "status": "done",
+            "text": "New and Updated badges on pages and sidebar entries."
+          },
+          {
+            "status": "todo",
+            "text": "Click-to-zoom images, a print stylesheet and an offline copy of the docs.",
+            "priority": "Low"
+          },
+          {
+            "status": "todo",
+            "text": "Docs search: remember filters, show a preview of the section on hover and add a / hint on every page.",
+            "priority": "Low"
+          }
+        ]
       },
       {
         "title": "Next: docs live and generated",
-        "text": "Pages that run, update themselves and can be read by agents. ░░░░░░░░ 0 of 8 done.\n\n- ☐ **High.** Try it panel on each endpoint: paste a key, send a real request and see the response.\n- ☐ **High.** Interactive examples that embed the real preview, so a page shows a preset or template playing live.\n- ☐ **High.** An OpenAPI file generated from the operation list, linked from the API reference.\n- ☐ **Medium.** Generate the changelog page from commit messages.\n- ☐ **Medium.** Docs versions, so a self-hosted older release reads the matching pages.\n- ☐ **Medium.** A Markdown copy of every page and an llms.txt, so agents can read the docs directly.\n- ☐ **Medium.** Spanish docs that follow the Spanish block labels already in the studio.\n- ☐ **Low.** A page that shows the live status of the hosted deployment."
+        "text": "Pages that run, update themselves and can be read by agents.",
+        "tasks": [
+          {
+            "status": "todo",
+            "text": "Try it panel on each endpoint: paste a key, send a real request and see the response.",
+            "priority": "High"
+          },
+          {
+            "status": "todo",
+            "text": "Interactive examples that embed the real preview, so a page shows a preset or template playing live.",
+            "priority": "High"
+          },
+          {
+            "status": "done",
+            "text": "An OpenAPI file generated from the operation list, linked from the API reference."
+          },
+          {
+            "status": "todo",
+            "text": "Generate the changelog page from commit messages.",
+            "priority": "Medium"
+          },
+          {
+            "status": "todo",
+            "text": "Docs versions, so a self-hosted older release reads the matching pages.",
+            "priority": "Medium"
+          },
+          {
+            "status": "done",
+            "text": "A Markdown copy of every page and an llms.txt, so agents can read the docs directly."
+          },
+          {
+            "status": "todo",
+            "text": "Spanish docs that follow the Spanish block labels already in the studio.",
+            "priority": "Medium"
+          },
+          {
+            "status": "done",
+            "text": "A page that shows the live status of the hosted deployment."
+          }
+        ]
       },
       {
         "title": "Next: calculated todo list",
-        "text": "Make this page's checkboxes and progress bars real controls that work themselves out, instead of symbols and numbers typed by hand. `░░░░░░░░` 0 of 10 done.\n\n- ☐ **High.** **Up next.** Draw `- [ ]` and `- [x]` items as real checkboxes in the docs page, read-only and labelled for screen readers, instead of the ☐ and ☑ text symbols.\n- ☐ **High.** **Up next.** Calculate progress from the checkboxes at build time, per section and overall, so no bar, percentage or count is typed by hand.\n- ☐ **High.** Generate the Progress by area table from the page's own sections, with done, in progress and to do counts worked out from the items.\n- ☐ **High.** Draw each bar as a real progress element with an accessible label such as 44 of 112 done, so it animates, scales and reads out properly.\n- ☐ **Medium.** Status syntax in the markdown: `[ ]` to do, `[~]` in progress and `[x]` done, each with its own icon and counted separately in the bars.\n- ☐ **Medium.** Parse the priority (High, Medium, Low) out of each item so the page can sort, filter and count by priority.\n- ☐ **Medium.** Filter controls at the top of the page: All, Open, In progress and Done, plus priority and area, remembered per browser.\n- ☐ **Medium.** Fail the docs build when a hand-written number on the page disagrees with the checkboxes, and add a test that the calculated counts match.\n- ☐ **Low.** Show the overall progress next to the Bucket list entry in the sidebar.\n- ☐ **Low.** Link each item to its issue or commit, and offer to fill the list from GitHub issues."
+        "text": "Make this page's checkboxes and progress bars real controls that work themselves out, instead of symbols and numbers typed by hand.",
+        "tasks": [
+          {
+            "status": "done",
+            "text": "Draw `- [ ]` and `- [x]` items as real checkboxes in the docs page, read-only and labelled for screen readers, instead of the ☐ and ☑ text symbols."
+          },
+          {
+            "status": "done",
+            "text": "Calculate progress from the checkboxes at build time, per section and overall, so no bar, percentage or count is typed by hand."
+          },
+          {
+            "status": "done",
+            "text": "Generate the Progress by area table from the page's own sections, with done, in progress and to do counts worked out from the items."
+          },
+          {
+            "status": "done",
+            "text": "Draw each bar as a real progress element with an accessible label naming the done and total counts, so it animates, scales and reads out properly."
+          },
+          {
+            "status": "done",
+            "text": "Status syntax in the markdown: `[ ]` to do, `[~]` in progress and `[x]` done, each with its own icon and counted separately in the bars."
+          },
+          {
+            "status": "done",
+            "text": "Parse the priority (High, Medium, Low) out of each item so the page can sort, filter and count by priority."
+          },
+          {
+            "status": "done",
+            "text": "Filter controls at the top of the page: All, Open, In progress and Done, plus priority and area, remembered per browser."
+          },
+          {
+            "status": "done",
+            "text": "Fail the docs build when a hand-written number on the page disagrees with the checkboxes, and add a test that the calculated counts match."
+          },
+          {
+            "status": "done",
+            "text": "Show the overall progress next to the Bucket list entry in the sidebar."
+          },
+          {
+            "status": "done",
+            "text": "Link each item to its issue or commit, and offer to fill the list from GitHub issues with [script/todo-from-issues.ts](https://github.com/HomekidChud/videoforge/blob/main/script/todo-from-issues.ts)."
+          }
+        ]
       },
       {
         "title": "Next: docs quality and reach",
-        "text": "Checks that stop the docs drifting from the product, and work that helps people find them. ░░░░░░░░ 0 of 6 done.\n\n- ☐ **High.** Link checker in CI for internal links, section anchors and external URLs.\n- ☐ **High.** Test every JSON and shell example in the docs against the real API, the way the tutorial batch is tested.\n- ☐ **Medium.** Style and spelling checks on docs pull requests.\n- ☐ **Medium.** An accessibility pass on the docs: contrast, focus order, skip link and screen reader labels.\n- ☐ **Medium.** Social preview images and page descriptions for each page, plus a sitemap.\n- ☐ **Low.** A contributors list on the Contribute page."
+        "text": "Checks that stop the docs drifting from the product, and work that helps people find them.",
+        "tasks": [
+          {
+            "status": "done",
+            "text": "Link checker in CI for internal links, section anchors and external URLs."
+          },
+          {
+            "status": "todo",
+            "text": "Test every JSON and shell example in the docs against the real API, the way the tutorial batch is tested.",
+            "priority": "High"
+          },
+          {
+            "status": "todo",
+            "text": "Style and spelling checks on docs pull requests.",
+            "priority": "Medium"
+          },
+          {
+            "status": "todo",
+            "text": "An accessibility pass on the docs: contrast, focus order, skip link and screen reader labels.",
+            "priority": "Medium"
+          },
+          {
+            "status": "todo",
+            "text": "Social preview images and page descriptions for each page, plus a sitemap.",
+            "priority": "Medium"
+          },
+          {
+            "status": "done",
+            "text": "A contributors list on the Contribute page."
+          }
+        ]
       },
       {
-        "title": "Animator and rigs ideas",
-        "text": "What would make the Animator feel complete. ██░░░░░░ 3 of 9 done.\n\n- ☑ **Rig animations, for clips.** The Animator is a Roblox-style animation editor where the parts are your own clips instead of bones: video clips, images, text and shapes all become rig parts with a joint, an optional parent and their own keyframes. Pose by dragging on the stage or typing values, key on a dope sheet with easing per key, parent parts by dragging, and bake the result into plain clip keyframes with the green Apply to edit button. Presets (bounce, swing, wave, pulse, float, pop in, walk cycle), a ready-made stick figure, undo and redo, and animations saved per project. Because it bakes into ordinary keyframes the preview, FFmpeg export and API need no new renderer.\n- ☑ **Animator button.** Opens from the Studio top bar and from the block studio header.\n- ☑ **Rig blocks and operations.** Pose clips together, Make a clip follow another and Play an Animator animation join the palette, backed by new `rig_pose`, `rig_follow` and `rig_bake` timeline operations that agents can call too.\n- ☐ **High.** Onion skinning and a ghost of the previous pose in the Animator.\n- ☐ **High.** Save Animator animations to the project on the server so they follow you between browsers.\n- ☐ **Medium.** IK handles so dragging a hand moves the whole arm.\n- ☐ **Medium.** Rig keys on text effects and colour, not just position, size, turn and see-through.\n- ☐ **Medium.** A library of ready-made rigs beyond the stick figure: mascot, hands.\n- ☐ **Low.** Copy and paste poses between parts and between animations."
+        "title": "Animator and rigs",
+        "text": "What would make the Animator feel complete.",
+        "tasks": [
+          {
+            "status": "done",
+            "text": "**Rig animations, for clips.** The Animator is a Roblox-style animation editor where the parts are your own clips instead of bones: video clips, images, text and shapes all become rig parts with a joint, an optional parent and their own keyframes. Pose by dragging on the stage or typing values, key on a dope sheet with easing per key, parent parts by dragging, and bake the result into plain clip keyframes with the green Apply to edit button. Presets (bounce, swing, wave, pulse, float, pop in, walk cycle), a ready-made stick figure, undo and redo, and animations saved per project. Because it bakes into ordinary keyframes the preview, FFmpeg export and API need no new renderer."
+          },
+          {
+            "status": "done",
+            "text": "**Animator button.** Opens from the Studio top bar and from the block studio header."
+          },
+          {
+            "status": "done",
+            "text": "**Rig blocks and operations.** Pose clips together, Make a clip follow another and Play an Animator animation join the palette, backed by new `rig_pose`, `rig_follow` and `rig_bake` timeline operations that agents can call too."
+          },
+          {
+            "status": "todo",
+            "text": "Onion skinning and a ghost of the previous pose in the Animator.",
+            "priority": "High"
+          },
+          {
+            "status": "todo",
+            "text": "Save Animator animations to the project on the server so they follow you between browsers.",
+            "priority": "High"
+          },
+          {
+            "status": "todo",
+            "text": "IK handles so dragging a hand moves the whole arm.",
+            "priority": "Medium"
+          },
+          {
+            "status": "todo",
+            "text": "Rig keys on text effects and colour, not just position, size, turn and see-through.",
+            "priority": "Medium"
+          },
+          {
+            "status": "todo",
+            "text": "A library of ready-made rigs beyond the stick figure: mascot, hands.",
+            "priority": "Medium"
+          },
+          {
+            "status": "todo",
+            "text": "Copy and paste poses between parts and between animations.",
+            "priority": "Low"
+          }
+        ]
       },
       {
         "title": "Media and studio ideas",
-        "text": "Uploads, playback speed and open ideas. ░░░░░░░░ 0 of 3 done.\n\n- ☐ **Medium.** Resumable and chunked uploads for very large files.\n- ☐ **Medium.** Background proxies for large video, so scrubbing stays smooth.\n- ☐ **Low.** Your idea here: the studio is in good shape, so what should people be able to make next?"
+        "text": "Uploads, playback speed and open ideas.",
+        "tasks": [
+          {
+            "status": "todo",
+            "text": "Resumable and chunked uploads for very large files.",
+            "priority": "Medium"
+          },
+          {
+            "status": "todo",
+            "text": "Background proxies for large video, so scrubbing stays smooth.",
+            "priority": "Medium"
+          },
+          {
+            "status": "todo",
+            "text": "Your idea here: the studio is in good shape, so what should people be able to make next?",
+            "priority": "Low"
+          }
+        ]
       },
       {
         "title": "Shipped: block studio",
-        "text": "████████ 30 items.\n\n- ☑ Full-screen Scratch-style block studio (React Flow) with palette drag and drop, custom nodes, per-edge delete buttons, inline param handles, live validation and the error console bar.\n- ☑ Code tab as a real editor: helper reference sidebar with click-to-insert examples, $-template reference, line numbers, tab-key support, bigger monospace font and inline run errors.\n- ☑ Blocks → Code conversion on tab switch, with generated JavaScript that produces the same operations the blocks would, and a notice that the tool now runs the code.\n- ☑ Animation everything: all motion presets in the palette (entrances, exits, attention, springy, camera), animate-any-property keyframe blocks with easings, text effects (typewriter, word/line reveal, colour cycle), draw-on, pulsing glow, parallax, speed and timing blocks.\n- ☑ Many more edit tools: the Edit group covers transform, flip and mirror, row/column placement and distribute, snap to grid, crop, opacity, colour looks and filters, brightness/contrast/saturation/blur, speed and duration, volume, mute, audio fades, tracks and layering, copy with offset, replace words, and for-each filtering by colour and contained text. (True edge-to-edge alignment is still open — see the bucket list.)\n- ☑ True z-order: clips carry a z field (-100..100). Overlay visuals — media, shapes and text alike — stack by z in one order, in both the preview and the renderer; move_layer blocks step past the nearest neighbour even with unequal ranks.\n- ☑ Spatial crop for media clips: a crop box (fractions of the layer box) applied by the preview's clip-path and the renderer's crop filter (the layer keeps its box, padded back transparent, so preview and export match), driven by the friendly trim-sides Crop block.\n- ☑ Motion blocks take an easing pick; audio clips are walkable by for-each (kind \"audio\") for volume tools.\n- ☑ Palette tabs: the studio palette is a Scratch-style rail of coloured categories (Create, Edit, Move in, Move out, Attention, Springy, Camera, Animate, Text, Style, Clips, Timing, Values, Flow) with the palette showing only the selected category.\n- ☑ First-tool tutorial: a six-step guided tour opens the first time a new blocks tool is created — name the tool, meet the block menu, edit the Add title block, run it and find it again — replayable from the 🎓 Tutorial button.\n- ☑ Value blocks: Text, Number and Yes / No blocks in a new Values category plug into any block field — typed arguments without touching code; bad numbers turn red and unplugged values get a warning, and blocks-to-code conversion inlines them identically.\n- ☑ Arguments JSON editor removed: the Advanced op block and its Arguments (JSON) box are gone from the palette and the studio — every operation shows named, friendly fields, and a saved JSON object (like update_clip's patch) becomes editable property rows instead of raw text (saved advanced tools keep working).\n- ☑ Motion blocks are edit tools: \"Entrances\"/\"Exits\" became Move in / Move out with labels like \"Move a clip in\", framed as animating a clip you already have; saved block ids are unchanged.\n- ☑ Blocks panel: the block studio now opens from its own Blocks tab next to Effects — the Tools tab is code-only (no block editor: its studio hides the Blocks tab and the block-creation buttons), while it still runs tools.\n- ☑ Blocks tab opens the canvas itself: clicking Blocks goes straight into the block studio (your latest tool, or a fresh draft with the tutorial) — no tools list in between; closing it returns to the panel you came from.\n- ☑ Palette diet: the canned motion chips (Move in, Move out, Attention, Springy, Camera and their Animate duplicates) are out of the palette — the friendly from/to Animate blocks and presets cover them; hidden ids still load older saved tools.\n- ☑ Real edge alignment for the Line up block: clips line up by their measured edges — against each other or flush with the frame — including text clips (the renderer measures rendered text with drawtext/ascent).\n- ☑ Real speed ramps and freeze frames as first-class timeline ops: the Speed steps block builds a per-clip ramp (segments of constant speed, 0 = freeze), rendered with per-segment trim/setpts/concat (audio silenced and padded to match), and the preview plays the same ramp. Freeze frame is its own block.\n- ☑ Undo/redo for the studio: one entry per drop, delete, paste or edge; drags are one entry (committed at drag start); quick typing coalesces (900 ms). Ctrl+Z / Ctrl+Shift+Z, with a capture-phase listener so text fields don't swallow it.\n- ☑ Shareable tool codes: the 🔗 Share button copies a compact `VFT1:` code; the tools panel imports it. Old links keep working (damaged codes get a friendly error).\n- ☑ Save as sticker: the block turns any clip into a reusable building block; stickers appear in their own palette category and drop as fresh clips.\n- ☑ Hover help on palette groups and a searchable palette (search matches either language).\n- ☑ Export code tools as standalone scripts: the Code tab's “Export as standalone script” downloads a single .mjs that runs the same code against the API (`VF_API_KEY` env, `--dry-run` preview), for agents and cron jobs.\n- ☑ Localization: Spanish labels and descriptions for every block and group (🌐 button in the studio, remembered per browser; the browser language is the default). Search matches either language.\n- ☑ Calmer blocks: the coloured field dots (clip / frame / value sockets) only show when you hover a block, select it, focus it or while dragging a connection — dots that already have something plugged in stay visible, and the 🔌 Connectors button pins them all on. The canvas legend explains the dots.\n- ☑ Neater blocks: every block got more breathing room (roomier header, field and hint spacing) and a cleaner look — soft gradient card, one-pixel border, a colour-coded accent bar per block kind, circular glowing handles and hover states on the palette chips.\n- ☑ One ✕ per wire, not per canvas: a wire's delete button now appears when you click that wire (or hover the ✕ itself), instead of every ✕ lighting up whenever you touch the canvas.\n- ☑ 🧹 Tidy button: lines the run chain up a column, puts repeat bodies to its right, helper blocks (values, clips, frames) beside the blocks they feed and notes in a far column — one undo entry, like a drag. Presets and free spots also land further apart, so new blocks no longer stack on old ones.\n- ☑ Bigger tutorial: six steps became eleven in three parts (Your first tool, Connecting things, Power moves) with part chips you can jump between — now covering wires vs field dots, importing clips, value blocks, undo, presets and where saved tools live.\n- ☑ **Blocks are about the whole edit, not one tool.** The green block now reads \"When Apply is pressed\" and the Run button is ▶ Apply to edit. Preview lists what Apply would change before it touches the edit, and the green block's Work on setting picks which clips the blocks use: selected, every clip, under the playhead, or all video, text or shapes. Wording across the studio and the Tools panel changed from tools to blocks and scripts."
-      },
-      {
-        "title": "Shipped: Animator and rigs",
-        "text": "████████ 3 items.\n\n- ☑ **Rig animations, for clips.** The Animator is a Roblox-style animation editor where the parts are your own clips instead of bones: video clips, images, text and shapes all become rig parts with a joint, an optional parent and their own keyframes. Pose by dragging on the stage or typing values, key on a dope sheet with easing per key, parent parts by dragging, and bake the result into plain clip keyframes with the green Apply to edit button. Presets (bounce, swing, wave, pulse, float, pop in, walk cycle), a ready-made stick figure, undo and redo, and animations saved per project. Because it bakes into ordinary keyframes the preview, FFmpeg export and API need no new renderer.\n- ☑ **Animator button.** Opens from the Studio top bar and from the block studio header.\n- ☑ **Rig blocks and operations.** Pose clips together, Make a clip follow another and Play an Animator animation join the palette, backed by new `rig_pose`, `rig_follow` and `rig_bake` timeline operations that agents can call too."
+        "text": "Everything the block studio does today.",
+        "tasks": [
+          {
+            "status": "done",
+            "text": "Full-screen Scratch-style block studio (React Flow) with palette drag and drop, custom nodes, per-edge delete buttons, inline param handles, live validation and the error console bar."
+          },
+          {
+            "status": "done",
+            "text": "Code tab as a real editor: helper reference sidebar with click-to-insert examples, $-template reference, line numbers, tab-key support, bigger monospace font and inline run errors."
+          },
+          {
+            "status": "done",
+            "text": "Blocks → Code conversion on tab switch, with generated JavaScript that produces the same operations the blocks would, and a notice that the tool now runs the code."
+          },
+          {
+            "status": "done",
+            "text": "Animation everything: all motion presets in the palette (entrances, exits, attention, springy, camera), animate-any-property keyframe blocks with easings, text effects (typewriter, word/line reveal, colour cycle), draw-on, pulsing glow, parallax, speed and timing blocks."
+          },
+          {
+            "status": "done",
+            "text": "Many more edit tools: the Edit group covers transform, flip and mirror, row/column placement and distribute, snap to grid, crop, opacity, colour looks and filters, brightness/contrast/saturation/blur, speed and duration, volume, mute, audio fades, tracks and layering, copy with offset, replace words, and for-each filtering by colour and contained text. (True edge-to-edge alignment is still open — see the bucket list.)"
+          },
+          {
+            "status": "done",
+            "text": "True z-order: clips carry a z field (-100..100). Overlay visuals — media, shapes and text alike — stack by z in one order, in both the preview and the renderer; move_layer blocks step past the nearest neighbour even with unequal ranks."
+          },
+          {
+            "status": "done",
+            "text": "Spatial crop for media clips: a crop box (fractions of the layer box) applied by the preview's clip-path and the renderer's crop filter (the layer keeps its box, padded back transparent, so preview and export match), driven by the friendly trim-sides Crop block."
+          },
+          {
+            "status": "done",
+            "text": "Motion blocks take an easing pick; audio clips are walkable by for-each (kind \"audio\") for volume tools."
+          },
+          {
+            "status": "done",
+            "text": "Palette tabs: the studio palette is a Scratch-style rail of coloured categories (Create, Edit, Move in, Move out, Attention, Springy, Camera, Animate, Text, Style, Clips, Timing, Values, Flow) with the palette showing only the selected category."
+          },
+          {
+            "status": "done",
+            "text": "First-tool tutorial: a six-step guided tour opens the first time a new blocks tool is created — name the tool, meet the block menu, edit the Add title block, run it and find it again — replayable from the 🎓 Tutorial button."
+          },
+          {
+            "status": "done",
+            "text": "Value blocks: Text, Number and Yes / No blocks in a new Values category plug into any block field — typed arguments without touching code; bad numbers turn red and unplugged values get a warning, and blocks-to-code conversion inlines them identically."
+          },
+          {
+            "status": "done",
+            "text": "Arguments JSON editor removed: the Advanced op block and its Arguments (JSON) box are gone from the palette and the studio — every operation shows named, friendly fields, and a saved JSON object (like update_clip's patch) becomes editable property rows instead of raw text (saved advanced tools keep working)."
+          },
+          {
+            "status": "done",
+            "text": "Motion blocks are edit tools: \"Entrances\"/\"Exits\" became Move in / Move out with labels like \"Move a clip in\", framed as animating a clip you already have; saved block ids are unchanged."
+          },
+          {
+            "status": "done",
+            "text": "Blocks panel: the block studio now opens from its own Blocks tab next to Effects — the Tools tab is code-only (no block editor: its studio hides the Blocks tab and the block-creation buttons), while it still runs tools."
+          },
+          {
+            "status": "done",
+            "text": "Blocks tab opens the canvas itself: clicking Blocks goes straight into the block studio (your latest tool, or a fresh draft with the tutorial) — no tools list in between; closing it returns to the panel you came from."
+          },
+          {
+            "status": "done",
+            "text": "Palette diet: the canned motion chips (Move in, Move out, Attention, Springy, Camera and their Animate duplicates) are out of the palette — the friendly from/to Animate blocks and presets cover them; hidden ids still load older saved tools."
+          },
+          {
+            "status": "done",
+            "text": "Real edge alignment for the Line up block: clips line up by their measured edges — against each other or flush with the frame — including text clips (the renderer measures rendered text with drawtext/ascent)."
+          },
+          {
+            "status": "done",
+            "text": "Real speed ramps and freeze frames as first-class timeline ops: the Speed steps block builds a per-clip ramp (segments of constant speed, 0 = freeze), rendered with per-segment trim/setpts/concat (audio silenced and padded to match), and the preview plays the same ramp. Freeze frame is its own block."
+          },
+          {
+            "status": "done",
+            "text": "Undo/redo for the studio: one entry per drop, delete, paste or edge; drags are one entry (committed at drag start); quick typing coalesces (900 ms). Ctrl+Z / Ctrl+Shift+Z, with a capture-phase listener so text fields don't swallow it."
+          },
+          {
+            "status": "done",
+            "text": "Shareable tool codes: the 🔗 Share button copies a compact `VFT1:` code; the tools panel imports it. Old links keep working (damaged codes get a friendly error)."
+          },
+          {
+            "status": "done",
+            "text": "Save as sticker: the block turns any clip into a reusable building block; stickers appear in their own palette category and drop as fresh clips."
+          },
+          {
+            "status": "done",
+            "text": "Hover help on palette groups and a searchable palette (search matches either language)."
+          },
+          {
+            "status": "done",
+            "text": "Export code tools as standalone scripts: the Code tab's \"Export as standalone script\" downloads a single .mjs that runs the same code against the API (`VF_API_KEY` env, `--dry-run` preview), for agents and cron jobs."
+          },
+          {
+            "status": "done",
+            "text": "Localization: Spanish labels and descriptions for every block and group (🌐 button in the studio, remembered per browser; the browser language is the default). Search matches either language."
+          },
+          {
+            "status": "done",
+            "text": "Calmer blocks: the coloured field dots (clip / frame / value sockets) only show when you hover a block, select it, focus it or while dragging a connection — dots that already have something plugged in stay visible, and the 🔌 Connectors button pins them all on. The canvas legend explains the dots."
+          },
+          {
+            "status": "done",
+            "text": "Neater blocks: every block got more breathing room (roomier header, field and hint spacing) and a cleaner look — soft gradient card, one-pixel border, a colour-coded accent bar per block kind, circular glowing handles and hover states on the palette chips."
+          },
+          {
+            "status": "done",
+            "text": "One ✕ per wire, not per canvas: a wire's delete button now appears when you click that wire (or hover the ✕ itself), instead of every ✕ lighting up whenever you touch the canvas."
+          },
+          {
+            "status": "done",
+            "text": "🧹 Tidy button: lines the run chain up a column, puts repeat bodies to its right, helper blocks (values, clips, frames) beside the blocks they feed and notes in a far column — one undo entry, like a drag. Presets and free spots also land further apart, so new blocks no longer stack on old ones."
+          },
+          {
+            "status": "done",
+            "text": "Bigger tutorial: six steps became eleven in three parts (Your first tool, Connecting things, Power moves) with part chips you can jump between — now covering wires vs field dots, importing clips, value blocks, undo, presets and where saved tools live."
+          },
+          {
+            "status": "done",
+            "text": "**Blocks are about the whole edit, not one tool.** The green block now reads \"When Apply is pressed\" and the Run button is ▶ Apply to edit. Preview lists what Apply would change before it touches the edit, and the green block's Work on setting picks which clips the blocks use: selected, every clip, under the playhead, or all video, text or shapes. Wording across the studio and the Tools panel changed from tools to blocks and scripts."
+          }
+        ]
       },
       {
         "title": "Shipped: docs",
-        "text": "████████ 6 items.\n\n- ☑ **Better docs.** Sidebar guide groups open and close with an arrow (remembered per browser, plus Collapse all), every section folds with its own arrow, and there are reading times, a progress bar, a highlighted on-this-page list, copyable section links, breadcrumbs, note, tip and warning callouts, bullet lists with bold, code and links, an edit-on-GitHub link and a back-to-top button.\n- ☑ **Docs search.** Every section is searched, typos are forgiven only for words the docs do not contain, weak matches are trimmed, four pages show first with Show more, and a closest-match fallback appears when no page has every word.\n- ☑ **Docs start tidy.** Only Get started is open on arrival, and the group you are reading opens by itself.\n- ☑ **Motion graphics tutorial.** An animated intro built step by step in the Studio, plus the same result as one API batch that a test keeps honest.\n- ☑ **Contribute and Storage pages.** Setup, code layout, tests and recipes for presets, templates, operations and blocks, and a page on disks, backups and the optional MongoDB store.\n- ☑ **Short README.** A one-screen overview with a docs index, instead of repeating the docs."
+        "text": "What the docs site already does.",
+        "tasks": [
+          {
+            "status": "done",
+            "text": "**Better docs.** Sidebar guide groups open and close with an arrow (remembered per browser, plus Collapse all), every section folds with its own arrow, and there are reading times, a progress bar, a highlighted on-this-page list, copyable section links, breadcrumbs, note, tip and warning callouts, bullet lists with bold, code and links, an edit-on-GitHub link and a back-to-top button."
+          },
+          {
+            "status": "done",
+            "text": "**Docs search.** Every section is searched, typos are forgiven only for words the docs do not contain, weak matches are trimmed, four pages show first with Show more, and a closest-match fallback appears when no page has every word."
+          },
+          {
+            "status": "done",
+            "text": "**Docs start tidy.** Only Get started is open on arrival, and the group you are reading opens by itself."
+          },
+          {
+            "status": "done",
+            "text": "**Motion graphics tutorial.** An animated intro built step by step in the Studio, plus the same result as one API batch that a test keeps honest."
+          },
+          {
+            "status": "done",
+            "text": "**Contribute and Storage pages.** Setup, code layout, tests and recipes for presets, templates, operations and blocks, and a page on disks, backups and the optional MongoDB store."
+          },
+          {
+            "status": "done",
+            "text": "**Short README.** A one-screen overview with a docs index, instead of repeating the docs."
+          }
+        ]
       },
       {
         "title": "Shipped: accounts and media",
-        "text": "████████ 4 items.\n\n- ☑ Hosted API server documented: https://videoforge-api-s54w.onrender.com is stated in the introduction, quickstart, self-hosting guide and README, with per-deployment keys.\n- ☑ Server-side tool library: tools sync per account (or per API key) with `GET/PUT/DELETE /api/tools/:id`, merged with the browser's local copy as the offline fallback.\n- ☑ Accounts with durable sign-ins: email + password (first account needs the owner key), Google when configured, API keys for agents; sessions live in SQLite so they survive restarts. No API key needed to use the studio.\n- ☑ **Faster uploads, and the sign-in bug fixed.** The session cookie is now sent with uploads, four files go up at once, each file is probed once, thumbnails are ready straight after upload and media plays with range requests."
+        "text": "Sign-ins, keys and uploads that already work.",
+        "tasks": [
+          {
+            "status": "done",
+            "text": "Hosted API server documented: https://videoforge-api-s54w.onrender.com is stated in the introduction, quickstart, self-hosting guide and README, with per-deployment keys."
+          },
+          {
+            "status": "done",
+            "text": "Server-side tool library: tools sync per account (or per API key) with `GET/PUT/DELETE /api/tools/:id`, merged with the browser's local copy as the offline fallback."
+          },
+          {
+            "status": "done",
+            "text": "Accounts with durable sign-ins: email + password (first account needs the owner key), Google when configured, API keys for agents; sessions live in SQLite so they survive restarts. No API key needed to use the studio."
+          },
+          {
+            "status": "done",
+            "text": "**Faster uploads, and the sign-in bug fixed.** The session cookie is now sent with uploads, four files go up at once, each file is probed once, thumbnails are ready straight after upload and media plays with range requests."
+          }
+        ]
       }
-    ]
+    ],
+    "taskStats": {
+      "done": 67,
+      "doing": 0,
+      "todo": 46
+    },
+    "updated": "2026-10-17T12:22:52Z",
+    "added": "2026-10-16T00:27:26Z"
+  }
+];
+
+export const CONTRIBUTORS: { name: string; commits: number }[] = [
+  {
+    "commits": 48,
+    "name": "HomekidChud"
+  },
+  {
+    "commits": 2,
+    "name": "Perplexity Computer"
+  },
+  {
+    "commits": 2,
+    "name": "VideoForge Agent"
+  },
+  {
+    "commits": 1,
+    "name": "AgentMedia1942"
   }
 ];

@@ -1,0 +1,830 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "VideoForge API",
+    "version": "7",
+    "description": "Self-hosted video editing, asset-free motion graphics and FFmpeg rendering. The browser Studio and agent API drive the same timeline; no agent-supplied code is executed.\n\nTimeline batch operations (POST /api/projects/{id}/timeline/ops, body {op,args} or {ops:[...]}), documented as GET /api/capabilities reports them:\n- add_shape_clip: shape: {type,width?,height?,fill?,stroke?,strokeWidth?,radius?}, id?, start?, duration?, x?, y?, plus transform/keyframe fields\n- add_motion_template: template (lower-third|title-card|callout|kinetic-type|countdown|quote-card|split-reveal|progress-bar|stat-highlight|bullet-list|social-handle|chapter-number|starburst); bullet-list takes items[] (1..6), chapter-number takes number, title?, subtitle?, color?, start?, duration? (0.5..60), idPrefix? (stable layer ids: prefix-0, prefix-1, ...)\n- stagger_clips: clipIds: [id...] in desired order, delay (0..60 seconds), start?\n- add_clip: assetId, track?, start?, inPoint?, outPoint?, plus any clip field\n- add_text_clip: text, id?, start?, duration?, plus text and transform fields\n- remove_clip: clipId\n- ripple_delete: clipId\n- duplicate_clip: clipId, start?, dx?, dy? (position offset for the copy)\n- trim_clip: clipId, inPoint?, outPoint?\n- move_clip: clipId, start?, track?\n- split_clip: clipId, at (timeline seconds)\n- update_clip: clipId plus any clip field\n- swap_asset: clipId, assetId, duration?, inPoint?, outPoint?, keepKeyframes? — replaces the media source of an existing clip (kept id, style, and placement). not supported on text/shape clips.\n- set_audio: clipId, volume?, muted?\n- add_text: clipId, text\n- set_keyframes: clipId, property, keyframes: [{time,value,easing?}] replaces that property; [] clears it\n- rig_bake: animation: {name?, length, start?, parts: [{clipId, parentId?, pivotX?, pivotY?}], tracks: {clipId: {x|y|scale|rotation|opacity: [{time,value,easing?}]}}}, start? - bakes an Animator animation (joints and parent/child parts) into ordinary clip keyframes\n- rig_pose: clipIds[], any of x, y, scale, rotation, opacity, delay? (0..60), duration? (default 0.8), easing? - moves several clips to a pose together from where they are now\n- rig_follow: childId, parentId, pivotX?, pivotY? (joint offset from the parent's centre, fraction of the frame) - the child rides the parent's motion, turning and scaling about the joint\n- upsert_keyframe: clipId, property, time, value, easing?\n- remove_keyframe: clipId, property, time\n- apply_motion: clipId, preset (see motionPresets), duration? (seconds the move takes), delay? (seconds into the clip), strength? (0.1..2, distance/overshoot multiplier)\n- apply_motion_sequence: clipIds[], preset, stagger? (default 0.12 s between clips), start?, plus apply_motion's duration/delay/strength. Applies one preset to many clips and offsets their starts\n- reverse_animation: clipId - plays every keyframe curve backwards, mirroring each easing\n- retime_animation: clipId, duration, delay? - compresses or stretches all keyframes of a clip into one window, keeping relative timing\n- add_beat_markers: bpm (20..300), count? (1..100, default 8), start?, every? (markers on every Nth beat), label?, color?\n- snap_to_beats: clipIds[], bpm, start? - moves clip starts to the nearest beat\n- align_clips: clipIds[], mode (left|center|right|top|middle|bottom|distribute-h|distribute-v) - lines clips up or spreads them evenly across the frame\n- snap_to_grid: clipIds[], grid (0.02..0.5, default 0.1) - rounds positions to a grid\n- move_layer: clipId, direction (forward|backward|front|back) - changes stacking order within a track via the clip z field\n- set_track: track, settings: {muted?, hidden?, locked?}\n- add_marker: time, label?, color?\n- remove_marker: id\n- set_project: fps?, resolution?: {width,height}, background?: #rrggbb, refit? (true refits text, shapes and overlays to the new canvas)\n- reorder: order: [clipId...] re-spaces video clips sequentially\n- shift_clips: delta (seconds, may be negative), from? (only clips starting at or after), track?, clipIds?\n- close_gaps: track? (default video) packs the track's clips end to end in their current order\n- update_clips: patch: {any clip field}, plus clipIds? or track? (omit both to hit every clip)\n- copy_style: fromClipId, toClipIds: copies transform, color, fades, text style and keyframes (scaled to the target length)\n- set_marker: id, time?, label?, color?\n- set_transition: clipId, type (none|dissolve|wipe-left|wipe-right|wipe-up|wipe-down|iris|barn-h|barn-v|diamond|wipe-diagonal), duration? (0.1-3, default 0.6), join? (default true: move the clip to touch the previous video clip first). Overlaps the clip with the one before it and moves later video clips up\n- animate_code: clipId, expressions: {property: code}, replace? - see codeAnimation\n- apply_code_motion: clipId or clipIds[], recipe (see codeAnimation.recipes), speed? (0.1..5), strength? (0.1..3)\n- bake_expression: clipId, property?, samples? (2..64, default 48) - converts expressions to linear keyframes\n- fit_clip: clipId, mode? (safe|contain|cover|fill, default safe), margin? (0..0.3, default 0.04)\n- fit_all: media? (keep|contain|cover|fill), clipIds?, margin? - fits every visual clip inside the frame\n- remove_clips: clipIds[] - delete several clips in one step",
+    "x-notice": "Argument schemas are descriptive prose from the operation catalog, not JSON Schema. GET /api/capabilities on your deployment is the live source of truth."
+  },
+  "servers": [
+    {
+      "url": "https://videoforge-api-s54w.onrender.com",
+      "description": "Hosted deployment (for trying the API; per-deployment keys)"
+    },
+    {
+      "url": "http://localhost:3000",
+      "description": "Your own server (self-hosting)"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Scoped API key issued by this deployment. Read, write or admin scope."
+      }
+    }
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "summary": "Public health check.",
+        "tags": [
+          "health"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "summary": "Check your key and scope.",
+        "tags": [
+          "auth"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        }
+      }
+    },
+    "/api/capabilities": {
+      "get": {
+        "summary": "Operation, property and preset discovery.",
+        "tags": [
+          "capabilitie"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        }
+      }
+    },
+    "/api/graphics/schema": {
+      "get": {
+        "summary": "JSON Schema for shape primitives.",
+        "tags": [
+          "graphic"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        }
+      }
+    },
+    "/api/motion/templates": {
+      "get": {
+        "summary": "List motion graphics templates.",
+        "tags": [
+          "motion"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        }
+      }
+    },
+    "/api/keys": {
+      "get / post": {
+        "summary": "Admin: list or generate scoped keys.",
+        "tags": [
+          "key"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        }
+      }
+    },
+    "/api/keys/{id}": {
+      "delete": {
+        "summary": "Admin: revoke a key.",
+        "tags": [
+          "key"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The id of the resource."
+          }
+        ]
+      }
+    },
+    "/api/media/upload": {
+      "post": {
+        "summary": "Multipart upload; repeat the files field.",
+        "tags": [
+          "media"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        },
+        "requestBody": {
+          "description": "The request body depends on the route; see the page for the route in the HTTP API reference. Timeline batch operations are documented by name below.",
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/media": {
+      "get": {
+        "summary": "List accessible assets.",
+        "tags": [
+          "media"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        }
+      }
+    },
+    "/api/media/{id}": {
+      "get / delete": {
+        "summary": "Read metadata or delete an asset.",
+        "tags": [
+          "media"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The id of the resource."
+          }
+        ]
+      }
+    },
+    "/api/media/{id}/raw": {
+      "get": {
+        "summary": "Stream original media.",
+        "tags": [
+          "media"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The id of the resource."
+          }
+        ]
+      }
+    },
+    "/api/media/{id}/thumb": {
+      "get": {
+        "summary": "JPEG thumbnail.",
+        "tags": [
+          "media"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The id of the resource."
+          }
+        ]
+      }
+    },
+    "/api/media/{id}/waveform": {
+      "get": {
+        "summary": "Peak-envelope data.",
+        "tags": [
+          "media"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The id of the resource."
+          }
+        ]
+      }
+    },
+    "/api/projects": {
+      "get / post": {
+        "summary": "List projects or create with {name,timeline}.",
+        "tags": [
+          "project"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        }
+      }
+    },
+    "/api/projects/{id}": {
+      "get / put / delete": {
+        "summary": "Read, replace/rename, or delete a project.",
+        "tags": [
+          "project"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The id of the resource."
+          }
+        ]
+      }
+    },
+    "/api/projects/{id}/duplicate": {
+      "post": {
+        "summary": "Duplicate a project.",
+        "tags": [
+          "project"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The id of the resource."
+          }
+        ],
+        "requestBody": {
+          "description": "The request body depends on the route; see the page for the route in the HTTP API reference. Timeline batch operations are documented by name below.",
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{id}/timeline/ops": {
+      "post": {
+        "summary": "Atomic operations; dryRun and expectedUpdatedAt supported.",
+        "tags": [
+          "project"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The id of the resource."
+          }
+        ],
+        "requestBody": {
+          "description": "The request body depends on the route; see the page for the route in the HTTP API reference. Timeline batch operations are documented by name below.",
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "examples": {
+                "batch": {
+                  "value": {
+                    "ops": [
+                      {
+                        "op": "update_clip",
+                        "args": {
+                          "clipId": "clip-1",
+                          "speed": 1.5
+                        }
+                      }
+                    ],
+                    "dryRun": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{id}/timeline/validate": {
+      "post": {
+        "summary": "Check and normalize {timeline}, without saving.",
+        "tags": [
+          "project"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The id of the resource."
+          }
+        ],
+        "requestBody": {
+          "description": "The request body depends on the route; see the page for the route in the HTTP API reference. Timeline batch operations are documented by name below.",
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{id}/state?t=1.5": {
+      "get": {
+        "summary": "Animated state at timeline time t.",
+        "tags": [
+          "project"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The id of the resource."
+          }
+        ]
+      }
+    },
+    "/api/projects/{id}/frame?t=1.5&width=640": {
+      "get": {
+        "summary": "PNG composed frame.",
+        "tags": [
+          "project"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The id of the resource."
+          }
+        ]
+      }
+    },
+    "/api/projects/{id}/storyboard?count=6": {
+      "get": {
+        "summary": "PNG contact sheet.",
+        "tags": [
+          "project"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The id of the resource."
+          }
+        ]
+      }
+    },
+    "/api/projects/{id}/presence": {
+      "post": {
+        "summary": "Live playhead, cursor and selection.",
+        "tags": [
+          "project"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The id of the resource."
+          }
+        ],
+        "requestBody": {
+          "description": "The request body depends on the route; see the page for the route in the HTTP API reference. Timeline batch operations are documented by name below.",
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/{id}/activity": {
+      "get": {
+        "summary": "Recent project edits.",
+        "tags": [
+          "project"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The id of the resource."
+          }
+        ]
+      }
+    },
+    "/api/renders": {
+      "get / post": {
+        "summary": "List render jobs or enqueue with {projectId}.",
+        "tags": [
+          "render"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        }
+      }
+    },
+    "/api/renders/{id}": {
+      "get": {
+        "summary": "Poll render status and progress.",
+        "tags": [
+          "render"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The id of the resource."
+          }
+        ]
+      }
+    },
+    "/api/renders/{id}/download": {
+      "get": {
+        "summary": "Download a finished MP4.",
+        "tags": [
+          "render"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The id of the resource."
+          }
+        ]
+      }
+    },
+    "/api/live": {
+      "get": {
+        "summary": "Admin: view live projects.",
+        "tags": [
+          "live"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        }
+      }
+    },
+    "/api/live/{id}": {
+      "get": {
+        "summary": "Admin: watch an unsaved edit.",
+        "tags": [
+          "live"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The id of the resource."
+          }
+        ]
+      }
+    }
+  }
+}

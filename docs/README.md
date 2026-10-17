@@ -35,6 +35,24 @@ The body is a light markdown dialect:
 - callouts: start a line with `> [!NOTE]`, `> [!TIP]` or `> [!WARNING]` followed
   by the text. Follow-on `>` lines continue it
 
+## Task lists that calculate their own progress
+
+Any page can carry checklist items: `- [ ]` to do, `- [~]` in progress,
+`- [x]` done, each with an optional `**High.**`, `**Medium.**` or `**Low.**`
+priority prefix. The docs site renders them as read-only checkboxes and works
+out every count, bar and percentage from them; the build fails if a page also
+hand-writes a number that disagrees with its checkboxes.
+
+Two paragraph markers render calculated controls: `{{progress-overall}}` on
+its own line draws the page's overall bar and counts, and `{{progress-table}}`
+draws the Progress by area table from the page's own sections. A page with
+tasks gets All / Open / In progress / Done filters plus priority and area,
+remembered per browser, and its overall percentage shows next to its sidebar
+entry.
+
+The bucket list (docs/TODO.md) is the live example. Keep each item listed
+once — the build fails on duplicates, so counts stay honest.
+
 ## Tables that stay in sync with the code
 
 Some tables are generated from the code so they can never drift. Put a marker

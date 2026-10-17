@@ -25,5 +25,7 @@ Project responses contain id, name, visibility, timeline, createdAt and updatedA
 
 The repository's docs/API.md retains the expanded endpoint contracts, key restrictions, security notes and deployment guidance. The motion graphics additions are also documented there.
 
+An [OpenAPI description generated from this endpoint list and the operation catalog](https://homekidchud.github.io/videoforge/openapi.json) is served alongside the docs; operation arguments are documented as prose in each operation's description, exactly as `GET /api/capabilities` reports them.
+
 - [Your first composition](quickstart)
 - [Authentication](authentication)
