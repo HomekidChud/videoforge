@@ -1,7 +1,7 @@
 ---
 title: Blocks & scripts
 group: Studio
-order: 16
+order: 17
 
 description: Build anything for your edit with blocks or code, preview it, then apply it to your timeline in one undoable step.
 ---

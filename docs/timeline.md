@@ -1,7 +1,7 @@
 ---
 title: Timeline & layers
 group: Core concepts
-order: 4
+order: 5
 description: Understand seconds, normalized coordinates and composition order.
 ---
 

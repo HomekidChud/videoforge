@@ -16,6 +16,7 @@ A hosted deployment runs at <https://videoforge-api-s54w.onrender.com> — set B
 New to the API? Create a composition in the quickstart. Prefer working visually? Open Studio with a scoped API key. No footage required: the motion toolkit creates shapes, titles and reusable animated layouts.
 
 - [Your first composition](quickstart)
+- [Motion graphics tutorial](motion-graphics-tutorial)
 - [Motion graphics](motion-graphics)
 - [Using the editor](editor)
 

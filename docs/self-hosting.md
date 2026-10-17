@@ -1,7 +1,7 @@
 ---
 title: Self-hosting
 group: Resources
-order: 21
+order: 22
 description: Run the Studio and rendering API on infrastructure you control.
 ---
 
@@ -34,3 +34,6 @@ If you host the frontend separately, set VITE_API_BASE to your HTTPS API origin 
 ## Secure your deployment
 
 Use HTTPS, secure the owner key, restrict agent keys and configure your frontend origin. Do not expose data directories directly. Keep dependency security updates current. See docs/API.md in the repository for the detailed security and deployment notes.
+
+- [Storage & durability](storage-and-durability)
+- [Contribute](contribute)

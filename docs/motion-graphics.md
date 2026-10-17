@@ -1,7 +1,7 @@
 ---
 title: Motion graphics
 group: Motion graphics
-order: 5
+order: 6
 description: Build asset-free animation with primitives and editable templates.
 ---
 

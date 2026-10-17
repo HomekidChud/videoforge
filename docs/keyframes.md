@@ -1,7 +1,7 @@
 ---
 title: Keyframes & easing
 group: Motion graphics
-order: 7
+order: 8
 description: Precise animation that previews in the browser and renders through FFmpeg.
 ---
 

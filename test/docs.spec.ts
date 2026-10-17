@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { parseDocPage, readDocPages, generateDocs, validatePages } from "../script/generate-docs";
 import { DOC_PAGES } from "../client/src/lib/docs-content";
+import { applyTimelineOp } from "../shared/editing";
+import { normalizeTimeline } from "../shared/timeline";
 
 let checks = 0;
 async function check(label: string, fn: () => void | Promise<void>) {
@@ -62,6 +64,21 @@ await check("auto tables", async () => {
   assert.ok((ops.rows!.length ?? 0) > 10);
   const endpoints = pages.find((p) => p.slug === "api-reference")!.sections.find((s) => s.rows?.[0][0] === "Method")!;
   assert.ok(endpoints.rows!.some((r) => r[1] === "/api/health"));
+});
+
+// The tutorial's API batch really builds the intro it describes.
+await check("tutorial batch applies cleanly", () => {
+  const page = DOC_PAGES.find((p) => p.slug === "motion-graphics-tutorial");
+  assert.ok(page, "tutorial page exists");
+  const code = page!.sections.find((s) => s.code?.includes('"ops"'))?.code;
+  assert.ok(code, "tutorial has an ops batch");
+  const { ops } = JSON.parse(code!);
+  let tl = normalizeTimeline({ fps: 30, resolution: { width: 1280, height: 720 }, clips: [] });
+  for (const op of ops) tl = applyTimelineOp(tl, op, () => undefined);
+  const ids = tl.clips.map((c) => c.id);
+  for (const id of ["headline", "bar", "tagline", "badge", "lt-0"]) assert.ok(ids.includes(id), `${id} was created`);
+  assert.equal(tl.background, "#101826");
+  assert.ok(tl.clips.find((c) => c.id === "badge")?.expressions, "badge floats through an expression");
 });
 
 console.log(`docs.spec: ${checks} checks passed`);

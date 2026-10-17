@@ -80,4 +80,31 @@ check("filler words are ignored unless alone", () => {
   assert.deepEqual(runs.filter((r) => r.hit).map((r) => r.text), ["edit"], "no highlight inside a word");
 });
 
+check("weak matches are trimmed instead of dumped", () => {
+  const r = searchDocs(DOC_PAGES, "clip");
+  assert.ok(r.length >= 3 && r.length < DOC_PAGES.length / 2, `a common word returns a short list, got ${r.length}`);
+  const top = r[0].score;
+  assert.ok(r.every((p) => p.score >= top * 0.25), "everything shown is reasonably close to the best match");
+  assert.ok(r.every((p) => p.hits.length <= 2), "at most two sections per page");
+});
+
+check("a word the docs contain is never mistaken for a typo", () => {
+  const r = searchDocs(DOC_PAGES, "mongo");
+  assert.equal(r[0]?.slug, "storage-and-durability");
+  assert.ok(!r.some((p) => p.slug === "fonts-and-text"), "mongo does not turn into mono");
+});
+
+check("loose search finds near misses when no page has every word", () => {
+  const q = "export video mp4 download";
+  assert.equal(searchDocs(DOC_PAGES, q).length, 1);
+  assert.ok(searchDocs(DOC_PAGES, "export zzzzqqqq video").length === 0);
+  assert.ok(searchDocs(DOC_PAGES, "export zzzzqqqq video", { loose: true }).length > 0);
+});
+
+check("new pages can be found", () => {
+  assert.equal(top("tutorial")[0], "motion-graphics-tutorial");
+  assert.equal(top("contribute")[0], "contribute");
+  assert.equal(top("durability")[0], "storage-and-durability");
+});
+
 console.log(`docs-search.spec: ${checks} checks passed`);

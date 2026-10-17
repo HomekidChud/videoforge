@@ -70,13 +70,15 @@ function within(a: string, b: string, max: number): boolean {
 }
 
 /** How well one query word matches a field's words: exact 1, starts-with .8, inside .5, typo .4, else 0. */
-function wordMatch(token: string, fieldWords: string[], fieldText: string): number {
+function wordMatch(token: string, fieldWords: string[], fieldText: string, fuzzy: boolean): number {
   let best = 0;
   for (const w of fieldWords) {
+    // The product name is on every page; "video" should find video, not VideoForge.
+    if (w === "videoforge" && token.length < 6) continue;
     if (w === token) return 1;
     if (w.startsWith(token)) best = Math.max(best, 0.8);
     else if (token.length >= 3 && w.includes(token)) best = Math.max(best, 0.5);
-    else if (best < 0.4 && token.length >= 4 && within(token, w, token.length >= 7 ? 2 : 1)) best = 0.4;
+    else if (fuzzy && best < 0.4 && token.length >= 4 && within(token, w, token.length >= 7 ? 2 : 1)) best = 0.4;
   }
   if (best === 0 && token.length >= 3 && fieldText.includes(token)) best = 0.5;
   return best;
@@ -97,6 +99,24 @@ type Entry = {
 };
 
 const entryCache = new WeakMap<readonly DocPage[], Entry[]>();
+const vocabCache = new WeakMap<readonly DocPage[], string[]>();
+
+/**
+ * Typo forgiveness is only for words the docs do not contain. If "mongo" appears somewhere, a search for
+ * "mongo" means that word, not the nearby "mono".
+ */
+function fuzzyTokens(pages: readonly DocPage[], tokens: string[]): Set<string> {
+  let vocab = vocabCache.get(pages);
+  if (!vocab) {
+    const all = new Set<string>();
+    for (const e of buildEntries(pages)) for (const f of e.fields) for (const w of f.words) all.add(w);
+    vocab = Array.from(all);
+    vocabCache.set(pages, vocab);
+  }
+  const out = new Set<string>();
+  for (const t of tokens) if (!vocab.some((w) => w.startsWith(t))) out.add(t);
+  return out;
+}
 
 function buildEntries(pages: readonly DocPage[]): Entry[] {
   const cached = entryCache.get(pages);
@@ -120,7 +140,7 @@ function buildEntries(pages: readonly DocPage[]): Entry[] {
           field(page.title, 3),
           field(page.slug.replace(/-/g, " "), 3),
           field(body, 2),
-          field(rows.join(" "), 2),
+          field(rows.join(" "), 4),
           field(section.code ?? "", 1.5),
         ],
         sources: [body, ...rows, section.code ?? ""],
@@ -150,37 +170,48 @@ export function snippetFor(sources: string[], tokens: string[], width = 150): st
   return first.length > width ? `${first.slice(0, width).trim()}…` : first;
 }
 
-function scoreEntry(entry: Entry, tokens: string[], phrase: string): number {
-  let total = 0;
+function scoreEntry(entry: Entry, tokens: string[], phrase: string, loose: boolean, fuzzy: Set<string>): number {
+  let total = 0, matched = 0;
   for (const token of tokens) {
     let best = 0;
-    for (const f of entry.fields) best = Math.max(best, wordMatch(token, f.words, f.text) * f.weight);
-    if (best === 0) return 0;
-    total += best;
+    for (const f of entry.fields) best = Math.max(best, wordMatch(token, f.words, f.text, fuzzy.has(token)) * f.weight);
+    if (best === 0) { if (!loose) return 0; continue; }
+    total += best; matched++;
   }
+  // Loose mode (used only when nothing has every word) still wants at least half of them.
+  if (matched === 0 || (loose && matched < Math.ceil(tokens.length / 2))) return 0;
   // The whole phrase appearing together is a strong sign this is the right place.
   if (tokens.length > 1) {
     const joined = tokens.join(" ");
     for (const f of entry.fields) if (f.text.replace(/[^a-z0-9]+/g, " ").includes(joined)) { total += f.weight * 1.5; break; }
   } else if (phrase) {
-    const t = tokens[0];
     const head = entry.fields[0];
-    if (head.words.includes(t)) total += head.weight * 0.5;
+    if (head.words.includes(tokens[0])) total += head.weight * 0.5;
   }
   return total;
 }
 
-export type SearchOptions = { group?: string | null; maxPages?: number; maxHitsPerPage?: number };
+export type SearchOptions = {
+  group?: string | null;
+  /** Hard cap on pages returned (default 30; the dialog shows a handful and reveals the rest on request). */
+  maxPages?: number;
+  maxHitsPerPage?: number;
+  /** Accept pages that match only some of the words. */
+  loose?: boolean;
+  /** Keep only results at least this fraction as good as the best one (default 0.25). */
+  relevance?: number;
+};
 
 export function searchDocs(pages: readonly DocPage[], query: string, opts: SearchOptions = {}): DocResultPage[] {
   const tokens = queryTokens(query);
   if (!tokens.length) return [];
-  const maxPages = opts.maxPages ?? 12, maxHits = opts.maxHitsPerPage ?? 3;
+  const maxPages = opts.maxPages ?? 30, maxHits = opts.maxHitsPerPage ?? 2, relevance = opts.relevance ?? 0.25;
   const phrase = query.trim().toLowerCase();
   const byPage = new Map<string, DocResultPage>();
+  const fuzzy = fuzzyTokens(pages, tokens);
   for (const entry of buildEntries(pages)) {
     if (opts.group && entry.page.group !== opts.group) continue;
-    const score = scoreEntry(entry, tokens, phrase);
+    const score = scoreEntry(entry, tokens, phrase, !!opts.loose, fuzzy);
     if (score <= 0) continue;
     const hit: DocHit = {
       slug: entry.page.slug,
@@ -198,14 +229,19 @@ export function searchDocs(pages: readonly DocPage[], query: string, opts: Searc
     }
     page.hits.push(hit);
   }
-  const results = Array.from(byPage.values());
+  let results = Array.from(byPage.values());
   for (const p of results) {
     p.hits.sort((a, b) => b.score - a.score);
     // A page ranks by its best hit, with a small lift for several sections matching.
-    p.score = p.hits[0].score + Math.min(p.hits.length - 1, 4) * 0.4;
-    p.hits = p.hits.filter((h) => h.sectionId !== null).slice(0, maxHits);
+    p.score = p.hits[0].score + Math.min(p.hits.length - 1, 3) * 0.3;
+    // Only sections nearly as good as the page's best are worth listing.
+    const best = p.hits[0].score;
+    p.hits = p.hits.filter((h) => h.sectionId !== null && h.score >= best * 0.5).slice(0, maxHits);
   }
   results.sort((a, b) => b.score - a.score || a.title.localeCompare(b.title));
+  // Drop the long tail: weak body-text matches that only share a common word.
+  const top = results[0]?.score ?? 0;
+  results = results.filter((p) => p.score >= top * relevance);
   return results.slice(0, maxPages);
 }
 

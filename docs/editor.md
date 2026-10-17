@@ -1,7 +1,7 @@
 ---
 title: Using the editor
 group: Studio
-order: 14
+order: 15
 description: Cut media, build graphics and refine keyframes visually.
 ---
 
@@ -43,6 +43,16 @@ Each overlay clip has a named lane in document order, so moving it in time does 
 
 Open Tools → Composition JSON to copy or download the full timeline. Paste a JSON composition, validate it, then apply it as one undoable edit. Missing assets must be uploaded first. With several clips selected, Stagger places them at the playhead with 0.15-second spacing.
 
+## Work together
+
+Everyone with a key that can read a project sees coloured live cursors on the timeline and preview, plus each other's playheads and selections. Click a person's avatar in the top bar to Follow them, and press Stop to go back to your own view. Shift-click or drag a box to select several clips, then move or edit them together.
+
+Master admins also get a Live page that lists every project and opens any of them in a view-only mode. It follows the editor's unsaved timeline, playhead, selection and animated values about ten times a second, with an activity feed that also shows API and agent edits. A small badge in the editor tells you when an admin is watching.
+
+## Add transitions
+
+Open the Effects tab and look under Transitions. Dissolve, five wipes, iris, barn doors and diamond open can be dragged onto a video clip that follows another clip, or chosen in the inspector. Transitions work in the preview and in the FFmpeg export. See Transitions for the full list.
+
 ## Keyboard shortcuts
 
 Shortcuts are ignored while typing in an input. Editing commands require a write-capable key.
@@ -63,6 +73,8 @@ Shortcuts are ignored while typing in an input. Editing commands require a write
 
 Projects autosave as you edit. Check the save status before leaving. Export queues a server-side MP4 job. Public sharing requires an admin to change visibility and a completed render. A public share link does not expose your API key or source footage.
 
+- [Motion graphics tutorial](motion-graphics-tutorial)
+- [Transitions](transitions)
 - [Animator](animator)
 - [Blocks & scripts](custom-tools)
 - [Rendering](rendering)

@@ -1,7 +1,7 @@
 ---
 title: Animator
 group: Studio
-order: 15
+order: 16
 description: Pose clips, text and shapes like a rig, key them on a timeline and apply the result to your edit.
 ---
 

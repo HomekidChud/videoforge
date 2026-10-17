@@ -1,7 +1,7 @@
 ---
 title: Fit & layout
 group: Motion graphics
-order: 9
+order: 10
 description: Text that wraps, media that fits and a report for everything that does not.
 ---
 

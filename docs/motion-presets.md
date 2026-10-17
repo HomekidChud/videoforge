@@ -1,7 +1,7 @@
 ---
 title: Motion presets & sequencing
 group: Motion graphics
-order: 8
+order: 9
 description: One-line entrances, emphasis beats and exits, with timing you control.
 ---
 

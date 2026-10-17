@@ -1,7 +1,7 @@
 ---
 title: Transitions
 group: Motion graphics
-order: 12
+order: 13
 description: Dissolves, wipes, an iris, barn doors and a diamond between video clips.
 ---
 

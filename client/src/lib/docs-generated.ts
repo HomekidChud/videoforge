@@ -22,6 +22,10 @@ export const DOC_PAGES: DocPage[] = [
             "slug": "quickstart"
           },
           {
+            "label": "Motion graphics tutorial",
+            "slug": "motion-graphics-tutorial"
+          },
+          {
             "label": "Motion graphics",
             "slug": "motion-graphics"
           },
@@ -68,6 +72,129 @@ export const DOC_PAGES: DocPage[] = [
         "text": "Render a PNG at one second to check the result. Queue the final export, copy jobId into JOB, and poll until status is done before downloading. A render with status error includes a message; fix the composition before retrying.",
         "language": "SHELL",
         "code": "curl \"$BASE/api/projects/$PROJECT/frame?t=1&width=640\" \\\n  -H \"Authorization: Bearer $KEY\" -o frame.png\ncurl -X POST \"$BASE/api/renders\" \\\n  -H \"Authorization: Bearer $KEY\" -H \"Content-Type: application/json\" \\\n  -d \"{\\\"projectId\\\":\\\"$PROJECT\\\"}\"\nexport JOB=\"<jobId-from-response>\"\ncurl \"$BASE/api/renders/$JOB\" -H \"Authorization: Bearer $KEY\"\n# Once status is done:\ncurl \"$BASE/api/renders/$JOB/download\" \\\n  -H \"Authorization: Bearer $KEY\" -o motion.mp4"
+      }
+    ]
+  },
+  {
+    "slug": "motion-graphics-tutorial",
+    "group": "Get started",
+    "title": "Motion graphics tutorial",
+    "description": "Build an animated intro in the Studio, step by step. No footage needed.",
+    "sections": [
+      {
+        "title": "What you will make",
+        "text": "A five second intro: a headline that springs in, an accent bar that wipes open, a tagline that rises, a badge that floats forever and a lower third that arrives at two seconds. You build it in the Studio with the mouse, and the last section shows the same result as one API call.\n\nIt takes about fifteen minutes and needs no uploads. Every layer is a normal clip, so you can change anything afterwards.",
+        "callouts": [
+          {
+            "kind": "tip",
+            "text": "Follow along in a second tab. Open the Studio at `#/editor` and keep this page next to it."
+          }
+        ]
+      },
+      {
+        "title": "Start the project",
+        "text": "Open the Studio and sign in. Click the project name at the top left and type `Animated intro`. With nothing selected, the right panel shows Project settings. Leave Canvas on 16:9 HD (1280×720) and Frame rate on 30 fps. Click the Background swatch and choose a dark navy such as `#101826`.\n\nThe black preview turns navy straight away. Everything you add from here sits on top of this colour."
+      },
+      {
+        "title": "Add a headline",
+        "text": "Click Add title in the top bar. A title appears at the playhead and its settings open on the right. In the Text box, replace the words with `Make your move`.\n\nScroll to Typography. Choose Poppins as the Font and Bold as the weight. Back under Text, raise Size to about 10%. Under Timing set Duration to 5 so it lasts the whole intro, and under Transform set Vertical to 44% so it sits just above the middle.",
+        "callouts": [
+          {
+            "kind": "note",
+            "text": "Size is a percentage of the frame height, and Horizontal and Vertical are percentages of the frame, so the same numbers work at any resolution."
+          }
+        ]
+      },
+      {
+        "title": "Make it spring in",
+        "text": "With the headline still selected, open the Motion tab on the right and expand Motion presets. Set Duration to 0.9 and leave Delay at 0 and Strength at 1.0×. Click Spring.\n\nPress Space to play. The headline pops in with a damped bounce. The preset wrote keyframes for Scale and Opacity, and nothing else, so you can still move the headline or change its colour freely.",
+        "callouts": [
+          {
+            "kind": "tip",
+            "text": "Click any preset to preview it, then press Ctrl+Z to undo and try another. Presets replace only the properties they animate."
+          }
+        ]
+      },
+      {
+        "title": "Add an accent bar",
+        "text": "Open the Graphics tab on the left, scroll to Shape primitives and click rectangle. A shape lands on the canvas and its Shape settings open in the Edit tab.\n\nSet Shape width to about 22% and Shape height to 1 or 2%, so it becomes a thin bar. Set the fill to orange `#f6a447` and raise Corner radius a little for rounded ends. Under Timing set Start to 0.3 and Duration to 4.7, then under Transform set Vertical to 56%.\n\nSwitch to the Motion tab, expand Motion presets and click Wipe reveal with a Duration of 0.7. The bar draws itself from left to right.",
+        "callouts": [
+          {
+            "kind": "note",
+            "text": "Shape width and height are fractions of the frame. On a 16:9 canvas, equal percentages do not make a square, which matters for the next circle."
+          }
+        ]
+      },
+      {
+        "title": "Add a tagline",
+        "text": "Click Add title again. Type `Motion graphics, made in the Studio`. Set Size to about 3.5%, pick Poppins, set the colour to a soft blue grey such as `#9fb3c8`, and set Vertical to 62%. Under Timing set Start to 0.5 and Duration to 4.5.\n\nIn the Motion tab choose the Rise preset with a Duration of 0.6. It lifts into place just after the bar finishes."
+      },
+      {
+        "title": "Add a badge that keeps moving",
+        "text": "In Graphics click ellipse. On a 16:9 frame a circle needs a smaller width than height, so set Shape width to 7% and Shape height to 12%. Fill it orange, set Vertical to 22% and Duration to 5.\n\nOpen the Motion tab, expand Animate with code, and under Looping recipe choose Float. Leave Speed and Strength at 1.0× and click Apply recipe. The badge bobs gently for as long as the clip lasts.",
+        "callouts": [
+          {
+            "kind": "tip",
+            "text": "A recipe is a formula, not keyframes, so it keeps looping at any clip length. Click Bake to keyframes if you later want to edit the movement by hand."
+          }
+        ]
+      },
+      {
+        "title": "Drop in a lower third",
+        "text": "Click the timeline ruler at 2 seconds to place the playhead. Open the Graphics tab and click Lower third. Under Customize, set Headline to `Ada Lovelace`, Supporting text to `Pioneer of computing`, keep the orange Accent, and set Duration to 3. Click Add to timeline.\n\nThe template expands into three ordinary clips: the plate, the name and the subtitle. Click any of them in the preview or in the timeline to edit it, exactly like the layers you built by hand."
+      },
+      {
+        "title": "Tune the motion on a graph",
+        "text": "Click Animate in the top bar and select the headline. Its clip opens into Scale and Opacity lanes in the timeline, and an Animation panel appears at the bottom right. Choose Scale in the property list, which also shows how many keys it has. The spring is drawn as a curve that overshoots and then settles.\n\nDrag the highest diamond down a little to soften the bounce, or drag a diamond sideways to change its timing. Click Key at playhead to add a new key where the playhead sits. Click Edit in the top bar when you are done."
+      },
+      {
+        "title": "Fade everything out",
+        "text": "Select the headline, then drag the Fade out slider in the Edit tab to 0.6 seconds. Do the same for the tagline. Fade out is separate from keyframes, so it never fights the spring you set up earlier.\n\nOpen the Effects tab if you prefer to drag: Fade out under Fades and looks can be dropped straight onto a clip in the timeline or the preview."
+      },
+      {
+        "title": "Check it fits and play it back",
+        "text": "With nothing selected, click Fit all layers in the Project panel. This pulls anything that sticks out of the frame back inside. Click the skip-to-start button next to Play, then press Space and watch the whole intro through once.\n\nLook at the save status next to the project name. When it says All changes saved your work is stored with your account."
+      },
+      {
+        "title": "Export your video",
+        "text": "Click Export in the top bar. A progress bar shows the render and the MP4 is ready to download when it finishes. The server renders with FFmpeg and downloads each font the first time it is used, so the first render with a new font can take a little longer.",
+        "callouts": [
+          {
+            "kind": "note",
+            "text": "The preview and the export use the same formulas, but font metrics can differ by a pixel or two. Watch the export once before you publish it."
+          }
+        ]
+      },
+      {
+        "title": "Build the same thing with the API",
+        "text": "Everything you did in the Studio is an operation, and the whole intro is one batch. Send this to `POST /api/projects/:id/timeline/ops` with a write key and you get the same layers. Add `\"dryRun\": true` first to see what would change.",
+        "code": "{\n  \"ops\": [\n    {\"op\": \"set_project\", \"args\": {\"background\": \"#101826\"}},\n    {\"op\": \"add_text_clip\", \"args\": {\"id\": \"headline\", \"text\": \"Make your move\", \"start\": 0, \"duration\": 5, \"x\": 0.5, \"y\": 0.44, \"textSize\": 10, \"font\": \"poppins\", \"fontWeight\": 700, \"textColor\": \"#ffffff\", \"fadeOut\": 0.6}},\n    {\"op\": \"add_shape_clip\", \"args\": {\"id\": \"bar\", \"start\": 0.3, \"duration\": 4.7, \"x\": 0.5, \"y\": 0.56, \"shape\": {\"type\": \"rectangle\", \"width\": 0.22, \"height\": 0.012, \"fill\": \"#f6a447\", \"radius\": 6}}},\n    {\"op\": \"add_text_clip\", \"args\": {\"id\": \"tagline\", \"text\": \"Motion graphics, made in the Studio\", \"start\": 0.5, \"duration\": 4.5, \"x\": 0.5, \"y\": 0.62, \"textSize\": 3.5, \"font\": \"poppins\", \"textColor\": \"#9fb3c8\", \"fadeOut\": 0.6}},\n    {\"op\": \"add_shape_clip\", \"args\": {\"id\": \"badge\", \"start\": 0, \"duration\": 5, \"x\": 0.5, \"y\": 0.22, \"shape\": {\"type\": \"ellipse\", \"width\": 0.07, \"height\": 0.124, \"fill\": \"#f6a447\"}}},\n    {\"op\": \"apply_motion\", \"args\": {\"clipId\": \"headline\", \"preset\": \"spring\", \"delay\": 0, \"duration\": 0.9}},\n    {\"op\": \"apply_motion\", \"args\": {\"clipId\": \"bar\", \"preset\": \"reveal\", \"delay\": 0, \"duration\": 0.7}},\n    {\"op\": \"apply_motion\", \"args\": {\"clipId\": \"tagline\", \"preset\": \"rise\", \"delay\": 0, \"duration\": 0.6}},\n    {\"op\": \"apply_code_motion\", \"args\": {\"clipIds\": [\"badge\"], \"recipe\": \"float\", \"speed\": 1, \"strength\": 1}},\n    {\"op\": \"add_motion_template\", \"args\": {\"template\": \"lower-third\", \"title\": \"Ada Lovelace\", \"subtitle\": \"Pioneer of computing\", \"color\": \"#f6a447\", \"start\": 2, \"duration\": 3, \"idPrefix\": \"lt\"}}\n  ]\n}"
+      },
+      {
+        "title": "Where to go next",
+        "text": "Try changing one thing at a time: swap Spring for Bounce in, add a second lower third, or use Animator to make the badge and bar move as one rig. Presets, keyframes and expressions all combine, so small changes go a long way.",
+        "links": [
+          {
+            "label": "Motion presets",
+            "slug": "motion-presets"
+          },
+          {
+            "label": "Keyframes & easing",
+            "slug": "keyframes"
+          },
+          {
+            "label": "Animate with code",
+            "slug": "animate-with-code"
+          },
+          {
+            "label": "Animator",
+            "slug": "animator"
+          },
+          {
+            "label": "Examples gallery",
+            "slug": "examples"
+          }
+        ]
       }
     ]
   },
@@ -1276,6 +1403,14 @@ export const DOC_PAGES: DocPage[] = [
         "text": "Open Tools → Composition JSON to copy or download the full timeline. Paste a JSON composition, validate it, then apply it as one undoable edit. Missing assets must be uploaded first. With several clips selected, Stagger places them at the playhead with 0.15-second spacing."
       },
       {
+        "title": "Work together",
+        "text": "Everyone with a key that can read a project sees coloured live cursors on the timeline and preview, plus each other's playheads and selections. Click a person's avatar in the top bar to Follow them, and press Stop to go back to your own view. Shift-click or drag a box to select several clips, then move or edit them together.\n\nMaster admins also get a Live page that lists every project and opens any of them in a view-only mode. It follows the editor's unsaved timeline, playhead, selection and animated values about ten times a second, with an activity feed that also shows API and agent edits. A small badge in the editor tells you when an admin is watching."
+      },
+      {
+        "title": "Add transitions",
+        "text": "Open the Effects tab and look under Transitions. Dissolve, five wipes, iris, barn doors and diamond open can be dragged onto a video clip that follows another clip, or chosen in the inspector. Transitions work in the preview and in the FFmpeg export. See Transitions for the full list."
+      },
+      {
         "title": "Keyboard shortcuts",
         "text": "Shortcuts are ignored while typing in an input. Editing commands require a write-capable key.",
         "rows": [
@@ -1325,6 +1460,14 @@ export const DOC_PAGES: DocPage[] = [
         "title": "Save and export",
         "text": "Projects autosave as you edit. Check the save status before leaving. Export queues a server-side MP4 job. Public sharing requires an admin to change visibility and a completed render. A public share link does not expose your API key or source footage.",
         "links": [
+          {
+            "label": "Motion graphics tutorial",
+            "slug": "motion-graphics-tutorial"
+          },
+          {
+            "label": "Transitions",
+            "slug": "transitions"
+          },
           {
             "label": "Animator",
             "slug": "animator"
@@ -2246,7 +2389,275 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Secure your deployment",
-        "text": "Use HTTPS, secure the owner key, restrict agent keys and configure your frontend origin. Do not expose data directories directly. Keep dependency security updates current. See docs/API.md in the repository for the detailed security and deployment notes."
+        "text": "Use HTTPS, secure the owner key, restrict agent keys and configure your frontend origin. Do not expose data directories directly. Keep dependency security updates current. See docs/API.md in the repository for the detailed security and deployment notes.",
+        "links": [
+          {
+            "label": "Storage & durability",
+            "slug": "storage-and-durability"
+          },
+          {
+            "label": "Contribute",
+            "slug": "contribute"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "storage-and-durability",
+    "group": "Resources",
+    "title": "Storage & durability",
+    "description": "Where VideoForge keeps your data, how it is backed up, and how it behaves when a disk is missing.",
+    "sections": [
+      {
+        "title": "Where your data lives",
+        "text": "Projects, media records, render jobs, accounts and API key hashes live in one SQLite database. Uploads are files in `data/media`, finished exports are files in `data/renders`, and temporary render files use `data/tmp`. Keys are stored as SHA-256 hashes, never as plaintext.",
+        "rows": [
+          [
+            "Variable",
+            "What it sets",
+            "Default"
+          ],
+          [
+            "`VIDEOFORGE_DB`",
+            "The SQLite database file",
+            "`data.db`"
+          ],
+          [
+            "`VIDEOFORGE_MEDIA_DIR`",
+            "Uploaded media",
+            "`data/media`"
+          ],
+          [
+            "`VIDEOFORGE_RENDER_DIR`",
+            "Rendered MP4 files",
+            "`data/renders`"
+          ],
+          [
+            "`VIDEOFORGE_SYNC_DIR`",
+            "Save manifest backup (optional)",
+            "off"
+          ],
+          [
+            "`VIDEOFORGE_MAX_UPLOAD_MB`",
+            "Largest single upload",
+            "`2048`"
+          ]
+        ],
+        "callouts": [
+          {
+            "kind": "warning",
+            "text": "On a host with a temporary disk, such as a free Render instance, media and the database reset on every restart. Mount a persistent disk and point the variables above inside it."
+          }
+        ]
+      },
+      {
+        "title": "Three layers of saving",
+        "text": "The database is the source of truth. Two more layers exist so a mistake or an outage does not cost you work.\n\n- **Database:** every project, asset and render job is written here as you work.\n- **Save manifest:** when `VIDEOFORGE_SYNC_DIR` is set, the server writes a JSON backup of every row, with key hashes only. It is a point-in-time backup and is deliberately not merged back on boot, because an old manifest could bring back a project you deleted or a key you revoked.\n- **Browser drafts:** the Studio keeps a snapshot of the working copy in the browser every 300 ms, including the unsaved timeline, selection, playhead and zoom. After a closed tab, a refresh or a network drop, the draft is restored and saved on the next autosave.\n\nOpen Tools and choose Local drafts to see every draft on the device, delete one or clear them all."
+      },
+      {
+        "title": "Restore after a lost database",
+        "text": "If a rebuild loses the database, restore by hand with the explicit command. It merges only rows that are missing from the live database and never overwrites a row that already exists.",
+        "language": "SHELL",
+        "code": "npm run durable:restore"
+      },
+      {
+        "title": "Example for a persistent disk",
+        "text": "Point every path inside the mounted disk. On Render, with a disk mounted at `/var/lib/videoforge/data`, use:",
+        "language": "SHELL",
+        "code": "VIDEOFORGE_DB=/var/lib/videoforge/data/data.db\nVIDEOFORGE_SYNC_DIR=/var/lib/videoforge/data/restore\nVIDEOFORGE_MEDIA_DIR=/var/lib/videoforge/data/media\nVIDEOFORGE_RENDER_DIR=/var/lib/videoforge/data/renders"
+      },
+      {
+        "title": "When a path cannot be written",
+        "text": "Durable directories are created at boot with graceful fallback, so a missing or misplaced disk never crashes the server with a permission error. It starts and degrades in a clear, visible way.\n\nWrites are refused instead of accepted into a database that would be lost on the next deploy. Fix `VIDEOFORGE_DB` and redeploy to return to normal. The manifest never mirrors a degraded database, and a bootstrap owner key is discarded, with guidance to set `VIDEOFORGE_BOOTSTRAP_KEY`, rather than printed into deployment logs.",
+        "rows": [
+          [
+            "Part",
+            "What happens"
+          ],
+          [
+            "Save manifest",
+            "Turns itself off with a warning. The database and everything else keep working."
+          ],
+          [
+            "Database",
+            "The server runs on an in-memory database. `GET /api/health` returns `ok: false` with a `warnings` list, and every write to `/api` is refused with a `503` that names the fix."
+          ],
+          [
+            "Media, renders and temp files",
+            "Uploads and renders that need the unwritable folder fail with a clear message. Reads and everything else keep working."
+          ]
+        ]
+      },
+      {
+        "title": "MongoDB integration (optional)",
+        "text": "MongoDB is an optional store for integrations. It does not replace SQLite, and enabling it does not move projects, media or API keys out of the database.\n\n- **No `MONGODB_URI`:** nothing connects and the app is unchanged.\n- **`MONGODB_URI` set:** the connection is created on first use, with a 5 second server selection timeout and a 10 second socket timeout, so a dead cluster cannot hang the server.\n- **Health:** `GET /api/health` only reports `mongo: \"configured\"`. It never contacts the cluster, so an unreachable integration cannot make the app look down.\n- **Checking it:** run `npm run mongo:check`. It exits 0 when MongoDB is reachable or not configured, and 1 on an error, so it works in deploy hooks.\n- **Safety:** a failed connection never falls back to another store and never crashes the process. Errors never include credentials or driver messages.\n\nServer code can import `getMongoDb` from `./mongo` to use the handle. The pool closes on SIGTERM and SIGINT. All variables are listed in `.env.example`.",
+        "language": "SHELL",
+        "code": "MONGODB_URI=mongodb+srv://user:password@cluster.example.mongodb.net/?retryWrites=true\nMONGODB_DB=videoforge",
+        "links": [
+          {
+            "label": "Self-hosting",
+            "slug": "self-hosting"
+          },
+          {
+            "label": "Authentication & scopes",
+            "slug": "authentication"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "slug": "contribute",
+    "group": "Resources",
+    "title": "Contribute",
+    "description": "Set up the project, find your way around the code, and open a pull request that gets merged.",
+    "sections": [
+      {
+        "title": "Ways to help",
+        "text": "You do not need to write code to help. Fixing a confusing sentence in the docs, reporting a bug with clear steps, adding a test for something that broke once, or building a new motion preset are all welcome.\n\n- **Docs:** every page is a markdown file in `docs/`. Small fixes are the easiest first pull request.\n- **Bugs:** open an issue with what you did, what you expected and what happened. Add the browser and the project JSON if you can.\n- **Features:** open an issue first for anything large, so the shape of the change is agreed before you spend time on it.\n- **Presets, templates and blocks:** each has a short recipe further down this page."
+      },
+      {
+        "title": "Set up your machine",
+        "text": "Fork the repository on GitHub, clone your fork, and install. You need Node 20 or newer, plus `ffmpeg` and `ffprobe` on your PATH, because rendering, thumbnails and several tests use them.\n\nThe app opens at `http://localhost:5000`. On first boot the server prints an owner key and writes it to `data/OWNER_KEY.txt`. Use it on the sign-in page to create your account.",
+        "language": "SHELL",
+        "code": "git clone https://github.com/<you>/videoforge.git\ncd videoforge\nnpm ci\nnpm run dev",
+        "callouts": [
+          {
+            "kind": "tip",
+            "text": "Point `VIDEOFORGE_DB` at a scratch file, for example `VIDEOFORGE_DB=/tmp/vf.db npm run dev`, so experiments never touch a database you care about."
+          }
+        ]
+      },
+      {
+        "title": "Find your way around",
+        "text": "The browser and the server share the same editing code, so the preview and the export agree. When you change how something animates or evaluates, you usually change `shared/`.",
+        "rows": [
+          [
+            "Folder",
+            "What lives there"
+          ],
+          [
+            "`client/src/pages`",
+            "One file per screen: editor, docs, platform, live, share"
+          ],
+          [
+            "`client/src/components`",
+            "Studio panels such as the timeline, inspector, preview, Animator and block studio"
+          ],
+          [
+            "`client/src/lib`",
+            "Client helpers, docs search and the generated docs content"
+          ],
+          [
+            "`server`",
+            "Express routes, accounts and keys, rendering with FFmpeg, storage"
+          ],
+          [
+            "`shared`",
+            "Timeline schema, editing operations, presets, templates, expressions, rigs, blocks"
+          ],
+          [
+            "`docs`",
+            "Every docs page, as markdown"
+          ],
+          [
+            "`test`",
+            "Specs, run with `tsx`"
+          ],
+          [
+            "`script`",
+            "Docs generator, example renderer, restore and check tools"
+          ]
+        ]
+      },
+      {
+        "title": "Make a change",
+        "text": "Work on a branch, keep each change focused, and run the checks before you push.\n\nOpen a pull request against `main`. Describe what changed and why, and mention how you tested it. Pushes to `main` run `npm run check` and `npm run build` again before the site deploys.",
+        "language": "SHELL",
+        "code": "git switch -c fix-lower-third-spacing\n# make your change\nnpm run check   # regenerates the docs and runs the type checker\nnpm test        # the whole suite\nnpm run build   # confirms the client and server still bundle",
+        "callouts": [
+          {
+            "kind": "note",
+            "text": "`client/src/lib/docs-generated.ts` is generated from `docs/*.md` and is committed on purpose. Run `npm run docs` after editing any docs page and commit the result with it."
+          }
+        ]
+      },
+      {
+        "title": "Run the tests",
+        "text": "Each spec is a plain script, so you can run one on its own while you work. Add or update a test with every behaviour change.\n\nThe rest of the suite covers durability, deployment, text fitting and block translations. `npm test` runs all of it.",
+        "rows": [
+          [
+            "Command",
+            "What it covers"
+          ],
+          [
+            "`npx tsx test/graphics.spec.ts`",
+            "Shapes, templates, every motion preset, sequencing and real FFmpeg output"
+          ],
+          [
+            "`npx tsx test/api.spec.ts`",
+            "Keys, restrictions, uploads, batches, discovery and validation"
+          ],
+          [
+            "`npx tsx test/rig.spec.ts`",
+            "The Animator rig engine"
+          ],
+          [
+            "`npx tsx test/custom-tools.spec.ts`",
+            "Blocks and scripts"
+          ],
+          [
+            "`npx tsx test/docs.spec.ts`",
+            "Docs source, links and generated output"
+          ],
+          [
+            "`npx tsx test/docs-search.spec.ts`",
+            "Docs search ranking"
+          ],
+          [
+            "`npx tsx test/accounts.spec.ts`",
+            "Sign-in, sessions and accounts"
+          ]
+        ]
+      },
+      {
+        "title": "Recipe: add a motion preset",
+        "text": "Presets are timed, strength-scaled keyframes. Add the entry to the `MOTION_PRESETS` list in `shared/presets.ts` with an `id`, `label` and `description`, then add a matching case to `motionPreset` in the same file. Entrance, emphasis and exit groups are decided by which list the id belongs to.\n\nThe Studio buttons, the API discovery list and the docs table all read from `MOTION_PRESETS`, so nothing else needs editing. Add the preset to `test/graphics.spec.ts`, which already checks every preset."
+      },
+      {
+        "title": "Recipe: add a template or an operation",
+        "text": "A template is a list of clips. Add it to `MOTION_TEMPLATES` in `shared/graphics.ts` and build its clips in the same file, then check it renders in `test/graphics.spec.ts`.\n\nAn operation is one case in `applyTimelineOp` in `shared/editing.ts`. Describe it in `shared/capabilities.ts` so agents can discover it, and add its arguments to `OP_PARAMS` in `shared/custom-tools.ts` if it should be usable from blocks. The operations table in the docs fills itself from this description."
+      },
+      {
+        "title": "Recipe: add a block",
+        "text": "Blocks live in `BLOCK_LIBRARY` in `shared/custom-tools.ts`. Give each block a plain name, a one line description and the fields it exposes, and put it in one of the groups in `BLOCK_GROUPS`. Add its Spanish text in `shared/block-i18n.ts`; `test/block-i18n.spec.ts` fails if a visible block is not translated."
+      },
+      {
+        "title": "Write docs that read well",
+        "text": "Say what a thing does, then show how. Keep sentences short, name the exact button or field, and use callouts for the few things that matter: a note for context, a tip for a shortcut, a warning for something that can lose work. The full page format is in `docs/README.md`.\n\nTables that list operations, presets, templates or endpoints are generated from the code with `{{auto:...}}` markers, so they cannot drift. Use a marker instead of copying a list by hand."
+      },
+      {
+        "title": "Open the pull request",
+        "text": "A good pull request is small, tested and explained. Before you open it, check that:\n\n- `npm run check`, `npm test` and `npm run build` all pass\n- new behaviour has a test, and new options appear in the docs\n- you did not commit `data/`, `data.db`, `.env` or `data/OWNER_KEY.txt`\n- the title says what changed, in the same style as recent commits such as `Docs: ...` or `Blocks: ...`\n\nBy contributing you agree that your work is released under the MIT license that covers the project."
+      },
+      {
+        "title": "Report a security problem",
+        "text": "Please do not post security problems in a public issue. Use private vulnerability reporting under the Security tab of the repository if it is switched on, or open an issue that only asks for a private way to reach the maintainer, with no details of the problem. Keys, session cookies and anything in `data/` are private, so never paste them into an issue or a pull request.\n\n- [Roadmap and TODO](TODO)",
+        "links": [
+          {
+            "label": "Introduction",
+            "slug": "introduction"
+          },
+          {
+            "label": "Self-hosting",
+            "slug": "self-hosting"
+          },
+          {
+            "label": "Storage & durability",
+            "slug": "storage-and-durability"
+          }
+        ]
       }
     ]
   },

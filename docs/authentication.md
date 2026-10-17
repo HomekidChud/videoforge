@@ -1,7 +1,7 @@
 ---
 title: Authentication & scopes
 group: Get started
-order: 3
+order: 4
 description: Sign in with email, Google or an API key — and give agents only the access they need.
 ---
 

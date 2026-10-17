@@ -4,6 +4,8 @@ import type { DocPage } from "@/lib/docs-content";
 import { countByGroup, highlightRuns, queryTokens, searchDocs } from "@/lib/docs-search";
 
 const RECENT_KEY = "vf.docs.recent.v1";
+/** Pages shown at first; the rest wait behind "Show more" so a search reads like an answer, not a dump. */
+const FIRST_PAGES = 4;
 const SUGGESTIONS = ["quickstart", "keyframes", "animator", "render", "authentication", "shapes"];
 
 const loadRecent = (): string[] => { try { return (JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]") as string[]).slice(0, 5); } catch { return []; } };
@@ -21,26 +23,30 @@ export default function DocsSearchDialog({ pages, onClose, onGo }: {
   onGo: (slug: string, anchor: string | null) => void;
 }) {
   const [query, setQuery] = useState(""), [group, setGroup] = useState<string | null>(null), [cursor, setCursor] = useState(0);
-  const [recent, setRecent] = useState<string[]>(loadRecent);
+  const [recent, setRecent] = useState<string[]>(loadRecent), [showAll, setShowAll] = useState(false);
   const input = useRef<HTMLInputElement>(null), list = useRef<HTMLDivElement>(null);
   useEffect(() => { input.current?.focus(); }, []);
 
   const tokens = useMemo(() => queryTokens(query), [query]);
   const counts = useMemo(() => (tokens.length ? countByGroup(pages, query) : {}), [pages, query, tokens.length]);
-  const results = useMemo(() => searchDocs(pages, query, { group }), [pages, query, group]);
+  const strict = useMemo(() => searchDocs(pages, query, { group }), [pages, query, group]);
+  // Nothing has every word: fall back to the closest pages and say so, instead of showing an empty box.
+  const loose = useMemo(() => (strict.length === 0 && tokens.length > 1 ? searchDocs(pages, query, { group, loose: true }) : []), [strict, pages, query, group, tokens.length]);
+  const all = strict.length ? strict : loose;
+  const partial = strict.length === 0 && loose.length > 0;
+  const results = showAll ? all : all.slice(0, FIRST_PAGES);
+  const hidden = all.length - results.length;
 
   // The flat list the arrow keys walk through: each page, then the sections that matched under it.
   const items: Item[] = useMemo(() => {
-    if (tokens.length) {
-      return results.flatMap((p): Item[] => [
-        { key: p.slug, slug: p.slug, anchor: null, kind: "page", title: p.title, group: p.group, text: p.description },
-        ...p.hits.map((h): Item => ({ key: `${p.slug}#${h.sectionId}`, slug: p.slug, anchor: h.sectionId, kind: "section", title: h.sectionTitle ?? "", group: p.group, text: h.snippet })),
-      ]);
-    }
-    return pages.filter((p) => p.group === "Get started").map((p): Item => ({ key: p.slug, slug: p.slug, anchor: null, kind: "page", title: p.title, group: p.group, text: p.description }));
-  }, [results, tokens.length, pages]);
+    if (!tokens.length) return [];
+    return results.flatMap((p): Item[] => [
+      { key: p.slug, slug: p.slug, anchor: null, kind: "page", title: p.title, group: p.group, text: p.description },
+      ...p.hits.map((h): Item => ({ key: `${p.slug}#${h.sectionId}`, slug: p.slug, anchor: h.sectionId, kind: "section", title: h.sectionTitle ?? "", group: p.group, text: h.snippet })),
+    ]);
+  }, [results, tokens.length]);
 
-  useEffect(() => { setCursor(0); }, [query, group]);
+  useEffect(() => { setCursor(0); setShowAll(false); if (list.current) list.current.scrollTop = 0; }, [query, group]);
   useEffect(() => { list.current?.querySelector<HTMLElement>(`[data-idx="${cursor}"]`)?.scrollIntoView({ block: "nearest" }); }, [cursor]);
 
   const remember = () => {
@@ -61,7 +67,7 @@ export default function DocsSearchDialog({ pages, onClose, onGo }: {
   };
 
   const groupNames = Object.keys(counts);
-  const total = results.length;
+  const total = all.length;
   let idx = -1;
   const row = (item: Item) => {
     idx += 1; const i = idx;
@@ -87,29 +93,33 @@ export default function DocsSearchDialog({ pages, onClose, onGo }: {
         {groupNames.map((g) => <button key={g} className={group === g ? "on" : ""} onClick={() => setGroup(group === g ? null : g)}>{g} <em>{counts[g]}</em></button>)}
       </div>}
       <div className="search-results" id="docs-search-list" role="listbox" ref={list}>
-        {tokens.length > 0 ? (total ? results.map((p) => <div className="sr-page" key={p.slug}>
-          {row(items.find((i) => i.key === p.slug)!)}
-          {p.hits.map((h) => row(items.find((i) => i.key === `${p.slug}#${h.sectionId}`)!))}
-        </div>) : <div className="search-empty">
+        {tokens.length > 0 ? (total ? <>
+          {partial && <p className="sr-note">No page has every word in “{query.trim()}”. These are the closest matches.</p>}
+          {results.map((p, n) => <div className="sr-page" key={p.slug}>
+            {n === 0 && !partial && <span className="sr-best">Best match</span>}
+            {row(items.find((i) => i.key === p.slug)!)}
+            {p.hits.map((h) => row(items.find((i) => i.key === `${p.slug}#${h.sectionId}`)!))}
+          </div>)}
+          {hidden > 0 && <button className="sr-more" tabIndex={-1} onClick={() => { setShowAll(true); input.current?.focus(); }} data-testid="docs-search-more">Show {hidden} more {hidden === 1 ? "page" : "pages"}</button>}
+        </> : <div className="search-empty">
           <p>Nothing matches “{query.trim()}”{group ? ` in ${group}` : ""}.</p>
           {group && <button className="sr-link" onClick={() => setGroup(null)}>Search all of the docs</button>}
           <div className="sr-suggest">{SUGGESTIONS.map((s) => <button key={s} onClick={() => { setGroup(null); setQuery(s); input.current?.focus(); }}>{s}</button>)}</div>
-        </div>) : <>
+        </div>) : <div className="sr-idle">
+          <p className="sr-hint">Type what you are looking for, like a button name, an operation or a question.</p>
           {recent.length > 0 && <div className="sr-block">
             <div className="sr-label"><span><History size={13} /> Recent</span><button onClick={forget}>Clear</button></div>
             <div className="sr-suggest">{recent.map((r) => <button key={r} onClick={() => { setQuery(r); input.current?.focus(); }}>{r}</button>)}</div>
           </div>}
           <div className="sr-block">
-            <div className="sr-label"><span>Try searching</span></div>
+            <div className="sr-label"><span>Try</span></div>
             <div className="sr-suggest">{SUGGESTIONS.map((s) => <button key={s} onClick={() => { setQuery(s); input.current?.focus(); }}>{s}</button>)}</div>
           </div>
-          <div className="sr-label pad"><span>Get started</span></div>
-          <div className="sr-page">{items.map((i) => row(i))}</div>
-        </>}
+        </div>}
       </div>
       <div className="search-footer">
         <span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd><CornerDownLeft size={11} /></kbd> open</span><span><kbd>Esc</kbd> close</span>
-        <b>{tokens.length ? `${total} ${total === 1 ? "page" : "pages"}` : `${pages.length} pages`}</b>
+        <b>{tokens.length ? `${total} ${total === 1 ? "page" : "pages"}` : `Search ${pages.length} pages`}</b>
       </div>
     </div>
   </div>;

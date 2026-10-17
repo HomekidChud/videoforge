@@ -1,7 +1,7 @@
 ---
 title: Shape primitives
 group: Motion graphics
-order: 6
+order: 7
 description: Rectangles, ellipses and lines with fill, stroke and transform animation.
 ---
 

@@ -1,7 +1,7 @@
 ---
 title: Fonts & text
 group: Motion graphics
-order: 10
+order: 11
 description: A large font catalog, bold, alignment, line height, letter spacing and uppercase — with a fit engine that knows every family.
 ---
 
