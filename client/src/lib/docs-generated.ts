@@ -42,7 +42,7 @@ export const DOC_PAGES: DocPage[] = [
         "code": "Discover → Compose → Validate → Inspect → Render"
       }
     ],
-    "updated": "2026-10-17T08:48:53Z",
+    "updated": "2026-10-17T13:19:57Z",
     "added": "2026-10-15T22:20:52+01:00"
   },
   {
@@ -1338,7 +1338,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T13:09:37Z",
+    "updated": "2026-10-17T13:19:57Z",
     "added": "2026-10-17T13:09:37Z"
   },
   {
@@ -2837,7 +2837,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T13:09:37Z",
+    "updated": "2026-10-17T13:19:57Z",
     "added": "2026-10-17T13:09:37Z"
   },
   {
@@ -2885,7 +2885,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T13:09:37Z",
+    "updated": "2026-10-17T13:19:57Z",
     "added": "2026-10-17T13:09:37Z"
   },
   {
@@ -3021,7 +3021,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T13:09:37Z",
+    "updated": "2026-10-17T13:19:57Z",
     "added": "2026-10-17T13:09:37Z"
   },
   {
@@ -3663,14 +3663,14 @@ export const DOC_PAGES: DocPage[] = [
       "doing": 0,
       "todo": 46
     },
-    "updated": "2026-10-17T13:09:37Z",
+    "updated": "2026-10-17T13:19:57Z",
     "added": "2026-10-16T00:27:26Z"
   }
 ];
 
 export const CONTRIBUTORS: { name: string; commits: number }[] = [
   {
-    "commits": 49,
+    "commits": 50,
     "name": "HomekidChud"
   },
   {
