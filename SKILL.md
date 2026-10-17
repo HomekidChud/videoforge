@@ -14,17 +14,50 @@ Reference docs live in the repository under `docs/`: `batch-operations.md`, `tim
 - Never use em dashes or double hyphens in anything the viewer reads: on screen text, captions, narration, titles, file names. Use commas, colons or full stops.
 - Write in a formal, plain, professional voice. No hype words, no filler openers, no exclamation marks, no emojis. A tutorial should sound like a competent colleague explaining a task.
 - Do not invent facts about the interface. Record the real UI, and read labels from it.
+- Never proceed without a valid API key for the target server. Section 2 says how to ask for one.
 - Show the user what you are about to do before any destructive change, such as deleting a project or overwriting a published file.
 
-## 2. Connect
+## 2. Connect, and always get the API key first
 
-- Base URL: `http://localhost:5000` for a local server, or `https://videoforge-api-s54w.onrender.com` for the hosted one. Keys are issued per deployment, so a local key does not work on the hosted server.
-- Auth: send `Authorization: Bearer <key>` on every request. Use a scoped write key, not the owner key, unless you must administer the server.
-- Health check: `GET /api/health`.
-- Start every session with `GET /api/capabilities`. It lists every operation, preset, transition, filter, font, easing and limit.
+Nothing in this skill works without a server address and an API key. Settle both before any other step.
+
+### The key rule
+
+If you do not already have a VideoForge API key for the server you are about to use, stop and ask the user for it. Do this at the very start, before creating projects, uploading media or planning the edit. Never guess a key, reuse one from a different server, invent a placeholder, or carry on and hope the first request works.
+
+Check in this order, and stop at the first one that gives you a key:
+1. A credential or secret your platform already stores for the VideoForge host (a connector, vault entry or secret manager).
+2. An environment variable named `VF_API_KEY`, with the server address in `VF_BASE_URL`.
+3. A key the user gave you earlier in this conversation.
+
+If none of those exist, ask. Use this wording, adjusted to the situation:
+
+"I need a VideoForge API key to edit on your server. Which server should I use (the hosted one or your own address), and could you provide a scoped write key for it? Please enter it through your secure credential or secret field if there is one."
+
+### Asking safely
+
+- Prefer a secure input. If your platform has a credential form, secret field or vault, request the key through it and never ask the user to type the key into the normal chat.
+- If the user pastes a key into chat anyway, do not repeat it back, do not write it into files, scripts, logs or commit messages, and move it into a secure store or an environment variable straight away.
+- Keep the key in `VF_API_KEY` and read it from there. Print only the first four characters when you must confirm which key you are using.
+- Ask for a scoped write key. Ask for the owner key only when the task is administering the server, such as creating keys or users, and say why.
+- Ask once, clearly. If the user declines or does not answer, say that the work cannot continue against that server and offer what you can still do without it, such as writing the narration, planning the edit or preparing the build script. Do not ask again unprompted.
+
+### Verify before you start
+
+1. Send `GET /api/health` to confirm the server is reachable.
+2. Send `GET /api/capabilities` with `Authorization: Bearer <key>`. A 200 means the key works. Keep this response, because it lists every operation, preset, transition, filter, font, easing and limit.
+3. On a 401 or 403, the key is wrong, expired or from another deployment. Do not retry with a different or broader key. Tell the user which server returned the error and ask for a corrected key. Keys are issued per deployment, so a key from a local server never works on the hosted one.
+4. If the server cannot be reached, say so. A server on `localhost` is not reachable from a cloud environment, so ask for a public HTTPS address instead.
+
+### Addresses
+
+- Local server: `http://localhost:5000`.
+- Hosted server: `https://videoforge-api-s54w.onrender.com`.
+- Send `Authorization: Bearer <key>` on every request.
 
 ## 3. The workflow
 
+0. Confirm you hold a working API key (section 2). If you do not, ask for it now.
 1. Create a project: `POST /api/projects` with `{name, timeline: {fps, resolution: {width, height}, background, clips: []}}`. Use 30 fps and 1920 by 1080 for tutorials. A project always needs the `clips` array, even when empty.
 2. Upload media: `POST /api/media/upload` as multipart form data, field name `files`. The response contains `assets[0].id`. Probe results (duration, size) are stored on the asset.
 3. Build the timeline with operations: `POST /api/projects/:id/timeline/ops` with either `{op, args}` or `{ops: [...]}`. Send at most 100 operations per request. The reply includes `createdClipIds`.
@@ -144,6 +177,7 @@ The mechanics above get a video made. This section is what separates a polished 
 
 ## 9. A reliable build recipe for a tutorial
 
+0. Confirm the server address and API key (section 2), asking the user if either is missing.
 1. Write the narration first, one block per section, with a title, subtitle and next step line.
 2. Generate the voice over, one file per section, and note each file's exact duration.
 3. Record the interface at 1920 by 1080, timing every action to the narration, and write a manifest of section start and end times plus the audio length.
