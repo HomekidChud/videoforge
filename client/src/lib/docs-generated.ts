@@ -258,6 +258,91 @@ export const DOC_PAGES: DocPage[] = [
     "added": "2026-10-15T22:20:52+01:00"
   },
   {
+    "slug": "tutorial-blocks",
+    "group": "Get started",
+    "title": "Block coding tutorial",
+    "description": "Build your first set of blocks, wire values into them and apply the result to your edit.",
+    "sections": [
+      {
+        "title": "What you will make",
+        "text": "A set of blocks called **Title every clip** that adds a styled title to the playhead and fades every clip in your edit in half a second. You build it in the block studio without writing a line of code, check it with Preview, then press Apply to edit and watch the whole change land as one undoable step.\n\nIt takes about ten minutes. The same blocks run through the same operations and validation as the API, so what you build here is exactly what an agent could send as a batch.",
+        "callouts": [
+          {
+            "kind": "tip",
+            "text": "Open the Studio at `#/editor` in a second tab and keep this page next to it."
+          }
+        ]
+      },
+      {
+        "title": "Open the block studio",
+        "text": "Sign in to the Studio and click the **Blocks** tab, next to Effects. The block studio takes over the screen: the palette sits on the left, the canvas in the middle and the run controls in the header.\n\nIf you have never used blocks before, press the 🎓 **Tutorial** button in the header first. It walks you through naming a set of blocks, the block menu and your first Apply. It replays any time."
+      },
+      {
+        "title": "Start from the green block",
+        "text": "Every set of blocks begins with the green **When Apply is pressed** block. It is already on the canvas when you start. Its **Work on** setting decides what `$selection` means later — leave it on **Selected clips** for now.\n\nClick the set's name in the header and type `Title every clip`. The description is optional; write one if you plan to share it."
+      },
+      {
+        "title": "Build the chain",
+        "text": "The run order follows the lines between blocks, from the green block down. You will add three blocks to it.\n\nDrag an **Add title** block from the **Create** category onto the canvas. Drag from the green block's bottom dot to the Add title block's top dot: the line snaps in place, so the title is added first. In the block's Text field, type `Made with blocks`.\n\nNext, from the **Animate** category, drag **Fade in**. Connect it under the Add title block. Fade in asks which clips to work on: click its clip field and pick `$selection`.\n\nFinally, from the **Timing** category, drag a **For each clip** block and drop it on empty canvas. Move the Fade in block into its body — connect it to the dot on the block's right side, not the bottom. Then connect the For each clip block under the Add title block. Fade in now runs once per clip instead of once for the selection.",
+        "callouts": [
+          {
+            "kind": "note",
+            "text": "The coloured dots on a block's fields are sockets. Clip fields take clip blocks, time fields take frame blocks, and any field can take a Values block instead of a typed value."
+          }
+        ]
+      },
+      {
+        "title": "Wire a value block",
+        "text": "The title's text does not have to be typed into the field. From the **Values** category, drag a 📝 **Text** block next to the Add title block, type `Made with blocks` into it, and drag from its dot into the Add title block's Text field. The connected value wins over whatever is typed in the field.\n\nThis is the whole idea of block coding: values, clips and frames are blocks too, so a set of blocks can be re-wired without retyping anything. Try a 🔢 **Number** block in Fade in's Duration field with `0.5`."
+      },
+      {
+        "title": "Preview, then apply",
+        "text": "Press **Preview** in the header. The preview lists exactly what Apply would change, one line per change, without touching your edit: a title is added, every clip gets a fade.\n\nPress **▶ Apply to edit**. The title lands at the playhead and every clip in the edit fades in. One Ctrl+Z in the editor undoes the whole apply, because it is one step.\n\nIf something is wrong, the error bar at the bottom of the studio explains what and jumps to the offending block. Applying is disabled until errors are fixed.",
+        "callouts": [
+          {
+            "kind": "tip",
+            "text": "Change **Work on** on the green block to **Every clip** and press Preview again. The same blocks now style the whole edit without you selecting anything."
+          }
+        ]
+      },
+      {
+        "title": "Save, share and reuse",
+        "text": "Your blocks save to your account as you work. Back in the Studio, the Tools panel lists them, and pressing ▶ Apply to edit on a saved set runs it against the timeline you have open.\n\n- The 🔗 **Share** button copies a compact `VFT1:` code that anyone can paste into their Tools panel.\n- The **Save as sticker** block turns any clip into a reusable building block that appears in its own palette category.\n- The Code tab shows the same set of blocks as JavaScript, and Export as standalone script downloads a single `.mjs` that runs against the API."
+      },
+      {
+        "title": "Build the same thing with the API",
+        "text": "Everything the blocks did is one operations batch. Send this to `POST /api/projects/:id/timeline/ops` with a write key — or paste it into the Code tab and press Apply — and you get the same result.\n\n`update_clips` without `clipIds` or `track` hits every clip in the edit, which is what the For each clip block did. The title gets the same Spring preset you could have picked from the Animate category.",
+        "code": "{\n  \"ops\": [\n    {\"op\": \"add_text_clip\", \"args\": {\"id\": \"blocks-title\", \"text\": \"Made with blocks\", \"start\": 0, \"duration\": 5, \"x\": 0.5, \"y\": 0.15, \"textSize\": 5, \"font\": \"poppins\", \"fontWeight\": 700, \"textColor\": \"#ffffff\"}},\n    {\"op\": \"apply_motion\", \"args\": {\"clipId\": \"blocks-title\", \"preset\": \"spring\", \"duration\": 0.6}},\n    {\"op\": \"update_clips\", \"args\": {\"patch\": {\"fadeIn\": 0.5}}}\n  ]\n}"
+      },
+      {
+        "title": "Where to go next",
+        "text": "Small changes go a long way: rewire the value blocks, add a Repeat block around the fade, or build a second set of blocks that styles titles. The same blocks, code and API all describe one edit.",
+        "links": [
+          {
+            "label": "Blocks & scripts",
+            "slug": "custom-tools"
+          },
+          {
+            "label": "Motion graphics tutorial",
+            "slug": "motion-graphics-tutorial"
+          },
+          {
+            "label": "Animator tutorial",
+            "slug": "tutorial-animator"
+          },
+          {
+            "label": "Batch operations",
+            "slug": "batch-operations"
+          },
+          {
+            "label": "Animator",
+            "slug": "animator"
+          }
+        ]
+      }
+    ]
+  },
+  {
     "slug": "timeline",
     "group": "Core concepts",
     "title": "Timeline & layers",
@@ -293,6 +378,95 @@ export const DOC_PAGES: DocPage[] = [
     ],
     "updated": "2026-10-17T08:48:53Z",
     "added": "2026-10-15T22:20:52+01:00"
+  },
+  {
+    "slug": "tutorial-animator",
+    "group": "Get started",
+    "title": "Animator tutorial",
+    "description": "Rig a figure in the Animator, pose it, key the poses and bake the result onto your edit.",
+    "sections": [
+      {
+        "title": "What you will make",
+        "text": "A waving figure: the ready-made stick figure rigged in the Animator, with one arm keyed to wave twice over two seconds, eased so it swings naturally. You pose, key and play inside the Animator, then press **Apply to edit** and the whole motion lands on your timeline as ordinary keyframes.\n\nIt takes about ten minutes. Because the result is plain keyframes, the preview, the FFmpeg export and the API all agree with no new renderer.",
+        "callouts": [
+          {
+            "kind": "tip",
+            "text": "Open the Studio at `#/editor` in a second tab. You need at least one clip in the project before the Animator has something to rig."
+          }
+        ]
+      },
+      {
+        "title": "Put something on the timeline",
+        "text": "Open the Studio and click **Stick figure** in the Animator, or add a couple of shapes first: an ellipse for a head and two rectangles for arms work well. For this tutorial, open the Animator with the **Animator** button in the top bar and press **Stick figure**. Ten shapes land on the timeline, already rigged."
+      },
+      {
+        "title": "Meet the rig",
+        "text": "The Rig list on the left shows every part. Parts can hang off a **parent** and turn about a **joint**. In the stick figure the forearm is parented to the upper arm, the way a Roblox character's arm works: rotate the upper arm and the whole chain follows.\n\nOpen a part's **Joint & parent** row to see where its joint sits. Put the joint at the shoulder of an arm and rotating the arm swings it from there, not from its middle."
+      },
+      {
+        "title": "Pose and key",
+        "text": "Drag the playhead to `0.0`. Nothing to key yet — this is the rest pose.\n\nDrag the playhead to `0.3`. Now pose the forearm: drag it on the stage, or type into its **Pose** fields. Set **Turn** to `-60` so the forearm swings out. Each change writes a keyframe at the playhead, and a first key at the start pins the resting value so nothing jumps.\n\nMove the playhead to `1.0` and pose the forearm the other way: **Turn** `40`. A second key appears.\n\nTwo keys are a wave, but a stiff one. Select the second key and set its **Easing** to **ease-in-out**, then drag between keys to check the swing. Add one more pair of keys at `1.7` (`-50`) and `2.4` (`0`) so the arm settles back to rest.",
+        "callouts": [
+          {
+            "kind": "note",
+            "text": "Every property keys on its own: position, size, turn and see-through. The summary row on a part shows every key time at once, and the Keyframes panel expands each property onto its own line."
+          }
+        ]
+      },
+      {
+        "title": "Play it back",
+        "text": "Press play in the Animator. The figure waves twice and settles. Scrub the playhead to check individual poses. If a key lands in the wrong place, drag the diamond — it snaps to frames.\n\nUseful keys while you work:",
+        "rows": [
+          [
+            "Key",
+            "Action"
+          ],
+          [
+            "K",
+            "Key pose: keys every property of the selected part at the playhead"
+          ],
+          [
+            "Ctrl+Z",
+            "Undo, one pose or key at a time"
+          ]
+        ]
+      },
+      {
+        "title": "Apply to edit",
+        "text": "Press the green **Apply to edit** button. The Animator closes and the motion is baked onto the clips as ordinary keyframes. Select the forearm in the editor and open **Animate** to see them: position and rotation curves you can trim, retime, or hand-edit like any other keyframes.\n\nNothing is lost by baking. The animation is also saved with the project, so you can reopen the Animator and keep posing."
+      },
+      {
+        "title": "Build the same thing with the API",
+        "text": "The Animator's result is one `rig_bake` operation. Send this to `POST /api/projects/:id/timeline/ops` with a write key and the same wave lands on the timeline — parts, joints and keyframes included.\n\nThe forearm is parented to the upper arm with a joint above it, and only its rotation is keyed — the same rig you posed by hand.",
+        "code": "{\n  \"ops\": [\n    {\"op\": \"add_shape_clip\", \"args\": {\"id\": \"upper-arm\", \"start\": 0, \"duration\": 3, \"x\": 0.44, \"y\": 0.5, \"shape\": {\"type\": \"rectangle\", \"width\": 0.03, \"height\": 0.18, \"fill\": \"#e8edf4\"}}},\n    {\"op\": \"add_shape_clip\", \"args\": {\"id\": \"forearm\", \"start\": 0, \"duration\": 3, \"x\": 0.44, \"y\": 0.62, \"shape\": {\"type\": \"rectangle\", \"width\": 0.028, \"height\": 0.16, \"fill\": \"#e8edf4\"}}},\n    {\"op\": \"rig_bake\", \"args\": {\"start\": 0, \"animation\": {\"name\": \"Wave\", \"length\": 3, \"parts\": [{\"clipId\": \"upper-arm\"}, {\"clipId\": \"forearm\", \"parentId\": \"upper-arm\", \"pivotX\": 0, \"pivotY\": -0.08}], \"tracks\": {\"forearm\": {\"rotation\": [{\"time\": 0, \"value\": 0, \"easing\": \"ease-in-out\"}, {\"time\": 0.3, \"value\": -60, \"easing\": \"ease-in-out\"}, {\"time\": 1.0, \"value\": 40, \"easing\": \"ease-in-out\"}, {\"time\": 1.7, \"value\": -50, \"easing\": \"ease-in-out\"}, {\"time\": 2.4, \"value\": 0}]}}}}}\n  ]\n}"
+      },
+      {
+        "title": "Where to go next",
+        "text": "Rig your own clips instead of the figure, parent a hand to a forearm and drag it, or pose a lower third onto a clip. Everything you key bakes to ordinary keyframes you can keep editing.",
+        "links": [
+          {
+            "label": "Animator",
+            "slug": "animator"
+          },
+          {
+            "label": "Block coding tutorial",
+            "slug": "tutorial-blocks"
+          },
+          {
+            "label": "Keyframes & easing",
+            "slug": "keyframes"
+          },
+          {
+            "label": "Motion graphics tutorial",
+            "slug": "motion-graphics-tutorial"
+          },
+          {
+            "label": "Examples gallery",
+            "slug": "examples"
+          }
+        ]
+      }
+    ]
   },
   {
     "slug": "motion-graphics",
@@ -400,6 +574,97 @@ export const DOC_PAGES: DocPage[] = [
     ],
     "updated": "2026-10-17T08:48:53Z",
     "added": "2026-10-15T22:20:52+01:00"
+  },
+  {
+    "slug": "tutorial-fire-edit",
+    "group": "Get started",
+    "title": "Fire edit tutorial",
+    "description": "Turn one clip into a finished edit: trim to the beat, warm it up, add motion graphics, cut with transitions and export.",
+    "sections": [
+      {
+        "title": "What you will make",
+        "text": "A fifteen second edit from a single clip: two trimmed cuts joined with a dissolve, a warm colour look over everything, a headline that springs in, a floating badge and a lower third that arrives late. You upload a clip (a screen recording works just as well as camera footage), cut it in the editor, dress it with motion graphics and export an MP4.\n\nIt takes about twenty minutes. Every layer is a normal clip, so you can retime and restyle anything afterwards.",
+        "callouts": [
+          {
+            "kind": "tip",
+            "text": "Follow along in a second tab. Open the Studio at `#/editor` and keep this page next to it. Any clip will do: a screen recording, phone footage or something from a stock library."
+          }
+        ]
+      },
+      {
+        "title": "Get the clip in",
+        "text": "Open the **Media** tab in the left library and drag your clip onto the timeline, or click upload and pick the file. The clip is probed once: its length, size and thumbnail appear straight away, and it plays back with range requests so scrubbing stays smooth.\n\nGive the project a name: click the project name at the top left and type `Fire edit`."
+      },
+      {
+        "title": "Trim to the beat",
+        "text": "Watch the clip once and find its two best moments. Trim each end of the clip by dragging its edges in the timeline, or select the clip and set **In** and **Out** in the inspector under Timing.\n\nFor this tutorial, keep the first cut to about eight seconds: set the clip's **Out** to `8`."
+      },
+      {
+        "title": "Make the second cut",
+        "text": "Right-click the clip and choose **Duplicate**, or select it and press the duplicate button in the inspector. Drag the copy so it starts where the first cut ends, then trim it to about seven seconds and, if the moment you want is later in the source, set its **In** to a different point so the second cut shows new footage.\n\nTwo cuts of the same source back to back is the fastest way to build rhythm from one clip."
+      },
+      {
+        "title": "Warm the whole edit up",
+        "text": "Select both clips — shift-click the second one — and open the **Edit** tab in the inspector. Under colour, set the **look** to **Warm**. Fire edits live in warm tones: everything shifts toward amber, and the highlights roll off gently.\n\nIf your footage is dark, raise **Brightness** a little. If it is flat, raise **Contrast** and **Colour strength**."
+      },
+      {
+        "title": "Add the headline",
+        "text": "Click **Add title** in the top bar. In the Text box, type `Fire edit`. Set Size to about 10%, pick a bold weight, and set Vertical to 20% so it sits near the top. Under Timing, set Start to `0` and Duration to `15` so it runs the whole edit.\n\nOpen the **Motion** tab, expand Motion presets and click **Spring** with a Duration of 0.9. The headline pops in with a damped bounce and stays put."
+      },
+      {
+        "title": "Add a badge that floats",
+        "text": "Open the **Graphics** tab and click **ellipse**. Set Shape width to 7% and height to 12% so it reads as a circle on 16:9, fill it orange `#f6a447`, and set Vertical to 68%, low on the frame.\n\nIn the Motion tab, expand **Animate with code** and under Looping recipe choose **Float**, then click **Apply recipe**. The badge bobs gently for the whole edit — a formula, not keyframes, so it loops at any length."
+      },
+      {
+        "title": "Add the lower third",
+        "text": "In the **Graphics** tab, find the lower third template card. Set the title to your name, the subtitle to `Cut · graded · exported`, and the accent colour to the same orange. Set Start to `2` and Duration to `4`.\n\nHover the card to preview its animation, then click **Add to timeline**. It lands at the playhead, already selected — drag it or set its start until it sits where you want."
+      },
+      {
+        "title": "Join the cuts with a dissolve",
+        "text": "Open the **Effects** tab and look under **Transitions**. Drag **Dissolve** onto the second clip — the one that follows the first — or select the second clip and choose Dissolve in the inspector. Set its duration to about `0.5`.\n\nThe transition overlaps the two cuts and moves later video up, so the edit stays tight. It plays in the preview and survives the FFmpeg export.",
+        "callouts": [
+          {
+            "kind": "tip",
+            "text": "Try the other transitions on the same cut: iris for a punch-in feel, wipe-left for a harder rhythm. One transition per cut is plenty."
+          }
+        ]
+      },
+      {
+        "title": "Check it, then export",
+        "text": "Press Space and watch the whole edit once: headline springs in, badge floats, lower third arrives at two seconds, the two cuts dissolve into each other. Use the arrow keys to step frame by frame over anything you are unsure about.\n\nWhen you are happy, click **Export** in the top bar, choose MP4, and start the render. The render runs server side with FFmpeg; the progress page shows the percentage, and the finished MP4 downloads from the same place."
+      },
+      {
+        "title": "Build the same thing with the API",
+        "text": "Everything you did in the editor is operations. This batch assumes the clip is uploaded and its asset id is `clip-1` — replace it with the id from `GET /api/media`. Send the ops to `POST /api/projects/:id/timeline/ops` with a write key, then enqueue a render with `POST /api/renders`.\n\n`update_clips` with `clipIds` warms both cuts at once, exactly like selecting them in the editor. The transition, presets and templates are the same operations the Studio sends.",
+        "code": "{\n  \"ops\": [\n    {\"op\": \"add_clip\", \"args\": {\"assetId\": \"clip-1\", \"id\": \"cut-1\", \"start\": 0, \"outPoint\": 8, \"track\": \"video\"}},\n    {\"op\": \"add_clip\", \"args\": {\"assetId\": \"clip-1\", \"id\": \"cut-2\", \"start\": 8, \"inPoint\": 8, \"outPoint\": 15, \"track\": \"video\"}},\n    {\"op\": \"update_clips\", \"args\": {\"clipIds\": [\"cut-1\", \"cut-2\"], \"patch\": {\"filter\": \"warm\"}}},\n    {\"op\": \"set_transition\", \"args\": {\"clipId\": \"cut-2\", \"type\": \"dissolve\", \"duration\": 0.5}},\n    {\"op\": \"add_text_clip\", \"args\": {\"id\": \"headline\", \"text\": \"Fire edit\", \"start\": 0, \"duration\": 15, \"x\": 0.5, \"y\": 0.2, \"textSize\": 10, \"fontWeight\": 700, \"textColor\": \"#ffffff\"}},\n    {\"op\": \"apply_motion\", \"args\": {\"clipId\": \"headline\", \"preset\": \"spring\", \"duration\": 0.9}},\n    {\"op\": \"add_shape_clip\", \"args\": {\"id\": \"badge\", \"start\": 0, \"duration\": 15, \"x\": 0.5, \"y\": 0.68, \"shape\": {\"type\": \"ellipse\", \"width\": 0.07, \"height\": 0.124, \"fill\": \"#f6a447\"}}},\n    {\"op\": \"apply_code_motion\", \"args\": {\"clipIds\": [\"badge\"], \"recipe\": \"float\", \"speed\": 1, \"strength\": 1}},\n    {\"op\": \"add_motion_template\", \"args\": {\"template\": \"lower-third\", \"title\": \"Your name\", \"subtitle\": \"Cut · graded · exported\", \"color\": \"#f6a447\", \"start\": 2, \"duration\": 4, \"idPrefix\": \"lt\"}}\n  ]\n}"
+      },
+      {
+        "title": "Where to go next",
+        "text": "Try the same structure on your own footage: more cuts, a kinetic type title, or the Animator rigging the badge and headline as one part. The edit is ordinary clips all the way down, so anything can be retimed or restyled.",
+        "links": [
+          {
+            "label": "Motion graphics tutorial",
+            "slug": "motion-graphics-tutorial"
+          },
+          {
+            "label": "Transitions",
+            "slug": "transitions"
+          },
+          {
+            "label": "Rendering",
+            "slug": "rendering"
+          },
+          {
+            "label": "Motion presets",
+            "slug": "motion-presets"
+          },
+          {
+            "label": "Animator tutorial",
+            "slug": "tutorial-animator"
+          }
+        ]
+      }
+    ]
   },
   {
     "slug": "shapes",
@@ -2634,7 +2899,13 @@ export const DOC_PAGES: DocPage[] = [
     "sections": [
       {
         "title": "Ways to help",
-        "text": "You do not need to write code to help. Fixing a confusing sentence in the docs, reporting a bug with clear steps, adding a test for something that broke once, or building a new motion preset are all welcome.\n\n- **Docs:** every page is a markdown file in `docs/`. Small fixes are the easiest first pull request.\n- **Bugs:** open an issue with what you did, what you expected and what happened. Add the browser and the project JSON if you can.\n- **Features:** open an issue first for anything large, so the shape of the change is agreed before you spend time on it.\n- **Presets, templates and blocks:** each has a short recipe further down this page."
+        "text": "There are two kinds of contributor, and the rules are strict so that pull requests are small, true and easy to review.\n\n- **Community contributors may only change the docs.** Your pull request must touch nothing outside the `docs/` folder, and it needs a description that says which page, what was wrong and how you checked it. Anything else is closed automatically by the contribution rules workflow. See `CONTRIBUTING.md` in the repository root for the full policy.\n- **Bugs and ideas:** open an issue with what you did, what you expected and what happened. Add the browser and the project JSON if you can. Do not fix code yourself; a maintainer will pick it up.\n- **Maintainers** (the repository owner) may change anything — code, presets, templates and blocks — using the recipes further down this page.",
+        "callouts": [
+          {
+            "kind": "warning",
+            "text": "Nonsense is rejected. A docs change must describe something you actually tried in a running Studio, written in your own words. AI-pasted filler, drive-by refactors, dependency bumps and mass rewrites of pages are closed without review."
+          }
+        ]
       },
       {
         "title": "Set up your machine",
@@ -3078,8 +3349,12 @@ export const DOC_PAGES: DocPage[] = [
           },
           {
             "status": "todo",
-            "text": "More tutorials: Animator rig, blocks and Apply to edit, a YouTube lower third, kinetic type, a product promo, captions on a talking-head clip, and driving an edit from an agent.",
+            "text": "More recorded tutorials: a YouTube lower third, kinetic type, a product promo, captions on a talking-head clip, and driving an edit from an agent.",
             "priority": "Medium"
+          },
+          {
+            "status": "done",
+            "text": "More written tutorials: the Animator, block coding and a fire edit built from one clip, each ending in the same build as one API batch a test keeps honest."
           },
           {
             "status": "todo",
@@ -3098,7 +3373,7 @@ export const DOC_PAGES: DocPage[] = [
           }
         ],
         "taskStats": {
-          "done": 1,
+          "done": 2,
           "doing": 0,
           "todo": 10
         }
@@ -3203,7 +3478,7 @@ export const DOC_PAGES: DocPage[] = [
           },
           {
             "status": "done",
-            "text": "Is this page helpful? buttons, and a link that opens a prefilled GitHub issue for the page."
+            "text": "Is this page helpful? buttons on every page."
           },
           {
             "status": "done",
@@ -3376,11 +3651,15 @@ export const DOC_PAGES: DocPage[] = [
           },
           {
             "status": "done",
+            "text": "Strict contribution rules: community pull requests are docs-only, enforced by a workflow that also demands a real description, with the policy in CONTRIBUTING.md and the Contribute page."
+          },
+          {
+            "status": "done",
             "text": "A contributors list on the Contribute page."
           }
         ],
         "taskStats": {
-          "done": 2,
+          "done": 3,
           "doing": 0,
           "todo": 4
         }
@@ -3601,7 +3880,7 @@ export const DOC_PAGES: DocPage[] = [
         "tasks": [
           {
             "status": "done",
-            "text": "**Better docs.** Sidebar guide groups open and close with an arrow (remembered per browser, plus Collapse all), every section folds with its own arrow, and there are reading times, a progress bar, a highlighted on-this-page list, copyable section links, breadcrumbs, note, tip and warning callouts, bullet lists with bold, code and links, an edit-on-GitHub link and a back-to-top button."
+            "text": "**Better docs.** Sidebar guide groups open and close with an arrow (remembered per browser, plus Collapse all), every section folds with its own arrow, and there are reading times, a progress bar, a highlighted on-this-page list, copyable section links, breadcrumbs, note, tip and warning callouts, bullet lists with bold, code and links, and a back-to-top button."
           },
           {
             "status": "done",
@@ -3617,6 +3896,10 @@ export const DOC_PAGES: DocPage[] = [
           },
           {
             "status": "done",
+            "text": "**Three more tutorials.** Block coding in the block studio, a wave in the Animator and a fire edit cut from one clip — each with steps for the editor and the same result as one tested API batch."
+          },
+          {
+            "status": "done",
             "text": "**Contribute and Storage pages.** Setup, code layout, tests and recipes for presets, templates, operations and blocks, and a page on disks, backups and the optional MongoDB store."
           },
           {
@@ -3625,7 +3908,7 @@ export const DOC_PAGES: DocPage[] = [
           }
         ],
         "taskStats": {
-          "done": 6,
+          "done": 7,
           "doing": 0,
           "todo": 0
         }
@@ -3659,7 +3942,7 @@ export const DOC_PAGES: DocPage[] = [
       }
     ],
     "taskStats": {
-      "done": 67,
+      "done": 70,
       "doing": 0,
       "todo": 46
     },
@@ -3670,7 +3953,7 @@ export const DOC_PAGES: DocPage[] = [
 
 export const CONTRIBUTORS: { name: string; commits: number }[] = [
   {
-    "commits": 51,
+    "commits": 65,
     "name": "HomekidChud"
   },
   {

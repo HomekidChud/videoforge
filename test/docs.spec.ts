@@ -81,4 +81,52 @@ await check("tutorial batch applies cleanly", () => {
   assert.ok(tl.clips.find((c) => c.id === "badge")?.expressions, "badge floats through an expression");
 });
 
+// The block coding tutorial's batch adds its title, springs it and fades every clip.
+await check("block coding tutorial batch applies cleanly", () => {
+  const page = DOC_PAGES.find((p) => p.slug === "tutorial-blocks");
+  assert.ok(page, "block coding tutorial exists");
+  const code = page!.sections.find((s) => s.code?.includes('"ops"'))?.code;
+  assert.ok(code, "block coding tutorial has an ops batch");
+  const { ops } = JSON.parse(code!);
+  let tl = normalizeTimeline({ fps: 30, resolution: { width: 1280, height: 720 }, clips: [{ id: "existing", track: "overlay", text: "Existing", start: 0, duration: 4 }] });
+  for (const op of ops) tl = applyTimelineOp(tl, op, () => undefined);
+  const title = tl.clips.find((c) => c.id === "blocks-title");
+  assert.ok(title, "the blocks title was created");
+  assert.ok(title?.keyframes?.scale, "the title springs in through keyframes");
+  assert.ok(tl.clips.find((c) => c.id === "existing")?.fadeIn === 0.5, "every clip fades in, like the For each clip block");
+});
+
+// The animator tutorial's rig_bake really bakes a parented wave.
+await check("animator tutorial batch applies cleanly", () => {
+  const page = DOC_PAGES.find((p) => p.slug === "tutorial-animator");
+  assert.ok(page, "animator tutorial exists");
+  const code = page!.sections.find((s) => s.code?.includes('"ops"'))?.code;
+  assert.ok(code, "animator tutorial has an ops batch");
+  const { ops } = JSON.parse(code!);
+  let tl = normalizeTimeline({ fps: 30, resolution: { width: 1280, height: 720 }, clips: [] });
+  for (const op of ops) tl = applyTimelineOp(tl, op, () => undefined);
+  const forearm = tl.clips.find((c) => c.id === "forearm");
+  assert.ok(forearm, "the forearm part was created");
+  const keys = forearm?.keyframes?.rotation ?? [];
+  assert.ok(keys.length >= 5, "the wave is keyed");
+  assert.ok(keys.some((k) => k.value === -60), "the first pose swings out");
+});
+
+// The fire edit tutorial's batch cuts, warms and dresses one clip.
+await check("fire edit tutorial batch applies cleanly", () => {
+  const page = DOC_PAGES.find((p) => p.slug === "tutorial-fire-edit");
+  assert.ok(page, "fire edit tutorial exists");
+  const code = page!.sections.find((s) => s.code?.includes('"ops"'))?.code;
+  assert.ok(code, "fire edit tutorial has an ops batch");
+  const { ops } = JSON.parse(code!);
+  let tl = normalizeTimeline({ fps: 30, resolution: { width: 1280, height: 720 }, clips: [] });
+  const asset = { kind: "video", duration: 20, width: 1920, height: 1080 };
+  for (const op of ops) tl = applyTimelineOp(tl, op, (id) => (id === "clip-1" ? asset : undefined));
+  const cuts = tl.clips.filter((c) => c.id.startsWith("cut-"));
+  assert.equal(cuts.length, 2, "two cuts of the same clip");
+  assert.ok(cuts.every((c) => c.filter === "warm"), "both cuts are warmed");
+  assert.ok(cuts.find((c) => c.id === "cut-2")?.transitionIn, "the cuts are joined by a transition");
+  for (const id of ["headline", "badge", "lt-0"]) assert.ok(tl.clips.some((c) => c.id === id), `${id} was created`);
+});
+
 console.log(`docs.spec: ${checks} checks passed`);

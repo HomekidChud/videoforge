@@ -104,7 +104,12 @@ check("loose search finds near misses when no page has every word", () => {
 });
 
 check("new pages can be found", () => {
-  assert.equal(top("tutorial")[0], "motion-graphics-tutorial");
+  const tutorialHits = top("tutorial", 12);
+  assert.ok(tutorialHits.includes("motion-graphics-tutorial"), `the motion graphics tutorial ranks, got ${tutorialHits.join(", ")}`);
+  for (const slug of ["tutorial-blocks", "tutorial-animator", "tutorial-fire-edit"]) assert.ok(tutorialHits.includes(slug), `${slug} is found for "tutorial"`);
+  assert.equal(top("block coding")[0], "tutorial-blocks");
+  assert.equal(top("animator tutorial")[0], "tutorial-animator");
+  assert.equal(top("fire edit")[0], "tutorial-fire-edit");
   assert.equal(top("contribute")[0], "contribute");
   assert.equal(top("durability")[0], "storage-and-durability");
 });

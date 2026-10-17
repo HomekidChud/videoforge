@@ -31,7 +31,8 @@ Tutorials become motion graphics and real video: recordings of VideoForge being 
 - [ ] **High.** Loop recordings for every motion preset, template and shape, shown beside its entry in the docs.
 - [ ] **Medium.** Recorded walkthroughs of the Studio tour, the Animator, the block studio and the agent API workflow.
 - [ ] **Medium.** Make the recordings with a script (Playwright plus FFmpeg) so they can be rebuilt in one command whenever the interface changes.
-- [ ] **Medium.** More tutorials: Animator rig, blocks and Apply to edit, a YouTube lower third, kinetic type, a product promo, captions on a talking-head clip, and driving an edit from an agent.
+- [ ] **Medium.** More recorded tutorials: a YouTube lower third, kinetic type, a product promo, captions on a talking-head clip, and driving an edit from an agent.
+- [x] More written tutorials: the Animator, block coding and a fire edit built from one clip, each ending in the same build as one API batch a test keeps honest.
 - [ ] **Medium.** Transcripts for every video, so each tutorial also works as text and in search.
 - [ ] **Low.** A short intro film for the docs home page and a recorded changelog for each release.
 - [ ] **Low.** Host videos outside git (a release asset or storage bucket) so the repository stays small.
@@ -62,7 +63,7 @@ Small features that make the docs faster to read and easier to trust.
 - [x] Previous and next links at the bottom of every page, in reading order.
 - [x] Copy button and syntax highlighting on every code block.
 - [ ] **High.** Language tabs on API examples: curl, JavaScript and Python side by side.
-- [x] Is this page helpful? buttons, and a link that opens a prefilled GitHub issue for the page.
+- [x] Is this page helpful? buttons on every page.
 - [x] Last updated date on every page, taken from git.
 - [x] Roles on the docs home page: cards for Studio user, agent builder and contributor, each with a short path.
 - [x] Troubleshooting and FAQ pages, plus a cookbook of short recipes.
@@ -109,6 +110,7 @@ Checks that stop the docs drifting from the product, and work that helps people 
 - [ ] **Medium.** Style and spelling checks on docs pull requests.
 - [ ] **Medium.** An accessibility pass on the docs: contrast, focus order, skip link and screen reader labels.
 - [ ] **Medium.** Social preview images and page descriptions for each page, plus a sitemap.
+- [x] Strict contribution rules: community pull requests are docs-only, enforced by a workflow that also demands a real description, with the policy in CONTRIBUTING.md and the Contribute page.
 - [x] A contributors list on the Contribute page.
 
 ## Animator and rigs
@@ -172,10 +174,11 @@ Everything the block studio does today.
 
 What the docs site already does.
 
-- [x] **Better docs.** Sidebar guide groups open and close with an arrow (remembered per browser, plus Collapse all), every section folds with its own arrow, and there are reading times, a progress bar, a highlighted on-this-page list, copyable section links, breadcrumbs, note, tip and warning callouts, bullet lists with bold, code and links, an edit-on-GitHub link and a back-to-top button.
+- [x] **Better docs.** Sidebar guide groups open and close with an arrow (remembered per browser, plus Collapse all), every section folds with its own arrow, and there are reading times, a progress bar, a highlighted on-this-page list, copyable section links, breadcrumbs, note, tip and warning callouts, bullet lists with bold, code and links, and a back-to-top button.
 - [x] **Docs search.** Every section is searched, typos are forgiven only for words the docs do not contain, weak matches are trimmed, four pages show first with Show more, and a closest-match fallback appears when no page has every word.
 - [x] **Docs start tidy.** Only Get started is open on arrival, and the group you are reading opens by itself.
 - [x] **Motion graphics tutorial.** An animated intro built step by step in the Studio, plus the same result as one API batch that a test keeps honest.
+- [x] **Three more tutorials.** Block coding in the block studio, a wave in the Animator and a fire edit cut from one clip — each with steps for the editor and the same result as one tested API batch.
 - [x] **Contribute and Storage pages.** Setup, code layout, tests and recipes for presets, templates, operations and blocks, and a page on disks, backups and the optional MongoDB store.
 - [x] **Short README.** A one-screen overview with a docs index, instead of repeating the docs.
 
