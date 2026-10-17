@@ -125,7 +125,7 @@ sections.forEach((sec, i) => {
 const total = num(cursor);
 
 // Narration, one clip per section, starting where the narrator started during the recording.
-for (const p of placed) ops.push({ op: "add_clip", args: { assetId: audioAssets[p.id], id: `vo-${p.id}`, start: p.audioStart, track: "audio", volume: 1 } });
+for (const p of placed) ops.push({ op: "add_clip", args: { assetId: audioAssets[p.id], id: `vo-${p.id}`, start: p.audioStart, inPoint: 0, outPoint: num(sections.find((x) => x.id === p.id)!.audio), track: "audio", volume: 1 } });
 
 // Chapter label: a small step marker that arrives with each section and leaves again.
 const body = placed.filter((p) => p.id !== "intro" && p.id !== "outro");
