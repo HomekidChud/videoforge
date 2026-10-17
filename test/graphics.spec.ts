@@ -229,6 +229,9 @@ function pixel(file:string,x:number,y:number) {
   const p=spawnSync("ffmpeg",["-v","error","-i",file,"-vf",`format=rgb24,crop=1:1:${x}:${y}`,"-frames:v","1","-f","rawvideo","-"],{timeout:10000});
   assert.equal(p.status,0,String(p.stderr));return Array.from(p.stdout.slice(0,3));
 }
+// The real-render checks need ffmpeg on PATH; skip them loudly where it is absent.
+const ffmpegOk = spawnSync("ffmpeg", ["-version"], { timeout: 5000 }).status === 0;
+if (ffmpegOk) {
 try {
   const rect=render(shaped,"rect.png",1);
   check(()=>assert.ok(pixel(rect,160,90)[0]>240));
@@ -296,4 +299,5 @@ try {
 
   check(()=>assert.ok(render(shaped,"shape.mp4")));
 } finally {fs.rmSync(dir,{recursive:true,force:true});}
+} else {fs.rmSync(dir,{recursive:true,force:true});console.log("ffmpeg not found: skipping the real-render checks");}
 console.log(`${checks} graphics checks passed`);
