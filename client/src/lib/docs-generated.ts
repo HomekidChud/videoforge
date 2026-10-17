@@ -11,7 +11,7 @@ export const DOC_PAGES: DocPage[] = [
     "sections": [
       {
         "title": "Welcome to VideoForge",
-        "text": "VideoForge is a self-hosted video editor and programmable composition engine. Use the Studio to cut footage and animate graphics, or use the same HTTP API to let scripts and AI agents build the edit. Your media stays on your server.\n\nA hosted deployment runs at <https://videoforge-api-s54w.onrender.com> — set BASE to it and use an API key issued by that deployment. GET /api/health reports status. To run your own, see Self-hosting."
+        "text": "VideoForge is a self-hosted video editor and programmable composition engine. Use the Studio to cut footage and animate graphics, or use the same HTTP API to let scripts and AI agents build the edit. Your media stays on your server.\n\nA hosted deployment runs at [videoforge-api-s54w.onrender.com](https://videoforge-api-s54w.onrender.com) — set BASE to it and use an API key issued by that deployment. GET /api/health reports status. To run your own, see Self-hosting."
       },
       {
         "title": "Choose your starting point",
@@ -1290,8 +1290,8 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Cut out the dead air",
-        "text": "Split at the boring moment, then ripple the rest closed — no gap left behind.",
-        "code": "{\n  \"ops\": [\n    { \"op\": \"split_clip\", \"args\": { \"clipId\": \"intro\", \"at\": 12.4 } },\n    { \"op\": \"ripple_delete\", \"args\": { \"clipId\": \"intro-2\" } }\n  ]\n}"
+        "text": "Split at the boring moment, then ripple the rest closed — no gap left behind. The split's response lists the new right-hand clip's id in `createdClipIds`; use it in the second batch.",
+        "code": "{\n  \"ops\": [\n    { \"op\": \"ripple_delete\", \"args\": { \"clipId\": \"the new id from createdClipIds\" } }\n  ]\n}"
       },
       {
         "title": "Constant speed and a freeze",
@@ -1315,9 +1315,9 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "Check before you render",
-        "text": "Two GETs save a render: a frame at the moment you care about, and the full storyboard.",
+        "text": "Two GETs save a render: a frame at the moment you care about, and the full storyboard. Both are read routes — send your key.",
         "language": "SHELL",
-        "code": "curl \"$BASE/api/projects/$ID/frame?t=3&width=640\" -o frame.png\ncurl \"$BASE/api/projects/$ID/storyboard?count=6\" -o sheet.png",
+        "code": "curl -H \"Authorization: Bearer $KEY\" \"$BASE/api/projects/$ID/frame?t=3&width=640\" -o frame.png\ncurl -H \"Authorization: Bearer $KEY\" \"$BASE/api/projects/$ID/storyboard?count=6\" -o sheet.png",
         "links": [
           {
             "label": "Examples gallery",
@@ -1337,7 +1337,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T13:09:37Z",
+    "added": "2026-10-17T13:09:37Z"
   },
   {
     "slug": "examples",
@@ -2446,7 +2448,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T08:48:53Z",
+    "updated": "2026-10-17T13:09:37Z",
     "added": "2026-10-15T22:20:52+01:00"
   },
   {
@@ -2810,7 +2812,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "API and agents",
-        "text": "**409 on a timeline edit.** The batch was sent without `expectedUpdatedAt`, or another edit landed first. GET the project, read `updatedAt`, and send it with the next batch — the atomic batches page explains the pattern.\n\n**An operation name is rejected.** Operation names come from `GET /api/capabilities`; never invent one. The validation error names the closest known operation if there is a typo.\n\n**dryRun says OK but the real batch fails.** dryRun validates the timeline shape; it cannot catch a missing asset or a key restriction such as `allowUpload: false`. Run the real batch and read the error body."
+        "text": "**409 on a timeline edit.** The batch carried `expectedUpdatedAt` and another edit landed first — the write is refused so nothing is clobbered. GET the project, read the fresh `updatedAt`, and send it with the next batch — the atomic batches page explains the pattern.\n\n**An operation name is rejected.** Operation names come from `GET /api/capabilities`; never invent one. The validation error names the closest known operation if there is a typo.\n\n**dryRun says OK but the real batch fails.** dryRun validates the timeline shape; it cannot catch a missing asset or a key restriction such as `allowUpload: false`. Run the real batch and read the error body."
       },
       {
         "title": "Self-hosting",
@@ -2834,7 +2836,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T13:09:37Z",
+    "added": "2026-10-17T13:09:37Z"
   },
   {
     "slug": "faq",
@@ -2856,7 +2860,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "API and agents",
-        "text": "**How do agents authenticate?** With scoped API keys: `Authorization: Bearer <key>`. Scopes are read, write or admin, with per-key restrictions for expiry, projects, rate, uploads, rendering and deletion.\n\n**How do I make several edits safely?** Send them as one atomic batch to `/api/projects/:id/timeline/ops` with `dryRun: true` first, then for real with `expectedUpdatedAt` so a stale write fails with 409 instead of clobbering.\n\n**Can I see what I built before rendering?** Yes: `GET /frame?t=1.5` returns a composed PNG, `GET /state?t=1.5` returns the animated values, and `GET /storyboard` returns a contact sheet.\n\n**Is there an OpenAPI file?** Yes — an OpenAPI description generated from the operation list is served at <https://homekidchud.github.io/videoforge/openapi.json> and linked from the HTTP API reference."
+        "text": "**How do agents authenticate?** With scoped API keys: `Authorization: Bearer <key>`. Scopes are read, write or admin, with per-key restrictions for expiry, projects, rate, uploads, rendering and deletion.\n\n**How do I make several edits safely?** Send them as one atomic batch to `/api/projects/:id/timeline/ops` with `dryRun: true` first, then for real with `expectedUpdatedAt` so a stale write fails with 409 instead of clobbering.\n\n**Can I see what I built before rendering?** Yes: `GET /frame?t=1.5` returns a composed PNG, `GET /state?t=1.5` returns the animated values, and `GET /storyboard` returns a contact sheet.\n\n**Is there an OpenAPI file?** Yes — an OpenAPI description generated from the operation list is served at [the OpenAPI description](https://homekidchud.github.io/videoforge/openapi.json) and linked from the HTTP API reference."
       },
       {
         "title": "Self-hosting",
@@ -2880,7 +2884,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T13:09:37Z",
+    "added": "2026-10-17T13:09:37Z"
   },
   {
     "slug": "glossary",
@@ -2980,7 +2986,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T13:09:37Z",
+    "added": "2026-10-17T13:09:37Z"
   },
   {
     "slug": "status",
@@ -2990,7 +2998,7 @@ export const DOC_PAGES: DocPage[] = [
     "sections": [
       {
         "title": "What you are looking at",
-        "text": "The hosted API server is <https://videoforge-api-s54w.onrender.com>. It is the deployment the introduction, quickstart and self-hosting pages point to, and it sleeps when idle: free hosting pauses inactive servers, so the first request after a pause can take a few seconds to wake it.\n\nIf it stays down, the deployment is broken rather than asleep — check the repository's GitHub Pages deployment, or run your own server from the self-hosting guide.",
+        "text": "The hosted API server is [videoforge-api-s54w.onrender.com](https://videoforge-api-s54w.onrender.com). It is the deployment the introduction, quickstart and self-hosting pages point to, and it sleeps when idle: free hosting pauses inactive servers, so the first request after a pause can take a few seconds to wake it.\n\nIf the check cannot reach it from your browser, that is not proof it is down: the deployment may be asleep, or your browser or network may block the cross-origin request. The self-hosting guide is the reliable answer.",
         "callouts": [
           {
             "kind": "tip",
@@ -3012,7 +3020,9 @@ export const DOC_PAGES: DocPage[] = [
           }
         ]
       }
-    ]
+    ],
+    "updated": "2026-10-17T13:09:37Z",
+    "added": "2026-10-17T13:09:37Z"
   },
   {
     "slug": "TODO",
@@ -3086,7 +3096,12 @@ export const DOC_PAGES: DocPage[] = [
             "text": "Host videos outside git (a release asset or storage bucket) so the repository stays small.",
             "priority": "Low"
           }
-        ]
+        ],
+        "taskStats": {
+          "done": 1,
+          "doing": 0,
+          "todo": 10
+        }
       },
       {
         "title": "Next: editor UI revamp",
@@ -3162,7 +3177,12 @@ export const DOC_PAGES: DocPage[] = [
             "text": "Screenshot checks at three window sizes in CI, so the layout cannot drift back into clutter.",
             "priority": "Low"
           }
-        ]
+        ],
+        "taskStats": {
+          "done": 0,
+          "doing": 0,
+          "todo": 14
+        }
       },
       {
         "title": "Next: docs reading and navigation",
@@ -3220,7 +3240,12 @@ export const DOC_PAGES: DocPage[] = [
             "text": "Docs search: remember filters, show a preview of the section on hover and add a / hint on every page.",
             "priority": "Low"
           }
-        ]
+        ],
+        "taskStats": {
+          "done": 8,
+          "doing": 0,
+          "todo": 4
+        }
       },
       {
         "title": "Next: docs live and generated",
@@ -3263,7 +3288,12 @@ export const DOC_PAGES: DocPage[] = [
             "status": "done",
             "text": "A page that shows the live status of the hosted deployment."
           }
-        ]
+        ],
+        "taskStats": {
+          "done": 3,
+          "doing": 0,
+          "todo": 5
+        }
       },
       {
         "title": "Next: calculated todo list",
@@ -3307,9 +3337,14 @@ export const DOC_PAGES: DocPage[] = [
           },
           {
             "status": "done",
-            "text": "Link each item to its issue or commit, and offer to fill the list from GitHub issues with [script/todo-from-issues.ts](https://github.com/HomekidChud/videoforge/blob/main/script/todo-from-issues.ts)."
+            "text": "Items can link to their issue or commit with ordinary markdown links, and [script/todo-from-issues.ts](https://github.com/HomekidChud/videoforge/blob/main/script/todo-from-issues.ts) fills the list from open GitHub issues in one command."
           }
-        ]
+        ],
+        "taskStats": {
+          "done": 10,
+          "doing": 0,
+          "todo": 0
+        }
       },
       {
         "title": "Next: docs quality and reach",
@@ -3343,7 +3378,12 @@ export const DOC_PAGES: DocPage[] = [
             "status": "done",
             "text": "A contributors list on the Contribute page."
           }
-        ]
+        ],
+        "taskStats": {
+          "done": 2,
+          "doing": 0,
+          "todo": 4
+        }
       },
       {
         "title": "Animator and rigs",
@@ -3391,7 +3431,12 @@ export const DOC_PAGES: DocPage[] = [
             "text": "Copy and paste poses between parts and between animations.",
             "priority": "Low"
           }
-        ]
+        ],
+        "taskStats": {
+          "done": 3,
+          "doing": 0,
+          "todo": 6
+        }
       },
       {
         "title": "Media and studio ideas",
@@ -3412,7 +3457,12 @@ export const DOC_PAGES: DocPage[] = [
             "text": "Your idea here: the studio is in good shape, so what should people be able to make next?",
             "priority": "Low"
           }
-        ]
+        ],
+        "taskStats": {
+          "done": 0,
+          "doing": 0,
+          "todo": 3
+        }
       },
       {
         "title": "Shipped: block studio",
@@ -3538,7 +3588,12 @@ export const DOC_PAGES: DocPage[] = [
             "status": "done",
             "text": "**Blocks are about the whole edit, not one tool.** The green block now reads \"When Apply is pressed\" and the Run button is ▶ Apply to edit. Preview lists what Apply would change before it touches the edit, and the green block's Work on setting picks which clips the blocks use: selected, every clip, under the playhead, or all video, text or shapes. Wording across the studio and the Tools panel changed from tools to blocks and scripts."
           }
-        ]
+        ],
+        "taskStats": {
+          "done": 30,
+          "doing": 0,
+          "todo": 0
+        }
       },
       {
         "title": "Shipped: docs",
@@ -3568,7 +3623,12 @@ export const DOC_PAGES: DocPage[] = [
             "status": "done",
             "text": "**Short README.** A one-screen overview with a docs index, instead of repeating the docs."
           }
-        ]
+        ],
+        "taskStats": {
+          "done": 6,
+          "doing": 0,
+          "todo": 0
+        }
       },
       {
         "title": "Shipped: accounts and media",
@@ -3590,7 +3650,12 @@ export const DOC_PAGES: DocPage[] = [
             "status": "done",
             "text": "**Faster uploads, and the sign-in bug fixed.** The session cookie is now sent with uploads, four files go up at once, each file is probed once, thumbnails are ready straight after upload and media plays with range requests."
           }
-        ]
+        ],
+        "taskStats": {
+          "done": 4,
+          "doing": 0,
+          "todo": 0
+        }
       }
     ],
     "taskStats": {
@@ -3598,14 +3663,14 @@ export const DOC_PAGES: DocPage[] = [
       "doing": 0,
       "todo": 46
     },
-    "updated": "2026-10-17T12:22:52Z",
+    "updated": "2026-10-17T13:09:37Z",
     "added": "2026-10-16T00:27:26Z"
   }
 ];
 
 export const CONTRIBUTORS: { name: string; commits: number }[] = [
   {
-    "commits": 48,
+    "commits": 49,
     "name": "HomekidChud"
   },
   {

@@ -35,13 +35,20 @@ Give a list of clips the same entrance with a delay between them: title bars tha
 
 ## Cut out the dead air
 
-Split at the boring moment, then ripple the rest closed — no gap left behind.
+Split at the boring moment, then ripple the rest closed — no gap left behind. The split's response lists the new right-hand clip's id in `createdClipIds`; use it in the second batch.
 
 ```json
 {
   "ops": [
-    { "op": "split_clip", "args": { "clipId": "intro", "at": 12.4 } },
-    { "op": "ripple_delete", "args": { "clipId": "intro-2" } }
+    { "op": "split_clip", "args": { "clipId": "intro", "at": 12.4 } }
+  ]
+}
+```
+
+```json
+{
+  "ops": [
+    { "op": "ripple_delete", "args": { "clipId": "the new id from createdClipIds" } }
   ]
 }
 ```
@@ -97,11 +104,11 @@ Drive any property with a formula of time, then bake it into editable keyframes 
 
 ## Check before you render
 
-Two GETs save a render: a frame at the moment you care about, and the full storyboard.
+Two GETs save a render: a frame at the moment you care about, and the full storyboard. Both are read routes — send your key.
 
 ```shell
-curl "$BASE/api/projects/$ID/frame?t=3&width=640" -o frame.png
-curl "$BASE/api/projects/$ID/storyboard?count=6" -o sheet.png
+curl -H "Authorization: Bearer $KEY" "$BASE/api/projects/$ID/frame?t=3&width=640" -o frame.png
+curl -H "Authorization: Bearer $KEY" "$BASE/api/projects/$ID/storyboard?count=6" -o sheet.png
 ```
 
 - [Examples gallery](examples)

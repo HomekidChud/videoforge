@@ -98,7 +98,7 @@ Make this page's checkboxes and progress bars real controls that work themselves
 - [x] Filter controls at the top of the page: All, Open, In progress and Done, plus priority and area, remembered per browser.
 - [x] Fail the docs build when a hand-written number on the page disagrees with the checkboxes, and add a test that the calculated counts match.
 - [x] Show the overall progress next to the Bucket list entry in the sidebar.
-- [x] Link each item to its issue or commit, and offer to fill the list from GitHub issues with [script/todo-from-issues.ts](https://github.com/HomekidChud/videoforge/blob/main/script/todo-from-issues.ts).
+- [x] Items can link to their issue or commit with ordinary markdown links, and [script/todo-from-issues.ts](https://github.com/HomekidChud/videoforge/blob/main/script/todo-from-issues.ts) fills the list from open GitHub issues in one command.
 
 ## Next: docs quality and reach
 

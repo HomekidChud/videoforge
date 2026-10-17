@@ -17,14 +17,20 @@ const TASKS_KEY = "vf.docs.tasks.v1";
 const OPEN_BY_DEFAULT = "Get started";
 const sectionId = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 
-type TaskFilter = { status: "all" | "open" | "doing" | "done"; priority: "all" | "High" | "Medium" | "Low" | "none"; area: string };
-const DEFAULT_FILTER: TaskFilter = { status: "all", priority: "all", area: "all" };
+type TaskFilter = { status: "all" | "open" | "doing" | "done"; priority: "all" | "High" | "Medium" | "Low" | "none"; area: string; sort: "authored" | "priority" };
+const DEFAULT_FILTER: TaskFilter = { status: "all", priority: "all", area: "all", sort: "authored" };
 const loadFilter = (): TaskFilter => { try { return { ...DEFAULT_FILTER, ...JSON.parse(localStorage.getItem(TASKS_KEY) ?? "{}") as Partial<TaskFilter> }; } catch { return DEFAULT_FILTER; }; };
 const saveFilter = (f: TaskFilter) => { try { localStorage.setItem(TASKS_KEY, JSON.stringify(f)); } catch { /* storage is optional */ } };
+const PRIORITY_RANK: Record<string, number> = { High: 0, Medium: 1, Low: 2, none: 3 };
+/** New if the page was added within 30 days, Updated if it changed within 30 days. */
+const pageBadge = (p: { added?: string; updated?: string }): "New" | "Updated" | null => {
+  const age = (iso?: string) => (iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000) : Infinity);
+  return age(p.added) <= 30 ? "New" : age(p.updated) <= 30 ? "Updated" : null;
+};
 
 /** Words in a page, so every guide can say how long it takes to read. */
 const readingMinutes = (sections: DocSection[]) => {
-  const words = sections.map((s) => `${s.text} ${s.callouts?.map((c) => c.text).join(" ") ?? ""} ${s.rows?.flat().join(" ") ?? ""}`).join(" ").split(/\s+/).filter(Boolean).length;
+  const words = sections.map((s) => `${s.text} ${s.callouts?.map((c) => c.text).join(" ") ?? ""} ${s.rows?.flat().join(" ") ?? ""} ${s.tasks?.map((t) => t.text).join(" ") ?? ""}`).join(" ").split(/\s+/).filter(Boolean).length;
   return Math.max(1, Math.round(words / 200));
 };
 
@@ -83,11 +89,12 @@ function TaskItem({ task, status }: { task: DocTask; status: TaskFilter["status"
 }
 
 /** A section's checklist with its calculated progress bar and counts. */
-function TaskList({ tasks, filter }: { tasks: DocTask[]; filter: TaskFilter }) {
-  const done = tasks.filter((t) => t.status === "done").length, total = tasks.length;
+function TaskList({ tasks, stats, filter }: { tasks: DocTask[]; stats?: { done: number; doing: number; todo: number }; filter: TaskFilter }) {
+  const done = stats?.done ?? tasks.filter((t) => t.status === "done").length, total = tasks.length;
   const pct = total ? Math.round((100 * done) / total) : 0;
   const priorityOk = (t: DocTask) => filter.priority === "all" || (filter.priority === "none" ? !t.priority : t.priority === filter.priority);
-  const shown = tasks.filter(priorityOk);
+  let shown = tasks.filter(priorityOk);
+  if (filter.sort === "priority") shown = [...shown].sort((a, b) => PRIORITY_RANK[a.priority ?? "none"] - PRIORITY_RANK[b.priority ?? "none"]);
   return <div className="todo-list" data-testid="todo-list">
     <div className="todo-head">
       <div className="todo-bar" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done} aria-label={`${done} of ${total} items done`}><i style={{ width: `${pct}%` }} /></div>
@@ -144,9 +151,9 @@ function StatusPanel() {
   return <div className="status-panel" data-testid="status-panel">
     <span className={`status-dot ${state}`} aria-hidden="true" />
     <div>
-      <b>{state === "checking" ? "Checking the hosted API…" : state === "up" ? "Hosted API is up" : "Hosted API is not responding"}</b>
+      <b>{state === "checking" ? "Checking the hosted API…" : state === "up" ? "Hosted API is up" : "Could not verify the hosted API from this browser"}</b>
       {state === "up" && ms !== null && <p>Answered the health check in {ms} ms.</p>}
-      {state === "down" && <p>It may be sleeping (free hosting pauses idle servers) — retry in a minute, or <a href="#/docs/self-hosting">run your own</a>.</p>}
+      {state === "down" && <p>A blocked or failed request looks the same from here — the deployment may be asleep, the browser may have blocked the cross-origin check, or the network may be down. Retry in a minute, or <a href="#/docs/self-hosting">run your own</a>.</p>}
       <p className="status-note">Checked live from your browser against <code>{HOSTED}</code>. The health endpoint is public; everything else needs a key issued by that deployment.</p>
     </div>
   </div>;
@@ -246,11 +253,10 @@ export default function ApiDocsPage({ params }: { params?: { slug: string } }) {
   };
 
   const updated = current?.updated ? new Date(current.updated) : null;
-  const added = current?.added ? new Date(current.added) : null;
-  const ageDays = (d: Date) => Math.floor((Date.now() - d.getTime()) / 86_400_000);
-  const badge = added && ageDays(added) <= 30 ? "New" : updated && ageDays(updated) <= 30 ? "Updated" : null;
+  const badge = pageBadge(current ?? {});
   const issueUrl = current ? `${REPO}/issues/new?title=${encodeURIComponent(`Docs feedback: ${current.title}`)}&body=${encodeURIComponent(`Page: #/docs/${slug}\n\nWhat could be better?\n`)}` : "";
   const vote = (v: "yes" | "no") => { setHelpful(v); try { localStorage.setItem(`vf.docs.feedback.${slug}`, JSON.stringify(v)); } catch { /* storage is optional */ } };
+  useEffect(() => { saveFilter(filter); }, [filter]);
 
   return <PublicSite><a className="public-skip" href="#/" onClick={(e) => { e.preventDefault(); document.getElementById("docs-content")?.focus(); }}>Skip to content</a>
     <div className="docs-progress" aria-hidden="true"><i style={{ transform: `scaleX(${progress})` }} /></div>
@@ -267,8 +273,8 @@ export default function ApiDocsPage({ params }: { params?: { slug: string } }) {
             </button>
             <div className="docs-group-body" id={`docs-group-${sectionId(group)}`} {...({ inert: open ? undefined : "" } as Record<string, string | undefined>)}><div>
               {pages.map((p) => {
-                const st = p.taskStats, pct = st ? Math.round((100 * st.done) / (st.done + st.doing + st.todo)) : null;
-                return <a key={p.slug} href={`#/docs/${p.slug}`} aria-current={p.slug === slug ? "page" : undefined} className={p.slug === slug ? "selected" : ""} data-testid={`docs-link-${p.slug}`}>{p.title}{pct !== null && <em className="pct" title={`${st!.done} of ${st!.done + st!.doing + st!.todo} items done`}>{pct}%</em>}</a>;
+                const st = p.taskStats, pct = st ? Math.round((100 * st.done) / (st.done + st.doing + st.todo)) : null, pb = pageBadge(p);
+                return <a key={p.slug} href={`#/docs/${p.slug}`} aria-current={p.slug === slug ? "page" : undefined} className={p.slug === slug ? "selected" : ""} data-testid={`docs-link-${p.slug}`}>{p.title}{pb && <i className={`side-badge ${pb.toLowerCase()}`}>{pb === "Updated" ? "Upd" : pb}</i>}{pct !== null && <em className="pct" title={`${st!.done} of ${st!.done + st!.doing + st!.todo} items done`}>{pct}%</em>}</a>;
               })}
             </div></div>
           </div>;
@@ -285,17 +291,25 @@ export default function ApiDocsPage({ params }: { params?: { slug: string } }) {
         </div>
         {hasTasks && <div className="todo-filters" role="group" aria-label="Filter the todo list" data-testid="todo-filters">
           <div className="tf-status">
-            {([["all", "All"], ["open", "Open"], ["doing", "In progress"], ["done", "Done"]] as const).map(([v, label]) => <button key={v} className={filter.status === v ? "on" : ""} aria-pressed={filter.status === v} onClick={() => setFilter({ ...filter, status: v })} data-testid={`todo-filter-${v}`}>{label}</button>)}
+            {(["all", "open", "doing", "done"] as const).map((v) => <button key={v} className={filter.status === v ? "on" : ""} aria-pressed={filter.status === v} onClick={() => setFilter({ ...filter, status: v })} data-testid={`todo-filter-${v}`}>{v === "doing" ? "In progress" : v === "all" ? "All" : v === "open" ? "Open" : "Done"}</button>)}
           </div>
           <label className="tf-select">Priority
             <select value={filter.priority} onChange={(e) => setFilter({ ...filter, priority: e.target.value as TaskFilter["priority"] })} data-testid="todo-filter-priority">
-              <option value="all">All</option><option value="High">High</option><option value="Medium">Medium</option><option value="Low">Low</option><option value="none">None</option>
+              <option value="all">All</option>
+              {(["High", "Medium", "Low"] as const).map((p) => <option key={p} value={p}>{p} ({current?.sections.flatMap((s) => s.tasks ?? []).filter((t) => t.priority === p).length})</option>)}
+              <option value="none">None</option>
             </select>
           </label>
           <label className="tf-select">Area
             <select value={filter.area} onChange={(e) => setFilter({ ...filter, area: e.target.value })} data-testid="todo-filter-area">
               <option value="all">All areas</option>
               {taskAreas.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </label>
+          <label className="tf-select">Sort
+            <select value={filter.sort} onChange={(e) => setFilter({ ...filter, sort: e.target.value as TaskFilter["sort"] })} data-testid="todo-filter-sort">
+              <option value="authored">As written</option>
+              <option value="priority">By priority</option>
             </select>
           </label>
         </div>}
@@ -309,7 +323,7 @@ export default function ApiDocsPage({ params }: { params?: { slug: string } }) {
             </h2>
             <div className="doc-section-body" id={`${id}-body`} {...({ inert: shut ? "" : undefined } as Record<string, string | undefined>)}><div>
               {s.text && <DocText text={s.text} page={current} />}
-              {s.tasks && <TaskList tasks={s.tasks} filter={filter} />}
+              {s.tasks && <TaskList tasks={s.tasks} stats={s.taskStats} filter={filter} />}
               {s.callouts?.map((c, i) => { const { label, Icon } = CALLOUT[c.kind]; return <aside key={i} className={`doc-callout ${c.kind}`} role="note"><Icon size={17} aria-hidden="true" /><div><b>{label}</b><p><Inline text={c.text} /></p></div></aside>; })}
               {s.code && <CodeBlock code={s.code} label={s.language ?? "JSON"} />}
               {s.rows && <div className="doc-table-wrap"><table><thead><tr>{s.rows[0].map((c) => <th key={c}>{c}</th>)}</tr></thead><tbody>{s.rows.slice(1).map((row, i) => <tr key={i}>{row.map((c, j) => <td key={j}>{j === 0 ? <code>{c}</code> : c}</td>)}</tr>)}</tbody></table></div>}

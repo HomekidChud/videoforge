@@ -25,8 +25,17 @@ check("every markdown file is a generated page or a reference document", () => {
 check("internal links resolve to pages and section anchors exist", () => {
   const problems: string[] = [];
   for (const [f, md] of raw) {
+    const ownSlug = f.replace(/\.md$/, "");
     for (const target of mdLinks(md)) {
-      if (/^(https?:|mailto:|#)/.test(target)) continue;
+      if (/^(https?:|mailto:)/.test(target)) continue;
+      if (target.startsWith("#")) {
+        // A same-page anchor link: #section must exist on this page.
+        const anchor = target.slice(1);
+        const page = DOC_PAGES.find((p) => p.slug === ownSlug);
+        if (!page) continue; // reference documents have no sections
+        if (!page.sections.some((s) => sectionId(s.title) === anchor)) problems.push(`${f} links to missing section "${target}"`);
+        continue;
+      }
       const [slug, anchor] = target.split("#");
       if (!slugs.has(slug)) { problems.push(`${f} links to unknown page "${target}"`); continue; }
       if (anchor) {

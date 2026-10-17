@@ -37,15 +37,20 @@ if (!write) { console.log(`\n${open.length} item(s). Re-run with --write to add 
 const TODO = "docs/TODO.md";
 let md = await readFile(TODO, "utf-8");
 const HEADING = "## From GitHub issues";
-const known = new Set([...md.matchAll(/^- \[[ ~x]\]\s+\*\*(High|Medium|Low)\.\*\*\s+(.*)\(#(\d+)\)/gm)].map((m) => m[3]));
+// Issue links look like ([#123](url)); pull the number out of any task line.
+const known = new Set([...md.matchAll(/^- \[[ ~x]\].*?\[#(\d+)\]/gm)].map((m) => m[1]));
 const fresh = open.filter((i) => !known.has(String(i.number)));
 if (!fresh.length) { console.log("Every open issue is already on the list."); process.exit(0); }
 
 const block = `${HEADING}\n\nItems pulled from the [issue tracker](https://github.com/${repo}/issues); regenerate with \`npm run docs\` then \`tsx script/todo-from-issues.ts --write\`.\n\n${fresh.map(line).join("\n")}\n`;
-if (md.includes(HEADING)) md = md.replace(new RegExp(`${HEADING}[^#]*`), block);
-else {
-  const at = md.indexOf("\n## Shipped:");
-  md = at >= 0 ? `${md.slice(0, at)}\n${block}${md.slice(at + 1)}` : `${md}\n${block}`;
+const at = md.indexOf(HEADING);
+if (at >= 0) {
+  // Replace the whole section: from the heading to the next ## heading (or end of file).
+  const next = md.indexOf("\n## ", at + HEADING.length);
+  md = next >= 0 ? `${md.slice(0, at)}${block}${md.slice(next + 1)}` : `${md.slice(0, at)}${block}`;
+} else {
+  const shipped = md.indexOf("\n## Shipped:");
+  md = shipped >= 0 ? `${md.slice(0, shipped)}\n${block}${md.slice(shipped + 1)}` : `${md}\n${block}`;
 }
 await writeFile(TODO, md, "utf-8");
 console.log(`Added ${fresh.length} item(s) to docs/TODO.md.`);

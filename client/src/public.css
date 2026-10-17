@@ -293,3 +293,10 @@
 .doc-feedback button:hover{color:var(--color-accent);border-color:var(--color-accent)}
 .doc-feedback a{margin-left:auto;color:var(--color-accent);font-size:var(--text-xs)}
 .doc-feedback-thanks{color:var(--color-text)}
+
+/* Sidebar New/Upd badges */
+.side-badge{font-style:normal;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--color-accent);border:1px solid color-mix(in srgb,var(--color-accent) 50%,transparent);border-radius:999px;padding:0 6px;margin-left:8px}
+.side-badge.updated{color:var(--color-muted);border-color:var(--color-border)}
+
+/* Keep the floating back-to-top button off the priority badges */
+.todo-item{padding-right:3.5rem}

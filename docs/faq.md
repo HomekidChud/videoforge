@@ -41,7 +41,7 @@ description: Short answers to the questions that come up most.
 
 **Can I see what I built before rendering?** Yes: `GET /frame?t=1.5` returns a composed PNG, `GET /state?t=1.5` returns the animated values, and `GET /storyboard` returns a contact sheet.
 
-**Is there an OpenAPI file?** Yes — an OpenAPI description generated from the operation list is served at <https://homekidchud.github.io/videoforge/openapi.json> and linked from the HTTP API reference.
+**Is there an OpenAPI file?** Yes — an OpenAPI description generated from the operation list is served at [the OpenAPI description](https://homekidchud.github.io/videoforge/openapi.json) and linked from the HTTP API reference.
 
 ## Self-hosting
 

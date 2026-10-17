@@ -28,7 +28,7 @@ export const DOC_ENDPOINTS = [
 
 
 export type DocTask = { text: string; status: "todo" | "doing" | "done"; priority?: "High" | "Medium" | "Low" };
-export type DocSection = { title: string; text: string; callouts?: { kind: "note" | "tip" | "warning"; text: string }[]; code?: string; language?: string; rows?: string[][]; links?: { label: string; slug: string }[]; tasks?: DocTask[] };
+export type DocSection = { title: string; text: string; callouts?: { kind: "note" | "tip" | "warning"; text: string }[]; code?: string; language?: string; rows?: string[][]; links?: { label: string; slug: string }[]; tasks?: DocTask[]; taskStats?: { done: number; doing: number; todo: number } };
 export type DocPage = { slug: string; group: string; title: string; description: string; sections: DocSection[]; updated?: string; added?: string; taskStats?: { done: number; doing: number; todo: number } };
 
 /** Tables that must always match the code: generated from the shared catalogs. */
@@ -61,13 +61,8 @@ const parseTask = (raw: string): DocTask => {
   const p = raw.match(/^\*\*(High|Medium|Low)\.\*\*\s*/);
   return { status: "todo", text: p ? raw.slice(p[0].length) : raw, ...(p ? { priority: p[1] as DocTask["priority"] } : {}) };
 };
-const sectionStats = (page: DocPage) => {
-  let done = 0, doing = 0, todo = 0;
-  for (const s of page.sections) for (const t of s.tasks ?? []) {
-    if (t.status === "done") done++; else if (t.status === "doing") doing++; else todo++;
-  }
-  return { done, doing, todo };
-};
+const statsOf = (tasks: DocTask[]) => ({ done: tasks.filter((t) => t.status === "done").length, doing: tasks.filter((t) => t.status === "doing").length, todo: tasks.filter((t) => t.status === "todo").length });
+const sectionStats = (page: DocPage) => statsOf(page.sections.flatMap((s) => s.tasks ?? []));
 
 /** Parse one markdown document into a DocPage. Throws readable errors for malformed input. */
 export function parseDocPage(slug: string, md: string): DocPage {
@@ -232,6 +227,7 @@ export async function readDocPages(): Promise<DocPage[]> {
     if (hasTasks) {
       page.taskStats = sectionStats(page);
       validateTaskPage(slug, md, page.taskStats);
+      for (const s of page.sections) if (s.tasks?.length) s.taskStats = statsOf(s.tasks);
     }
     const dates = gitDates(path.join("docs", entry.name));
     if (dates.updated) page.updated = dates.updated;
@@ -273,7 +269,11 @@ export const CONTRIBUTORS: { name: string; commits: number }[] = ${JSON.stringif
   await writeFile("client/src/lib/docs-generated.ts", body, "utf-8");
   // llms.txt: the same pages as a plain index, so agents can read the docs without a browser.
   // The rest of the file (discovery, creative loop) is hand-written and preserved.
-  const pageList = [...pages.map((p) => `- [${p.title}](./#/docs/${p.slug}): ${p.description}`), "- [Repository reference](https://github.com/HomekidChud/videoforge/blob/main/docs/API.md)", "- Markdown source for every page: https://github.com/HomekidChud/videoforge/tree/main/docs"];
+  const pageList = [
+    ...pages.map((p) => `- [${p.title}](./#/docs/${p.slug}): ${p.description} — [markdown](https://github.com/HomekidChud/videoforge/blob/main/docs/${p.slug}.md)`),
+    "- [Repository reference](https://github.com/HomekidChud/videoforge/blob/main/docs/API.md)",
+    "- Markdown source for every page: https://github.com/HomekidChud/videoforge/tree/main/docs",
+  ];
   let llms = await readFile("client/public/llms.txt", "utf-8").catch(() => "");
   const heading = "## Documentation\n\n";
   const list = `${heading}${pageList.join("\n")}\n`;

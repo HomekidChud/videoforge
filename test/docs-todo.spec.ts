@@ -3,7 +3,7 @@ import { DOC_PAGES } from "../client/src/lib/docs-content";
 import { parseDocPage, validateTaskPage, readDocPages, type DocTask } from "../script/generate-docs";
 
 let checks = 0;
-const check = (label: string, fn: () => void) => { fn(); checks++; };
+const check = async (label: string, fn: () => void | Promise<void>) => { await fn(); checks++; };
 
 const FIXTURE = `---
 title: Fixture
@@ -44,7 +44,7 @@ check("a section without tasks has no task list", () => {
   assert.equal(page.taskStats, undefined);
 });
 
-check("the real bucket list parses and its counts add up", async () => {
+await check("the real bucket list parses and its counts add up", async () => {
   const pages = await readDocPages();
   const todo = pages.find((p) => p.slug === "TODO");
   assert.ok(todo, "docs/TODO.md is a page");
@@ -82,7 +82,7 @@ check("honest hand-written numbers pass, duplicates and empty items fail", () =>
   assert.throws(() => validateTaskPage("fixture", "- [ ]\n", { done: 0, doing: 0, todo: 1 }), /no text/);
 });
 
-check("the filters can count by priority on the real page", async () => {
+await check("the filters can count by priority on the real page", async () => {
   const pages = await readDocPages();
   const todo = pages.find((p) => p.slug === "TODO")!;
   const all = todo.sections.flatMap((s) => s.tasks ?? []);

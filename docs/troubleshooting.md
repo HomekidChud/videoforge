@@ -41,7 +41,7 @@ The first boot prints an owner key and writes it to `data/OWNER_KEY.txt`. The fi
 
 ## API and agents
 
-**409 on a timeline edit.** The batch was sent without `expectedUpdatedAt`, or another edit landed first. GET the project, read `updatedAt`, and send it with the next batch — the atomic batches page explains the pattern.
+**409 on a timeline edit.** The batch carried `expectedUpdatedAt` and another edit landed first — the write is refused so nothing is clobbered. GET the project, read the fresh `updatedAt`, and send it with the next batch — the atomic batches page explains the pattern.
 
 **An operation name is rejected.** Operation names come from `GET /api/capabilities`; never invent one. The validation error names the closest known operation if there is a typo.
 
