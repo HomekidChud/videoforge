@@ -4,12 +4,13 @@
 //
 //   GET    /api/agent                  public: is it on, and how to use it
 //   POST   /api/agent/keys             public: mint a key, no sign-in needed
+//   GET    /api/agent/signup           public: the same, as a plain link for GET-only tools
 //   POST   /api/agent/keys/renew       agent key: a fresh key for the same agent
 //   DELETE /api/agent/keys/self        agent key: revoke this agent for good
 //   DELETE /api/agent/keys/:agentId    admin: revoke any agent
 // ============================================================================
 
-import type { Express, Request } from "express";
+import type { Express, Request, Response } from "express";
 import {
   AGENT_KEY_DEFAULT_DAYS, AGENT_KEY_MAX_DAYS, agentKeysEnabled, agentRequestsPerMinute,
   issueAgentKey, requireAdmin, requireScope,
@@ -47,6 +48,8 @@ export function resetAgentIssueThrottle(): void { issued.clear(); issuedTotal = 
 function describe() {
   return {
     enabled: agentKeysEnabled(),
+    signup: { method: "GET", path: "/api/agent/signup?name=my-agent&days=7", note: "Same as create, for tools that can only fetch a URL." },
+    page: "/signup.html",
     create: { method: "POST", path: "/api/agent/keys", body: { name: "string, optional label", days: `number, optional, 1 to ${AGENT_KEY_MAX_DAYS}, default ${AGENT_KEY_DEFAULT_DAYS}` } },
     renew: { method: "POST", path: "/api/agent/keys/renew", auth: "Authorization: Bearer <agent key>" },
     revoke: { method: "DELETE", path: "/api/agent/keys/self", auth: "Authorization: Bearer <agent key>" },
@@ -61,21 +64,32 @@ function describe() {
 export function registerAgentRoutes(app: Express) {
   app.get("/api/agent", (_req, res) => res.json(describe()));
 
-  app.post("/api/agent/keys", (req, res) => {
+  /** Shared by the POST route and the GET signup link, so both obey the same switch, throttle and validation. */
+  const mint = (req: Request, res: Response, name: unknown, days: unknown) => {
+    res.setHeader("Cache-Control", "no-store");
     if (!agentKeysEnabled()) return res.status(403).json({ message: "Self-serve agent keys are turned off on this server. Ask the owner for a key, or ask them to unset VIDEOFORGE_AGENT_KEYS=off." });
-    const wait = agentIssueThrottle(clientIp(req));
-    if (wait > 0) { res.setHeader("Retry-After", String(wait)); return res.status(429).json({ message: `Too many keys requested from this address. Try again in ${wait} seconds.` }); }
-    const { name, days } = req.body ?? {};
     if (name !== undefined && typeof name !== "string") return res.status(400).json({ message: "name must be a string." });
     if (days !== undefined && (typeof days !== "number" || !Number.isFinite(days) || days < 1 || days > AGENT_KEY_MAX_DAYS)) return res.status(400).json({ message: `days must be a number from 1 to ${AGENT_KEY_MAX_DAYS}.` });
+    const wait = agentIssueThrottle(clientIp(req));
+    if (wait > 0) { res.setHeader("Retry-After", String(wait)); return res.status(429).json({ message: `Too many keys requested from this address. Try again in ${wait} seconds.` }); }
     const { key, agentId, expiresAt } = issueAgentKey(name ?? "agent", days ?? AGENT_KEY_DEFAULT_DAYS);
-    res.status(201).json({
+    return res.status(201).json({
       message: "Save this key now. It is shown only once. Send it as 'Authorization: Bearer <key>'.",
       key, agentId, scope: "write", expiresAt,
       sandbox: "This key sees only the projects and media it creates.",
       limits: describe().limits,
       renew: "POST /api/agent/keys/renew with this key before it expires to get a fresh one for the same agent.",
     });
+  };
+
+  app.post("/api/agent/keys", (req, res) => mint(req, res, req.body?.name, req.body?.days));
+
+  // The same thing as a plain link, for tools that can only fetch a URL and cannot send a POST body. A key is
+  // not stored anywhere, so a stray request (a link preview, a crawler) costs nothing beyond the throttle slot.
+  app.get("/api/agent/signup", (req, res) => {
+    const name = typeof req.query.name === "string" ? req.query.name : undefined;
+    const rawDays = typeof req.query.days === "string" && req.query.days.trim() !== "" ? Number(req.query.days) : undefined;
+    return mint(req, res, name, rawDays);
   });
 
   app.post("/api/agent/keys/renew", requireScope("read"), (req, res) => {

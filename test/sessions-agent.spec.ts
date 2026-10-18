@@ -177,6 +177,35 @@ await check("an agent can create its own key with no credentials", async () => {
   assert.equal(db.select().from(apiKeys).all().length, 0, "nothing is stored: the key is a signed token");
 });
 
+const signup = async (query: Record<string, unknown>, ip = "10.2.2.2") => run(routes["GET /api/agent/signup"], mkReq({ path: "/api/agent/signup", query, socket: { remoteAddress: ip } }));
+
+await check("a GET-only tool can sign up with a plain link", async () => {
+  const res = await signup({ name: "Fetch bot", days: "3" });
+  assert.equal(res.code, 201);
+  assert.equal(res.headers["Cache-Control"], "no-store", "never cached");
+  assert.ok(res.body.key.startsWith("vf_agent."));
+  assert.ok(res.body.expiresAt > Date.now() + 2 * 86_400_000 && res.body.expiresAt < Date.now() + 4 * 86_400_000, "days is read from the query string");
+  const bare = await signup({});
+  assert.equal(bare.code, 201, "no parameters needed");
+  const req = bearerReq(res.body.key, { path: "/api/auth/me" });
+  assert.equal((await run([auth.requireScope("read")], req)).done, false);
+  assert.equal(req.apiKey.label, "Fetch bot");
+});
+
+await check("the signup link validates and is throttled like the POST route", async () => {
+  assert.equal((await signup({ days: "abc" })).code, 400);
+  assert.equal((await signup({ days: "99" })).code, 400);
+  assert.equal((await signup({ days: "0" })).code, 400);
+  assert.equal((await signup({ name: ["a", "b"] })).code, 201, "a repeated name parameter is ignored, not a crash");
+  resetAgentIssueThrottle();
+  for (let i = 0; i < 20; i++) await signup({}, "192.0.2.50");
+  assert.equal((await signup({}, "192.0.2.50")).code, 429, "shares the per-address limit with POST");
+  assert.equal((await createKey({}, "192.0.2.50")).code, 429);
+  resetAgentIssueThrottle();
+  process.env.VIDEOFORGE_AGENT_KEYS = "off";
+  try { assert.equal((await signup({})).code, 403); } finally { delete process.env.VIDEOFORGE_AGENT_KEYS; }
+});
+
 await check("key requests are validated", async () => {
   assert.equal((await createKey({ days: 0 })).code, 400);
   assert.equal((await createKey({ days: 31 })).code, 400);
