@@ -195,6 +195,54 @@
         }
       }
     },
+    "/api/agent/session": {
+      "post": {
+        "summary": "Agent key: set an HttpOnly cookie so a browser refresh stays signed in.",
+        "tags": [
+          "agent"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        },
+        "requestBody": {
+          "description": "The request body depends on the route; see the page for the route in the HTTP API reference. Timeline batch operations are documented by name below.",
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Clear the agent cookie.",
+        "tags": [
+          "agent"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        }
+      }
+    },
     "/api/agent/keys/renew": {
       "post": {
         "summary": "Agent key: get a fresh key for the same agent.",

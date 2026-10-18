@@ -3,7 +3,7 @@ import { KeyRound, ArrowRight, ShieldCheck, Server, Terminal, Mail, UserPlus } f
 import { useQuery } from "@tanstack/react-query";
 import { useApiKey } from "@/lib/apiKey";
 import { ForgeLogo, ErrorBox } from "@/components/forge-shell";
-import { API_BASE } from "@/lib/api";
+import { API_BASE, startAgentSession, endServerSession } from "@/lib/api";
 
 type AuthConfig = { google: boolean; accountsOpen: boolean; hasAccounts: boolean };
 
@@ -23,7 +23,7 @@ export default function ApiKeyPage() {
   const meQ = useQuery<{ email?: string; label?: string }>({ queryKey: ["/api/auth/me"], retry: false });
 
   const signOut = async () => {
-    try { await fetch(`${API_BASE}/api/auth/logout`, { method: "POST", credentials: "include" }); } catch { /* already gone */ }
+    await endServerSession();
     clearApiKey();
     window.location.hash = "#/editor";
     window.location.reload();
@@ -69,7 +69,9 @@ export default function ApiKeyPage() {
         try { message = (await res.json()).message || message; } catch { /* ignore */ }
         throw new Error(message);
       }
-      // No reload: the key lives only in memory, so a reload would throw it away and bounce back here.
+      // Agent keys also get an HttpOnly cookie so a refresh keeps the tab signed in.
+      await startAgentSession(trimmed);
+      // No reload: the in-memory key would be thrown away by one.
       setApiKey(trimmed);
       window.location.hash = "#/editor";
     } catch (err) {
@@ -146,7 +148,7 @@ export default function ApiKeyPage() {
               <ErrorBox message={error} />
               <button className="primary-btn full" type="submit" disabled={!keyDraft.trim() || busy} data-testid="button-sign-in">{busy ? "Verifying…" : <>Open workspace <ArrowRight size={16} /></>}</button>
             </form>
-            {apiKey && <button onClick={clearApiKey} className="ghost-link" data-testid="button-sign-out">Sign out of this session</button>}
+            {apiKey && <button onClick={signOut} className="ghost-link" data-testid="button-sign-out">Sign out of this session</button>}
           </>
         )}
       </section>

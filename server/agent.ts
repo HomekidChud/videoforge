@@ -5,6 +5,8 @@
 //   GET    /api/agent                  public: is it on, and how to use it
 //   POST   /api/agent/keys             public: mint a key, no sign-in needed
 //   GET    /api/agent/signup           public: the same, as a plain link for GET-only tools
+//   POST   /api/agent/session          agent key: set an HttpOnly cookie so a browser refresh stays signed in
+//   DELETE /api/agent/session          clear that cookie
 //   POST   /api/agent/keys/renew       agent key: a fresh key for the same agent
 //   DELETE /api/agent/keys/self        agent key: revoke this agent for good
 //   DELETE /api/agent/keys/:agentId    admin: revoke any agent
@@ -15,7 +17,7 @@ import {
   AGENT_KEY_DEFAULT_DAYS, AGENT_KEY_MAX_DAYS, agentKeysEnabled, agentRequestsPerMinute,
   issueAgentKey, requireAdmin, requireScope,
 } from "./auth";
-import { revokeToken } from "./accounts";
+import { revokeToken, agentSessionToken, setAgentSessionCookie, clearAgentSessionCookie } from "./accounts";
 import { secretSource } from "./stateless";
 
 const PER_IP_PER_HOUR = Number(process.env.VIDEOFORGE_AGENT_KEYS_PER_IP) > 0 ? Number(process.env.VIDEOFORGE_AGENT_KEYS_PER_IP) : 20;
@@ -53,6 +55,7 @@ function describe() {
     create: { method: "POST", path: "/api/agent/keys", body: { name: "string, optional label", days: `number, optional, 1 to ${AGENT_KEY_MAX_DAYS}, default ${AGENT_KEY_DEFAULT_DAYS}` } },
     renew: { method: "POST", path: "/api/agent/keys/renew", auth: "Authorization: Bearer <agent key>" },
     revoke: { method: "DELETE", path: "/api/agent/keys/self", auth: "Authorization: Bearer <agent key>" },
+    session: { method: "POST", path: "/api/agent/session", auth: "Authorization: Bearer <agent key>", note: "Sets an HttpOnly cookie so a browser tab stays signed in across refreshes. DELETE the same path to clear it." },
     scope: "write",
     sandbox: "An agent key sees only the projects and media it created.",
     limits: { defaultDays: AGENT_KEY_DEFAULT_DAYS, maxDays: AGENT_KEY_MAX_DAYS, requestsPerMinute: agentRequestsPerMinute(), keysPerHourPerAddress: PER_IP_PER_HOUR },
@@ -101,11 +104,28 @@ export function registerAgentRoutes(app: Express) {
     res.status(201).json({ message: "Save this key now. The old key keeps working until it expires.", key: fresh.key, agentId: fresh.agentId, scope: "write", expiresAt: fresh.expiresAt });
   });
 
+  // A browser tab trades the key for an HttpOnly cookie so a refresh keeps it signed in. The cookie holds the same
+  // signed key, so expiry, the sandbox, the rate limit and revocation all apply to it unchanged.
+  app.post("/api/agent/session", requireScope("read"), (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const k = (req as any).apiKey as { agentId?: string; restrictionsJson?: string } | undefined;
+    if (!k?.agentId) return res.status(400).json({ message: "Only an agent key can start an agent session. Accounts already have their own session." });
+    const header = typeof req.headers.authorization === "string" ? req.headers.authorization.match(/^Bearer\s+(.+)$/i) : null;
+    const token = header?.[1] ?? agentSessionToken(req);
+    if (!token) return res.status(400).json({ message: "Send the agent key as 'Authorization: Bearer <key>'." });
+    let expiresAt: number | null = null;
+    try { expiresAt = JSON.parse(k.restrictionsJson ?? "{}").expiresAt ?? null; } catch { /* keep the default */ }
+    setAgentSessionCookie(res, token, req, expiresAt);
+    res.json({ ok: true, agentId: k.agentId, expiresAt });
+  });
+  app.delete("/api/agent/session", (req, res) => { clearAgentSessionCookie(res); res.json({ ok: true }); });
+
   const revokeAgent = (agentId: string) => revokeToken(agentId, "agent", Date.now() + AGENT_KEY_MAX_DAYS * 24 * HOUR);
   app.delete("/api/agent/keys/self", requireScope("read"), (req, res) => {
     const k = (req as any).apiKey as { agentId?: string } | undefined;
     if (!k?.agentId) return res.status(400).json({ message: "Only an agent key can revoke itself here." });
     revokeAgent(k.agentId);
+    clearAgentSessionCookie(res);
     res.json({ revoked: true, agentId: k.agentId });
   });
   app.delete("/api/agent/keys/:agentId", requireAdmin, (req, res) => {

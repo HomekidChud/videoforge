@@ -16,7 +16,7 @@ export const DOC_ENDPOINTS = [
   ["GET","/api/capabilities","Operation, property and preset discovery."],
   ["GET","/api/graphics/schema","JSON Schema for shape primitives."],["GET","/api/motion/templates","List motion graphics templates."],
   ["GET","/api/agent","Public: is self-serve agent key creation on, and its limits."],["POST","/api/agent/keys","Public: an agent creates its own sandboxed write key, no sign-in."],["GET","/api/agent/signup","Public: the same as a plain link, for tools that can only fetch a URL."],
-  ["POST","/api/agent/keys/renew","Agent key: get a fresh key for the same agent."],["DELETE","/api/agent/keys/self","Agent key: revoke this agent."],["DELETE","/api/agent/keys/:agentId","Admin: revoke an agent."],
+  ["POST","/api/agent/session","Agent key: set an HttpOnly cookie so a browser refresh stays signed in."],["DELETE","/api/agent/session","Clear the agent cookie."],["POST","/api/agent/keys/renew","Agent key: get a fresh key for the same agent."],["DELETE","/api/agent/keys/self","Agent key: revoke this agent."],["DELETE","/api/agent/keys/:agentId","Admin: revoke an agent."],
   ["GET / POST","/api/keys","Admin: list or generate scoped keys."],["DELETE","/api/keys/:id","Admin: revoke a key."],
   ["POST","/api/media/upload","Multipart upload; repeat the files field."],["GET","/api/media","List accessible assets."],
   ["GET / DELETE","/api/media/:id","Read metadata or delete an asset."],["GET","/api/media/:id/raw","Stream original media."],["GET","/api/media/:id/thumb","JPEG thumbnail."],["GET","/api/media/:id/waveform","Peak-envelope data."],

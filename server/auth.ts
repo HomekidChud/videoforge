@@ -19,7 +19,7 @@ import { storage, db } from "./storage";
 import { apiKeys, users, type ApiKey } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { restrictionsSchema, DEFAULT_RESTRICTIONS, type KeyRestrictions } from "@shared/policy";
-import { sessionUser, tokenRevocation } from "./accounts";
+import { sessionUser, tokenRevocation, agentSessionToken } from "./accounts";
 import { signToken, verifyToken } from "./stateless";
 
 export type Scope = "read" | "write" | "admin";
@@ -377,23 +377,30 @@ export function requireScope(scope: Scope) {
   return function (req: Request, res: Response, next: NextFunction) {
     // Two ways in: a Bearer API key (agents and scripts) or a signed-in
     // account (session cookie). Sessions are never restricted like keys.
+    let bearer: string;
     if (!req.headers.authorization) {
       const user = sessionUser(req);
-      if (!user) return res.status(401).json({ message: "Sign in with your email and password, or use 'Authorization: Bearer <api-key>'." });
-      const userScope: Scope = user.role === "admin" ? "admin" : "write";
-      if (SCOPES.indexOf(userScope) < SCOPES.indexOf(scope)) return res.status(403).json({ message: `Forbidden: your account is '${userScope}' but this action requires '${scope}'.` });
-      (req as any).apiKey = { id: `user:${user.id}`, label: user.email, scope: userScope, revoked: 0, keyHash: "", createdAt: user.createdAt, restrictionsJson: "{}" };
-      return next();
+      if (user) {
+        const userScope: Scope = user.role === "admin" ? "admin" : "write";
+        if (SCOPES.indexOf(userScope) < SCOPES.indexOf(scope)) return res.status(403).json({ message: `Forbidden: your account is '${userScope}' but this action requires '${scope}'.` });
+        (req as any).apiKey = { id: `user:${user.id}`, label: user.email, scope: userScope, revoked: 0, keyHash: "", createdAt: user.createdAt, restrictionsJson: "{}" };
+        return next();
+      }
+      // No account session either: an agent session cookie carries an agent key, checked like a Bearer key.
+      const cookieKey = agentSessionToken(req);
+      if (!cookieKey) return res.status(401).json({ message: "Sign in with your email and password, or use 'Authorization: Bearer <api-key>'." });
+      bearer = cookieKey;
+    } else {
+      const m = req.headers.authorization.match(/^Bearer\s+(.+)$/i);
+      if (!m) return res.status(401).json({ message: "Authorization must be Bearer <api-key>." });
+      bearer = m[1];
     }
-    const authHeader = req.headers.authorization;
-    const m = authHeader.match(/^Bearer\s+(.+)$/i);
-    if (!m) return res.status(401).json({ message: "Authorization must be Bearer <api-key>." });
     let key: ApiKey | undefined;
-    if (isAgentKeyToken(m[1])) {
-      const resolved = resolveAgentKey(m[1]);
+    if (isAgentKeyToken(bearer)) {
+      const resolved = resolveAgentKey(bearer);
       if ("error" in resolved) return res.status(resolved.status).json({ message: resolved.error });
       key = resolved.key;
-    } else key = findKeyByHash(hashKey(m[1]));
+    } else key = findKeyByHash(hashKey(bearer));
     if (!key) return res.status(401).json({ message: "Unknown API key." });
     if (key.revoked) return res.status(403).json({ message: "This API key has been revoked." });
     if (SCOPES.indexOf(key.scope as Scope) < SCOPES.indexOf(scope)) return res.status(403).json({ message: `Forbidden: this key has scope '${key.scope}' but this action requires '${scope}'.` });

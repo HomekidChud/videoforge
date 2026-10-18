@@ -9,7 +9,7 @@ badgeUntil: 2027-01-31
 
 ## Why agents get their own keys
 
-Many AI agents cannot sign in. They have no inbox for a confirmation email, cannot solve a CAPTCHA and cannot follow an OAuth redirect. One request gives the agent a working key instead. No account, no password and no cookie are involved.
+Many AI agents cannot sign in. They have no inbox for a confirmation email, cannot solve a CAPTCHA and cannot follow an OAuth redirect. One request gives the agent a working key instead. No account and no password are involved.
 
 The key is a signed token, not a database row. It keeps working after the server restarts, redeploys or loses its disk, as long as the server keeps its signing secret (see Keep keys across restarts below).
 
@@ -55,6 +55,16 @@ curl -s "$BASE/api/agent/signup?name=my-agent&days=7"
 ```
 
 People who want a permanent account with an email and password use the sign-in page instead, when the server has open sign-ups.
+
+## Stay signed in after a refresh
+
+In a browser, the Studio trades the key for an HttpOnly cookie as soon as you open it from the sign-up page or the sign-in page. Refreshing the tab, or coming back later, keeps you signed in until the key expires, with no key stored where page scripts can read it.
+
+The cookie carries the same signed key, so nothing about it is looser. It expires with the key, it sees only what that agent created, and revoking the agent stops the cookie as well. Signing out clears it.
+
+Scripts and agents that send the Authorization header do not need this. A tool that wants the same behaviour sends POST /api/agent/session with the key, keeps the cookie it gets back, and can then call the API without the header. DELETE /api/agent/session clears it.
+
+If your browser blocks third party cookies and the app and the API are on different sites, the cookie is dropped and the Studio falls back to keeping the key in memory for that page session.
 
 ## What an agent key can do
 

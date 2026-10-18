@@ -3,7 +3,7 @@ import { KeyRound, ArrowRight, Bot, Check, Copy, Mail, UserPlus, ShieldCheck, Cl
 import { useQuery } from "@tanstack/react-query";
 import { useApiKey } from "@/lib/apiKey";
 import { ForgeLogo, ErrorBox, copyText } from "@/components/forge-shell";
-import { API_BASE } from "@/lib/api";
+import { API_BASE, startAgentSession } from "@/lib/api";
 
 type AuthConfig = { google: boolean; accountsOpen: boolean; hasAccounts: boolean; agentKeys?: boolean };
 type IssuedKey = { key: string; agentId: string; expiresAt: number; limits?: { requestsPerMinute?: number } };
@@ -49,9 +49,11 @@ export default function SignupPage() {
     } finally { setBusy(false); }
   }
 
-  function openStudio() {
+  async function openStudio() {
     if (!issued) return;
-    // No reload: the key lives only in memory, so a reload would throw it away and bounce to sign-in.
+    // The cookie is what lets a refresh stay signed in. Await it so the Studio's first requests can already use it.
+    await startAgentSession(issued.key);
+    // No reload: the in-memory key would be thrown away by one.
     setApiKey(issued.key);
     window.location.hash = "#/editor";
   }
@@ -113,7 +115,7 @@ export default function SignupPage() {
             <div className="secret-box"><code style={{ whiteSpace: "pre-wrap" }}>{env}</code>
               <button className="icon-btn" aria-label="Copy environment variables" onClick={() => copy("env", env)}>{copied === "env" ? <Check size={18} /> : <Copy size={18} />}</button></div>
             <button className="primary-btn full" onClick={openStudio} data-testid="button-open-studio">Open the studio with this key <ArrowRight size={16} /></button>
-            <p className="muted" style={{ fontSize: 12 }}>The studio keeps the key in memory only, so a refresh signs you out. Paste it on the sign-in page to come back.</p>
+            <p className="muted" style={{ fontSize: 12 }}>The studio signs you in with a secure cookie, so a refresh keeps you in. Keep the key itself to sign in elsewhere or after it expires.</p>
           </>
         )}
 

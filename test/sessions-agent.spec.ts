@@ -206,6 +206,69 @@ await check("the signup link validates and is throttled like the POST route", as
   try { assert.equal((await signup({})).code, 403); } finally { delete process.env.VIDEOFORGE_AGENT_KEYS; }
 });
 
+// ============================== agent sessions (cookie) ==============================
+const agentCookieReq = (token: string, over: Record<string, unknown> = {}) => mkReq({ headers: { cookie: `theme=dark; vf_agent=${token}` }, ...over });
+const newAgentKey = async (name = "cookie-agent", ip = "10.9.9.9") => (await run(routes["POST /api/agent/keys"], mkReq({ method: "POST", path: "/api/agent/keys", body: { name, days: 2 }, socket: { remoteAddress: ip } }))).body.key as string;
+
+await check("an agent key can be traded for an HttpOnly cookie that lasts as long as the key", async () => {
+  const key = await newAgentKey();
+  const res = await run(routes["POST /api/agent/session"], bearerReq(key, { method: "POST", path: "/api/agent/session", headers: { authorization: `Bearer ${key}`, "x-forwarded-proto": "https", origin: "https://homekidchud.github.io", host: "api.example.com" } }));
+  assert.equal(res.code, 200);
+  assert.equal(res.body.ok, true);
+  const cookie = String(res.headers["Set-Cookie"]);
+  assert.ok(cookie.startsWith(`vf_agent=${key};`), "carries the key");
+  assert.match(cookie, /HttpOnly/);
+  assert.match(cookie, /Secure/);
+  assert.match(cookie, /SameSite=None/, "cross-site frontend such as GitHub Pages");
+  const maxAge = Number(/Max-Age=(\d+)/.exec(cookie)![1]);
+  assert.ok(maxAge > 86_400 && maxAge <= 2 * 86_400, `expires with the key (${maxAge}s)`);
+  assert.equal(res.headers["Cache-Control"], "no-store");
+});
+
+await check("the cookie alone authenticates, with the same sandbox as the Bearer key", async () => {
+  const key = await newAgentKey("browser-tab");
+  const req = agentCookieReq(key, { path: "/api/auth/me" });
+  const res = await run([auth.requireScope("write")], req);
+  assert.equal(res.done, false, "let through");
+  assert.equal(req.apiKey.label, "browser-tab");
+  assert.equal(auth.ownerOf(req), req.apiKey.agentId, "stamped as that agent, so it stays inside its sandbox");
+  assert.equal((await run([auth.requireScope("admin")], agentCookieReq(key))).code, 403, "never admin");
+});
+
+await check("a forged, expired or revoked agent cookie is refused", async () => {
+  const key = await newAgentKey("to-revoke");
+  const [k, body, sig] = key.split(".");
+  assert.equal((await run([auth.requireScope("read")], agentCookieReq(`${k}.${body}.${sig.slice(0, -2)}AA`))).code, 401, "edited signature");
+  const expired = signToken("vf_agent", { a: "0123456789abcdef", l: "old", i: Date.now() - 9e6, x: Date.now() - 1 });
+  assert.equal((await run([auth.requireScope("read")], agentCookieReq(expired))).code, 401, "expired");
+  assert.equal((await run([auth.requireScope("read")], mkReq({ headers: { cookie: "vf_agent=not-a-key" } }))).code, 401, "not an agent token");
+  const gone = await run(routes["DELETE /api/agent/keys/self"], agentCookieReq(key, { method: "DELETE", path: "/api/agent/keys/self" }));
+  assert.equal(gone.code, 200);
+  assert.match(String(gone.headers["Set-Cookie"]), /vf_agent=; .*Max-Age=0/, "revoking also clears the cookie");
+  assert.equal((await run([auth.requireScope("read")], agentCookieReq(key))).code, 403, "a revoked agent's cookie stops working");
+});
+
+await check("an explicit Authorization header is never overridden by the cookie, and accounts win over it", async () => {
+  const good = await newAgentKey("cookie-owner");
+  const mixed = mkReq({ headers: { authorization: "Bearer vf_agent.bad.bad", cookie: `vf_agent=${good}` } });
+  assert.equal((await run([auth.requireScope("read")], mixed)).code, 401, "bad header is not rescued by the cookie");
+  const user = makeUser("both@example.com");
+  const req = mkReq({ headers: { cookie: `vf_session=${accounts.createSession(user as any)}; vf_agent=${good}` } });
+  assert.equal((await run([auth.requireScope("read")], req)).done, false);
+  assert.equal(req.apiKey.id, `user:${user.id}`, "the signed-in account wins");
+});
+
+await check("only agent keys start agent sessions, and the cookie can be cleared", async () => {
+  const user = makeUser("acct@example.com");
+  const byAccount = await run(routes["POST /api/agent/session"], cookieReq(accounts.createSession(user as any), { method: "POST", path: "/api/agent/session" }));
+  assert.equal(byAccount.code, 400, "accounts already have a session");
+  assert.equal((await run(routes["POST /api/agent/session"], mkReq({ method: "POST", path: "/api/agent/session" }))).code, 401, "needs a key");
+  const out = await run(routes["DELETE /api/agent/session"], mkReq({ method: "DELETE", path: "/api/agent/session" }));
+  assert.equal(out.code, 200);
+  assert.match(String(out.headers["Set-Cookie"]), /Max-Age=0/);
+  assert.ok(Array.isArray(out.headers["Set-Cookie"]) && out.headers["Set-Cookie"].length === 2, "clears the Lax and the None;Secure variants");
+});
+
 await check("key requests are validated", async () => {
   assert.equal((await createKey({ days: 0 })).code, 400);
   assert.equal((await createKey({ days: 31 })).code, 400);

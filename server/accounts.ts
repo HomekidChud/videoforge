@@ -18,6 +18,7 @@ import { signToken, verifyToken } from "./stateless";
 import { requireAdmin, requireScope, hashKey, findKeyByHash, agentKeysEnabled } from "./auth";
 
 const SESSION_COOKIE = "vf_session";
+const AGENT_COOKIE = "vf_agent";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 // ---------------------------------------------------------------------------
@@ -175,7 +176,37 @@ function setSessionCookie(res: Response, token: string, req: Request): void {
 }
 
 function clearSessionCookie(res: Response): void {
-  res.setHeader("Set-Cookie", `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+  res.setHeader("Set-Cookie", [
+    `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`,
+    ...agentCookieClearing(),
+  ]);
+}
+
+// ---------------------------------------------------------------------------
+// Agent sessions. An agent key is already a signed, self-expiring, sandboxed token, so the
+// cookie simply carries it. That lets a browser tab keep working after a refresh without the
+// page ever storing the key in script-readable storage. The cookie is HttpOnly, dies when the key
+// does, and revoking the agent kills it too, because every request is verified like a Bearer key.
+// ---------------------------------------------------------------------------
+
+/** The agent key carried by the cookie, or null. Verified by the caller, exactly like a Bearer key. */
+export function agentSessionToken(req: Request): string | null {
+  const token = readCookie(req.headers.cookie, AGENT_COOKIE);
+  return token && token.startsWith("vf_agent.") ? token : null;
+}
+
+export function setAgentSessionCookie(res: Response, token: string, req: Request, expiresAt: number | null): void {
+  const secure = requestIsSecure(req);
+  const maxAge = Math.max(60, Math.floor(((expiresAt ?? Date.now() + SESSION_TTL_MS) - Date.now()) / 1000));
+  res.setHeader("Set-Cookie", `${AGENT_COOKIE}=${token}; Path=/; HttpOnly; SameSite=${sameSiteFor(req, secure)}; Max-Age=${maxAge}${secure ? "; Secure" : ""}`);
+}
+
+function agentCookieClearing(): string[] {
+  // Both flavours, so a cookie set as SameSite=None;Secure is removed as well as a Lax one.
+  return [`${AGENT_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`, `${AGENT_COOKIE}=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0`];
+}
+export function clearAgentSessionCookie(res: Response): void {
+  res.setHeader("Set-Cookie", agentCookieClearing());
 }
 
 // ---------------------------------------------------------------------------

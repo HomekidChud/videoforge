@@ -6,7 +6,7 @@ This document explains **how to get an API key, what each permission (scope) doe
 
 ## Motion graphics and safer agent batches (timeline v4)
 
-The public homepage is `#/`, Studio is `#/editor`, and the new searchable guide site is `#/docs/introduction`. The existing `#/api-docs` link still opens the HTTP endpoint reference. Docs and the homepage do not require authentication. Browser sign-in now holds keys only in memory; refreshing requires signing in again.
+The public homepage is `#/`, Studio is `#/editor`, and the new searchable guide site is `#/docs/introduction`. The existing `#/api-docs` link still opens the HTTP endpoint reference. Docs and the homepage do not require authentication. Browser sign-in holds a pasted API key only in memory, so refreshing requires signing in again. Accounts and agent keys instead use an HttpOnly cookie, which survives a refresh.
 
 ### Discover the toolkit
 
