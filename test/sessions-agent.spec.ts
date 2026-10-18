@@ -20,6 +20,7 @@ const { signToken, verifyToken, resetSecretCache, secretSource } = await import(
 const accounts = await import("../server/accounts");
 const auth = await import("../server/auth");
 const { registerAgentRoutes, agentIssueThrottle, resetAgentIssueThrottle } = await import("../server/agent");
+const { DEFAULT_RESTRICTIONS } = await import("../shared/policy");
 const { users, sessions, apiKeys } = await import("../shared/schema");
 const { eq } = await import("drizzle-orm");
 
@@ -410,6 +411,23 @@ await check("the request rate limit applies to agent keys", async () => {
   let last = 0;
   for (let i = 0; i < 125; i++) last = (await run([auth.requireScope("read")], bearerReq(key, { path: "/api/capabilities" }))).code;
   assert.equal(last, 429);
+});
+
+await check("agent keys can reach the media upload route", async () => {
+  const { key } = (await createKey({ name: "Uploader" })).body;
+  const req = bearerReq(key, { method: "POST", path: "/api/media/upload" });
+  const res = await run([auth.requireScope("write")], req);
+  assert.equal(res.done, false, "the policy middleware passes the upload route");
+  assert.equal(res.code, 200);
+  // uploads can still be switched off per key
+  const noUpload = auth.createKey("no upload", "write", { ...DEFAULT_RESTRICTIONS, allowUpload: false });
+  const denied = await run([auth.requireScope("write")], bearerReq(noUpload.key, { method: "POST", path: "/api/media/upload" }));
+  assert.equal(denied.code, 403);
+  assert.match(String(denied.body?.message), /Uploads are disabled/);
+  // another agent's asset by id stays blocked
+  const foreign = await run([auth.requireScope("read")], bearerReq(key, { path: `/api/media/${aB.id}` }));
+  assert.equal(foreign.code, 403);
+  assert.match(String(foreign.body?.message), /outside this API key/);
 });
 
 await check("media tokens work for agents and die with the agent", async () => {

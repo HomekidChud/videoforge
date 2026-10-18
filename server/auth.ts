@@ -342,7 +342,9 @@ function enforcePolicy(key: ApiKey, req: Request, res: Response): boolean {
   if (p.projectIds !== null || agentIdOf(key)) {
     if (p.projectIds !== null && ((normPath === "/api/projects" && req.method === "POST") || normPath === "/api/media/upload" || (normPath.startsWith("/api/media/") && req.method === "DELETE"))) return deny("Project-restricted keys cannot create projects, upload, or delete shared media.");
     const projectMatch = normPath.match(/^\/api\/(?:projects|live)\/([^/]+)/);
-    const mediaMatch = normPath.match(/^\/api\/media\/([^/]+)/);
+    // The upload route is not an asset reference: do not treat "upload" as an id.
+    const mediaMatch =
+      req.method === "POST" && normPath === "/api/media/upload" ? null : normPath.match(/^\/api\/media\/([^/]+)/);
     const renderMatch = normPath.match(/^\/api\/renders\/([^/]+)/);
     if (projectMatch && !projectAllowed(key, projectMatch[1])) return deny("Project is outside this API key's restrictions.");
     if (mediaMatch && !assetAllowed(key, mediaMatch[1])) return deny("Media is outside this API key's restrictions.");
