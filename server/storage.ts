@@ -258,3 +258,28 @@ export class DatabaseStorage implements IStorage {
 }
 
 export const storage = new DatabaseStorage();
+
+/**
+ * Boot-time reconciliation for render jobs. Render jobs run inside the server
+ * process (fire-and-forget ffmpeg children), so a job still marked "rendering"
+ * or "queued" after a restart can never finish: its ffmpeg child and its
+ * progress writer died with the previous process. Mark every such job as a
+ * terminal error so clients see a requeueable failure instead of "rendering"
+ * forever. Completed (done/error) jobs are never touched. Safe only because a
+ * single process owns all render jobs, which is the deployed design.
+ */
+export function reconcileInterruptedRenderJobs(): number {
+  if (storageDegraded) return 0; // in-memory fallback has no jobs to reconcile
+  let interrupted = 0;
+  for (const j of storage.listRenderJobs()) {
+    if (j.status !== "rendering" && j.status !== "queued") continue;
+    storage.updateRenderJob(j.id, {
+      status: "error",
+      error: "interrupted by server restart, requeue this render",
+      updatedAt: Date.now(),
+    });
+    interrupted++;
+  }
+  if (interrupted) console.warn(`[storage] marked ${interrupted} render job(s) as interrupted by the previous shutdown; they can be requeued.`);
+  return interrupted;
+}

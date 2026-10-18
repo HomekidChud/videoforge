@@ -599,7 +599,7 @@ Supported `op` values:
 
 | Op | Args | Description |
 |---|---|---|
-| `add_clip` | `assetId` (required), `track` (`"video"\|"audio"\|"overlay"`), `start`, `inPoint`, `outPoint`, `volume`, `muted`, `text` | Append a clip from an existing asset. `outPoint` defaults to `inPoint + 5`. |
+| `add_clip` | `assetId` (required), `track` (`"video"\|"audio"\|"overlay"`), `start`, `inPoint`, `outPoint`, `volume`, `muted`, `text` | Append a clip from an existing asset. Without an explicit `outPoint`, a media clip plays to the end of its asset (the server knows the real duration); images default to 5 seconds. |
 | `remove_clip` | `clipId` | Remove a clip from the timeline. |
 | `trim_clip` | `clipId`, `inPoint`?, `outPoint`? | Change the in/out trim points. |
 | `move_clip` | `clipId`, `start` | Reposition the clip on the timeline. |
@@ -672,7 +672,7 @@ Example: trim:
 
 ### `POST /api/renders`
 
-Queue a render job for a project. **Scope: `write`.** Fire-and-forget; poll the job.
+Queue a render job for a project. **Scope: `write`.** Renders run one at a time; poll the job.
 
 ```json
 { "projectId": "prj_abc" }
@@ -683,6 +683,8 @@ Response (HTTP 201):
 ```json
 { "jobId": "j_abc", "status": "queued", "statusUrl": "/api/renders/j_abc" }
 ```
+
+A timeline that stacks more simultaneous media clips than the host's render budget allows is rejected up front with HTTP 400 and a message naming the limit (raise `VIDEOFORGE_RENDER_BUDGET_MB` on a bigger host, or use the draft quality preset). Complex timelines are rendered in time windows, one ffmpeg process per window, so the export still finishes on a small container. Jobs interrupted by a server restart are marked `error` ("interrupted by server restart, requeue this render") instead of staying `rendering` forever.
 
 ### `GET /api/renders`
 

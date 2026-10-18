@@ -11,11 +11,11 @@ import Busboy from "busboy";
 import type { Asset } from "@shared/schema";
 import { normalizeTimeline, clipEnd, timelineDuration, type Timeline } from "@shared/timeline";
 import { applyTimelineOp } from "@shared/editing";
-import { animatedValues } from "@shared/animation";
+import { animatedValues, isAnimated } from "@shared/animation";
 import { capabilities } from "@shared/capabilities";
 import { fitSummary } from "@shared/layout";
 import { GRAPHICS_SCHEMA, MOTION_TEMPLATES } from "@shared/graphics";
-import { buildRenderPlan, runFfmpeg } from "./render";
+import { buildRenderPlan, runFfmpeg, planRenderWindows, type RenderWindow } from "./render";
 import { sanitizeRenderOptions, type RenderOptions } from "@shared/render-options";
 import { ensureTimelineFonts } from "./fonts";
 import { secretSource } from "./stateless";
@@ -129,7 +129,15 @@ function assetToJSON(a: Asset) {
 }
 
 function parseTimeline(json: string): Timeline {
-  return normalizeTimeline(JSON.parse(json));
+  // Stored timelines re-normalise with asset durations available, so a clip
+  // saved without an outPoint keeps playing to the end of its asset instead
+  // of being re-capped at 5 seconds on every load.
+  return normalizeTimeline(JSON.parse(json), resolveAssetDuration);
+}
+/** Source duration of a media asset, for the outPoint default in normalizeTimeline. */
+function resolveAssetDuration(id: string): number | undefined {
+  const a = storage.getAsset(id);
+  return a && a.kind !== "image" && a.duration > 0 ? a.duration : undefined;
 }
 
 // ---------------------------------------------------------------
@@ -140,6 +148,71 @@ const TMP_DIR = path.resolve("data/tmp");
 ensureDir(TMP_DIR, "tmp");
 
 const SYSTEM = { id: "system", label: "VideoForge", scope: "admin" };
+const f2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Renders run one at a time: several concurrent ffmpeg exports multiply the
+ *  memory a small container needs, which is what took complex renders down. */
+let renderQueue: Promise<void> = Promise.resolve();
+function enqueueRender(jobId: string, projectId: string, renderOptions: RenderOptions) {
+  renderQueue = renderQueue.then(() => runRender(jobId, projectId, renderOptions)).catch(() => { /* runRender reports its own errors */ });
+}
+
+/** Render a timeline through its windows: one ffmpeg process per window (so
+ *  each process opens a bounded number of inputs), one continuous audio pass
+ *  (no per-chunk AAC joins), then a stream-copy concat with the audio muxed in.
+ *  Clip definitions are never modified — a clip crossing a window boundary is
+ *  simply an input of both windows — so fades, transitions and audio stay exact. */
+async function runRenderWindowed(jobId: string, timeline: Timeline, assets: Map<string, Asset>, windows: RenderWindow[], renderOptions: RenderOptions, outPath: string, tempFiles: string[]): Promise<{ code: number | null; signal: NodeJS.Signals | null; stderrTail: string }> {
+  const total = windows[windows.length - 1].end;
+  // The same audibility rule the renderer's audioSources uses (including clips
+  // whose volume is animated from zero): anything else can drop a soundtrack
+  // from a windowed export while the single-pass render keeps it.
+  const audible = timeline.clips.some((c) => c.assetId && !c.muted && !timeline.tracks?.[c.track]?.muted
+    && (c.volume > 0 || c.volume === undefined || isAnimated(c, "volume")) && assets.get(c.assetId)?.hasAudio === 1
+    && (c.track === "audio" || assets.get(c.assetId)?.kind === "video"));
+  const chunks: string[] = [];
+  let done = 0, span = 1;
+  const report = (frac: number) => storage.updateRenderJob(jobId, { progress: Math.min(0.99, (done + frac * span) / total), updatedAt: now() });
+  for (let i = 0; i < windows.length; i++) {
+    const w = windows[i];
+    span = w.end - w.start;
+    const chunkPath = path.join(TMP_DIR, `${jobId}_seg${i}.mp4`);
+    const plan = buildRenderPlan(timeline, assets, MEDIA_DIR, TMP_DIR, `${jobId}_seg${i}`, chunkPath, { ...renderOptions, window: w });
+    tempFiles.push(chunkPath, ...plan.tempFiles);
+    console.log(`[render ${jobId}] window ${i + 1}/${windows.length} [${f2(w.start)}s..${f2(w.end)}s]:\n${plan.filter.slice(0, 2000)}`);
+    const r = await runFfmpeg(plan.args, span, report);
+    if (r.code !== 0) return r;
+    chunks.push(chunkPath);
+    done = w.end;
+  }
+  // One continuous audio pass for the whole timeline: joining per-chunk AAC
+  // streams would put encoder priming gaps at every window boundary.
+  let audioPath: string | null = null;
+  if (audible && renderOptions.audio !== false) {
+    audioPath = path.join(TMP_DIR, `${jobId}_audio.m4a`);
+    let plan: ReturnType<typeof buildRenderPlan>;
+    try {
+      plan = buildRenderPlan(timeline, assets, MEDIA_DIR, TMP_DIR, `${jobId}_aud`, audioPath, { ...renderOptions, window: { start: 0, end: total, audioOnly: true } });
+    } catch (e: any) {
+      if (String(e?.message).includes("no audio")) { audioPath = null; }
+      else throw e;
+    }
+    if (audioPath) {
+      tempFiles.push(audioPath, ...plan!.tempFiles);
+      span = 0; // audio pass adds no timeline progress; keep the last chunk's position
+      const r = await runFfmpeg(plan!.args, total, report);
+      if (r.code !== 0) return r;
+    }
+  }
+  const listFile = path.join(TMP_DIR, `${jobId}_concat.txt`);
+  fs.writeFileSync(listFile, chunks.map((c) => `file '${c.replace(/'/g, "'\\''")}'`).join("\n"));
+  tempFiles.push(listFile);
+  const assemble = audioPath
+    ? ["-y", "-hide_banner", "-f", "concat", "-safe", "0", "-i", listFile, "-i", audioPath, "-map", "0:v", "-map", "1:a", "-c", "copy", "-movflags", "+faststart", outPath]
+    : ["-y", "-hide_banner", "-f", "concat", "-safe", "0", "-i", listFile, "-c", "copy", "-movflags", "+faststart", outPath];
+  return await runFfmpeg(assemble, 1, () => {});
+}
+
 async function runRender(jobId: string, projectId: string, renderOptions: RenderOptions = {}) {
   const project = storage.getProject(projectId);
   if (!project) {
@@ -153,19 +226,30 @@ async function runRender(jobId: string, projectId: string, renderOptions: Render
     const outPath = path.join(OUTPUT_DIR, `${jobId}.mp4`);
     const jobTimeline = parseTimeline(project.timelineJson);
     await ensureTimelineFonts(jobTimeline); // catalog fonts are fetched once and cached for the renderer
-    const plan = buildRenderPlan(jobTimeline, assets, MEDIA_DIR, TMP_DIR, jobId, outPath, renderOptions);
-    tempFiles = plan.tempFiles;
-    console.log(`[render ${jobId}] filter graph:\n${plan.filter.slice(0, 4000)}`);
+    const windows = planRenderWindows(jobTimeline, renderOptions);
     let lastWrite = 0;
-    const { code, stderrTail } = await runFfmpeg(plan.args, plan.total, (pct) => {
+    const onProgress = (pct: number) => {
       if (Date.now() - lastWrite < 400) return;
       lastWrite = Date.now();
       storage.updateRenderJob(jobId, { progress: pct, updatedAt: now() });
-    });
+    };
+    let code: number | null, signal: NodeJS.Signals | null, stderrTail: string;
+    if (windows.length === 1) {
+      // Simple timeline: the original single-pass render, unchanged.
+      const plan = buildRenderPlan(jobTimeline, assets, MEDIA_DIR, TMP_DIR, jobId, outPath, renderOptions);
+      tempFiles = plan.tempFiles;
+      console.log(`[render ${jobId}] filter graph:\n${plan.filter.slice(0, 4000)}`);
+      ({ code, signal, stderrTail } = await runFfmpeg(plan.args, plan.total, onProgress));
+    } else {
+      // Complex timeline: windowed passes so no single process opens every input.
+      ({ code, signal, stderrTail } = await runRenderWindowed(jobId, jobTimeline, assets, windows, renderOptions, outPath, tempFiles));
+    }
     if (code !== 0) {
-      console.error(`[render ${jobId}] ffmpeg exit ${code}\n${stderrTail}`);
-      const reason = stderrTail.split("\n").filter((l) => l.trim()).slice(-2).join(" ").slice(0, 300);
-      storage.updateRenderJob(jobId, { status: "error", error: `ffmpeg failed (exit ${code}): ${reason}`, updatedAt: now() });
+      console.error(`[render ${jobId}] ffmpeg exit ${code} signal ${signal}\n${stderrTail}`);
+      const reason = signal
+        ? `ffmpeg was terminated by signal ${signal}. The host running out of memory is one possible cause; so is the process being stopped. Try the draft quality preset, or a simpler timeline`
+        : `ffmpeg failed (exit ${code}): ${stderrTail.split("\n").filter((l) => l.trim()).slice(-2).join(" ").slice(0, 300)}`;
+      storage.updateRenderJob(jobId, { status: "error", error: reason, updatedAt: now() });
       logEvent(projectId, SYSTEM, "render", "Export failed");
       return;
     }
@@ -388,7 +472,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "timeline with clips[] required" });
       }
       const id = uid();
-      const t: Timeline = normalizeTimeline(timeline);
+      const t: Timeline = normalizeTimeline(timeline, resolveAssetDuration);
       const p = storage.createProject({
         id,
         name: name.slice(0, 200),
@@ -426,7 +510,7 @@ export async function registerRoutes(
         if (!Array.isArray(timeline.clips)) {
           return res.status(400).json({ message: "timeline.clips must be an array" });
         }
-        const t: Timeline = normalizeTimeline(timeline);
+        const t: Timeline = normalizeTimeline(timeline, resolveAssetDuration);
         patch.timelineJson = JSON.stringify(t);
       }
       const updated = storage.updateProject(String(req.params.id), patch);
@@ -502,7 +586,7 @@ export async function registerRoutes(
     const p = storage.getProject(String(req.params.id));
     if (!p || !projectAllowed((req as any).apiKey, p.id)) return res.status(404).json({ message: "project not found" });
     try {
-      const timeline = normalizeTimeline(req.body?.timeline);
+      const timeline = normalizeTimeline(req.body?.timeline, resolveAssetDuration);
       const missing = timeline.clips.filter(c => c.assetId && !storage.getAsset(c.assetId)).map(c => c.assetId);
       if (missing.length) return res.status(422).json({ valid: false, message: "Missing media assets", missingAssetIds: Array.from(new Set(missing)) });
       return res.json({ valid: true, timeline, duration: timelineDuration(timeline), clipCount: timeline.clips.length });
@@ -590,6 +674,16 @@ export async function registerRoutes(
     const p = storage.getProject(projectId);
     if (!p) return res.status(404).json({ message: "project not found" });
     const renderOptions = sanitizeRenderOptions(req.body?.options);
+    try {
+      // Guardrail before the job exists: a timeline too dense for the render
+      // limits is rejected up front with a clear message instead of creating a
+      // job that can only fail (or take the instance down) once it starts.
+      // An empty timeline keeps the existing contract: the job is created and
+      // fails with the renderer's "timeline is empty" error.
+      planRenderWindows(parseTimeline(p.timelineJson), renderOptions);
+    } catch (e: any) {
+      if (!/empty/i.test(String(e?.message))) return res.status(400).json({ message: e.message || "this timeline cannot be rendered" });
+    }
     const jobId = uid();
     storage.createRenderJob({
       id: jobId,
@@ -602,8 +696,8 @@ export async function registerRoutes(
       updatedAt: now(),
     });
     logEvent(projectId, actorOf(req), "render", "Started an export");
-    // fire-and-forget; job status is pollable
-    setImmediate(() => runRender(jobId, projectId, renderOptions));
+    // queued and rendered one at a time; job status is pollable
+    enqueueRender(jobId, projectId, renderOptions);
     res.status(201).json({ jobId, status: "queued", statusUrl: `/api/renders/${jobId}` });
   });
 
