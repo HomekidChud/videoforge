@@ -1966,7 +1966,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "gitUpdated": "2026-10-17T08:48:53Z"
+    "gitUpdated": "2026-10-17T23:44:57Z"
   },
   {
     "slug": "animator",
@@ -3669,6 +3669,14 @@ export const DOC_PAGES: DocPage[] = [
           },
           {
             "status": "done",
+            "text": "Speed-ramp renders fixed: a clip with speed steps (including freezes) failed with an empty ffmpeg filter, so exporting ramped clips now works."
+          },
+          {
+            "status": "done",
+            "text": "API-key sign-in no longer reloads into a dead session: the key lives in memory, and the reload after verifying it dropped the user back on the sign-in page."
+          },
+          {
+            "status": "done",
             "text": "Inspector with progressive disclosure: the common controls first, advanced groups folded, and a search box inside the inspector."
           },
           {
@@ -3712,7 +3720,7 @@ export const DOC_PAGES: DocPage[] = [
           }
         ],
         "taskStats": {
-          "done": 16,
+          "done": 18,
           "doing": 0,
           "todo": 3
         }
@@ -4207,17 +4215,17 @@ export const DOC_PAGES: DocPage[] = [
       }
     ],
     "taskStats": {
-      "done": 95,
+      "done": 97,
       "doing": 0,
       "todo": 29
     },
-    "gitUpdated": "2026-10-17T22:02:27Z"
+    "gitUpdated": "2026-10-17T23:44:57Z"
   }
 ];
 
 export const CONTRIBUTORS: { name: string; commits: number }[] = [
   {
-    "commits": 75,
+    "commits": 76,
     "name": "HomekidChud"
   },
   {

@@ -628,8 +628,9 @@ export async function registerRoutes(
     // the file straight from disk, so the browser starts saving immediately.
     res.setHeader("Content-Disposition", `attachment; filename="render_${String(req.params.id)}.mp4"`);
     res.setHeader("Cache-Control", "private, no-cache");
-    res.sendFile(outPath, { dotfiles: "allow", lastModified: true }, (err) => {
-      if (err && !res.headersSent) res.status(404).json({ message: "rendered file missing" });
+    res.sendFile(outPath, { lastModified: true }, (err) => {
+      // Forward the real status: 416 for an unsatisfiable Range, 404 otherwise.
+      if (err && !res.headersSent) res.status((err as any).status ?? 404).json({ message: (err as any).message ?? "rendered file missing" });
     });
   });
 

@@ -41,7 +41,10 @@ function MediaLayer({clip,asset,time,playing,source,hidden,muted,onError,timelin
   // Speed steps: the source position follows the steps (a freeze step holds the frame).
   const rel=Math.max(0,time-clip.start);
   const desired=clip.speedRamp?.length ? clip.inPoint+rampSourceAt(clip.speedRamp,rel) : clip.inPoint+rel*(clip.speed??1);
-  const rate=clip.speedRamp?.length ? Math.max(0.0625, rampSpeedAt(clip.speedRamp,rel)) : (clip.speed??1);
+  // The raw ramp speed decides whether this is a freeze segment; playbackRate itself
+  // must stay positive, so the clamp only applies to the value handed to the element.
+  const rawRate=clip.speedRamp?.length ? rampSpeedAt(clip.speedRamp,rel) : (clip.speed??1);
+  const rate=Math.max(0.0625,rawRate), frozen=rawRate<=0.01; // a freeze segment (speed ramp at ~0) holds one exact frame
   const sync=()=>{
     const el=media.current;if(!el)return;
     el.playbackRate=rate;
@@ -49,14 +52,13 @@ function MediaLayer({clip,asset,time,playing,source,hidden,muted,onError,timelin
     el.volume=Math.min(1,Math.max(0,ev.volume*envelope(clip,time)*transitionAudio(timeline,clip,time)));
     if(active && Number.isFinite(desired)) {
       const drift=Math.abs(el.currentTime-desired);
-      const frozen=rate<=0.01; // a freeze segment (speed ramp at ~0) holds one exact frame
       // While paused (scrubbing) sync exactly. While playing, only correct drift that
       // has grown large, and never stack a second seek on one still in flight: those
       // mid-playback seeks are what read as stutter. A freeze pauses and pins the frame.
       const wantSeek=!playing?(drift>0.001):frozen?(drift>0.05):(!el.seeking&&drift>0.5);
       if(wantSeek){ try { el.currentTime=desired; } catch { /* metadata not loaded */ } }
     }
-    if(active&&playing&&rate>0.01&&el.paused) el.play().catch(()=>{}); else if(!active||!playing||rate<=0.01) el.pause();
+    if(active&&playing&&!frozen&&el.paused) el.play().catch(()=>{}); else if(!active||!playing||frozen) el.pause();
   };
   useEffect(sync,[time,playing,clip,source,muted]);
   useEffect(()=>{setFailed(false);},[source]);

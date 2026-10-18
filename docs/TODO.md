@@ -51,6 +51,8 @@ The editor has grown crowded. The goal is a calmer layout where the common contr
 - [x] A live clock in the studio bar showing the time of day.
 - [x] A language selector in the studio bar that switches the Studio chrome and the block studio between English and Español together.
 - [x] Smoother preview playback: freeze segments hold an exact frame instead of drifting, mid-playback drift correction no longer stacks seeks, and the selection frame is not measured on every animation frame.
+- [x] Speed-ramp renders fixed: a clip with speed steps (including freezes) failed with an empty ffmpeg filter, so exporting ramped clips now works.
+- [x] API-key sign-in no longer reloads into a dead session: the key lives in memory, and the reload after verifying it dropped the user back on the sign-in page.
 - [x] Inspector with progressive disclosure: the common controls first, advanced groups folded, and a search box inside the inspector.
 - [x] Icon dock for the left panels (Media, Effects, Blocks, Graphics, Tools, Projects) with tooltips, instead of a block of text tabs.
 - [x] Simple and Advanced modes, so a first-time user sees a small set of tools and can switch the rest on.

@@ -6,7 +6,7 @@
 // ----------------------------------------------------------------------------
 
 import { useCallback, useSyncExternalStore } from "react";
-import { detectLang, type BlockLang } from "@shared/block-i18n";
+import { detectLang, loadLang, type BlockLang } from "@shared/block-i18n";
 
 /** Spanish translations for the Studio chrome. The English text is written
  *  inline at each call site, so a missing key here simply falls back to it. */
@@ -138,7 +138,8 @@ export function studioT(lang: BlockLang, key: string, english: string): string {
 }
 
 const listeners = new Set<() => void>();
-let current: BlockLang = detectLang();
+// Restore the saved choice first (vf.lang.v1), then fall back to the browser language.
+let current: BlockLang = loadLang(typeof window === "undefined" ? { getItem: () => null } : window.localStorage);
 
 const store = {
   get: () => current,
