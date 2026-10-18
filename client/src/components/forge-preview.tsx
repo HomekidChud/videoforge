@@ -70,10 +70,11 @@ function MediaLayer({clip,asset,time,playing,source,hidden,muted,onError,timelin
   const innerMask=cropClip(clip.crop,ev.reveal),transitionMask=tr&&p<1?transitionClipPath(tr.type,p):undefined;
   // A layer can need two masks at once: a crop or reveal wipe on the media plus a
   // transition wipe on top. One element cannot intersect two clip-paths, so the
-  // media then sits in a wrapper that carries the transition mask. The wrapper
-  // stays mounted for the whole clip (not just while the transition runs) so
-  // the media element is never remounted mid-playback.
-  const needsWrap=!!tr&&innerMask!==undefined;
+  // media then sits in a wrapper that carries the transition mask while the media
+  // keeps its own. The wrapper decision depends only on the clip's fixed incoming
+  // transition - never on evaluated masks or time - so the media element is never
+  // remounted mid-playback when a reveal or transition completes.
+  const needsWrap=!!tr;
   const base={opacity,filter:previewFilter(ev,.6),display:active&&!hidden?undefined:"none",transform:g.transform,mixBlendMode:undefined};
   const position=clip.track==="overlay"?{left:`${g.x*100}%`,top:`${g.y*100}%`,width:`${g.scale*100}%`,height:"auto"}:{left:`${g.x*100}%`,top:`${g.y*100}%`,width:"100%",height:"100%",objectFit:clip.fit==="cover"?"cover" as const:clip.fit==="fill"?"fill" as const:"contain" as const};
   const style={...position,...base,...(clip.track!=="overlay"?{transform:`${g.transform} scale(${g.scale})`}:{}),clipPath:transitionMask??innerMask};

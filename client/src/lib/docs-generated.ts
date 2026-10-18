@@ -4232,6 +4232,10 @@ export const CONTRIBUTORS: { name: string; commits: number }[] = [
     "name": "HomekidChud"
   },
   {
+    "commits": 3,
+    "name": "Computer"
+  },
+  {
     "commits": 2,
     "name": "Perplexity Computer"
   },
@@ -4242,9 +4246,5 @@ export const CONTRIBUTORS: { name: string; commits: number }[] = [
   {
     "commits": 1,
     "name": "AgentMedia1942"
-  },
-  {
-    "commits": 1,
-    "name": "Computer"
   }
 ];

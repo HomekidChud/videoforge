@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import os from "node:os";
 import fs from "node:fs";
+import { spawnSync } from "node:child_process";
 import { sanitizeRenderOptions, RENDER_QUALITIES, presetWidth } from "../shared/render-options";
 import { buildRenderPlan } from "../server/render";
 import { normalizeClip, normalizeTimeline } from "../shared/timeline";
@@ -85,5 +86,50 @@ check(() => {
   assert.ok(p.filter.includes("fps=30"));
   assert.ok(p.filter.includes("s=1280x720"));
 });
+
+// ------------------------------------------------------- real configured renders
+// Encode an actual source with audio, then verify a configured export's output
+// dimensions, frame rate and audio state with ffprobe.
+const ffmpegOk = spawnSync("ffmpeg", ["-version"], { timeout: 5000 }).status === 0;
+if (!ffmpegOk) {
+  console.warn("render-options.spec: ffmpeg absent, skipping real-render checks");
+} else {
+  const src = path.join(dir, "av1");
+  const made = spawnSync("ffmpeg", ["-y", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=320x180:rate=24", "-f", "lavfi", "-i", "sine=frequency=440", "-t", "2", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-f", "mp4", `${src}.mp4`], { encoding: "utf8", timeout: 60000 });
+  assert.equal(made.status, 0, made.stderr?.slice(-800));
+  fs.copyFileSync(`${src}.mp4`, src); // assets are stored under their id, extension-free
+  const avAssets = new Map([["av1", { id: "av1", filename: "av.mp4", kind: "video", hasAudio: 1, width: 320, height: 180, duration: 2 } as any]]);
+  const avTl = () => normalizeTimeline({
+    resolution: { width: 1280, height: 720 },
+    clips: [normalizeClip({ id: "c1", assetId: "av1", track: "video", start: 0, inPoint: 0, outPoint: 2 })],
+  });
+  const render = (name: string, options: Record<string, unknown>) => {
+    const target = path.join(dir, name);
+    const plan = buildRenderPlan(avTl(), avAssets, dir, dir, name, target, options as any);
+    try {
+      const p = spawnSync("ffmpeg", plan.args, { encoding: "utf8", timeout: 120000 });
+      assert.equal(p.status, 0, p.stderr?.slice(-1500));
+      return target;
+    } finally { plan.tempFiles.forEach((f) => fs.rmSync(f, { force: true })); }
+  };
+  const probe = (file: string) => {
+    const p = spawnSync("ffprobe", ["-v", "error", "-show_streams", "-of", "json", file], { encoding: "utf8", timeout: 30000 });
+    assert.equal(p.status, 0, p.stderr);
+    return JSON.parse(p.stdout).streams as Array<Record<string, string>>;
+  };
+  check(() => {
+    const streams = probe(render("configured.mp4", { quality: "draft", width: 640, fps: 24, audio: false }));
+    const video = streams.find((s) => s.codec_type === "video");
+    assert.ok(video, "video stream present");
+    assert.equal(video.width, 640, "export width follows the option");
+    assert.equal(video.height, 360, "export height keeps the aspect");
+    assert.ok(Math.abs(parseFloat(video.r_frame_rate) - 24) < 0.1, `export fps is 24, got ${video.r_frame_rate}`);
+    assert.ok(!streams.some((s) => s.codec_type === "audio"), "audio-off export has no audio stream");
+  });
+  check(() => {
+    const streams = probe(render("withaudio.mp4", {}));
+    assert.ok(streams.some((s) => s.codec_type === "audio"), "default export keeps the audio stream");
+  });
+}
 
 console.log(`render-options.spec: ${checks} checks passed`);
