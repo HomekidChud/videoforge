@@ -213,7 +213,7 @@ export const DOC_PAGES: DocPage[] = [
     "sections": [
       {
         "title": "Four ways to sign in",
-        "text": "- **Email and password**: the everyday way for people. The first account is created with the workspace owner key (printed to `data/OWNER_KEY.txt` on first boot, or set `VIDEOFORGE_BOOTSTRAP_KEY`); it becomes the workspace admin. After that, new accounts come from an admin (Developer platform → Accounts) unless `VIDEOFORGE_ACCOUNTS=open` allows self-signup.\n- **Google**: a “Continue with Google” button appears when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set (standard OAuth, verified id-token claims).\n- **API keys**: for AI agents, scripts and the standalone tool exports. No password, no cookie: `Authorization: Bearer <key>`.\n- **Agent keys**: an AI agent that cannot sign in creates its own key with one request, `POST /api/agent/keys`, no credentials needed. See [Agent keys](agent-keys).\n\nSessions are signed tokens behind an HttpOnly `vf_session` cookie (30 days). A token carries its own claims, so **sign-ins survive server restarts, redeploys and even a wiped database**: the browser keeps its cookie and the account is recreated from it. Sessions are signed with `VIDEOFORGE_SESSION_SECRET`, or with a secret derived from `VIDEOFORGE_BOOTSTRAP_KEY` when that is set. Logout and account deletion revoke the session. After a database wipe, a signed-in browser stays signed in, but the password is gone, so a new device needs the account created again. The health endpoint, documentation, share pages and the homepage never require a sign-in.",
+        "text": "- **Email and password**: the everyday way for people. The first account is created with the workspace owner key (printed to `data/OWNER_KEY.txt` on first boot, or set `VIDEOFORGE_BOOTSTRAP_KEY`); it becomes the workspace admin. After that, new accounts come from an admin (Developer platform → Accounts) unless `VIDEOFORGE_ACCOUNTS=open` allows self-signup.\n- **Google**: a “Continue with Google” button appears when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set (standard OAuth, verified id-token claims).\n- **API keys**: for AI agents, scripts and the standalone tool exports. No password, no cookie: `Authorization: Bearer <key>`.\n- **Agent keys**: an AI agent that cannot sign in creates its own key with one request, `POST /api/agent/keys`, no credentials needed. See [Agent keys](agent-keys). People and tools that cannot send a POST request can use the sign-up page at `/#/signup`, or GET /api/agent/signup.\n\nSessions are signed tokens behind an HttpOnly `vf_session` cookie (30 days). A token carries its own claims, so **sign-ins survive server restarts, redeploys and even a wiped database**: the browser keeps its cookie and the account is recreated from it. Sessions are signed with `VIDEOFORGE_SESSION_SECRET`, or with a secret derived from `VIDEOFORGE_BOOTSTRAP_KEY` when that is set. Logout and account deletion revoke the session. After a database wipe, a signed-in browser stays signed in, but the password is gone, so a new device needs the account created again. The health endpoint, documentation, share pages and the homepage never require a sign-in.",
         "language": "SHELL",
         "code": "# Account sign-in (sets the cookie)\ncurl -c jar -X POST \"$BASE/api/auth/login\" -H 'Content-Type: application/json' \\\n  -d '{\"email\":\"you@example.com\",\"password\":\"…\"}'\ncurl -b jar \"$BASE/api/auth/me\"\n\n# Agent key\ncurl \"$BASE/api/auth/me\" -H \"Authorization: Bearer $KEY\""
       },
@@ -267,7 +267,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T20:03:54Z",
+    "updated": "2026-10-18T17:50:12Z",
     "added": "2026-10-15T22:20:52+01:00"
   },
   {
@@ -2219,6 +2219,12 @@ export const DOC_PAGES: DocPage[] = [
         ]
       },
       {
+        "title": "Sign up from a page or a plain link",
+        "text": "Not every tool can send a POST request. Two other ways get the same key, with the same limits and the same throttle.\n\n- The sign-up page. Open `/#/signup` in the app, or the plain HTML version at `/signup.html`, which needs no app bundle and reads cleanly for tools that browse. Pick a name and a length, press the button and copy the key. It is shown once.\n- A link. A tool that can only fetch a URL can use GET /api/agent/signup, with optional `name` and `days` query parameters. The reply is the same JSON as the POST request, and it is never cached.\n\nPeople who want a permanent account with an email and password use the sign-in page instead, when the server has open sign-ups.",
+        "language": "SHELL",
+        "code": "curl -s \"$BASE/api/agent/signup?name=my-agent&days=7\""
+      },
+      {
         "title": "What an agent key can do",
         "text": "An agent key has write scope, so it can upload media, build and edit projects and render them. It is deliberately boxed in.\n\n- **Sandboxed.** It sees only the projects, media and renders it created. Other projects in the workspace return 403, and a timeline that references media the agent did not upload is refused.\n- **Rate limited.** 120 requests a minute by default. Exceeding it returns 429 with a Retry-After header.\n- **Short lived.** Keys expire after 7 days unless a different length up to 30 days is requested.\n- **No administration.** It cannot create other keys, manage accounts or watch live editing.\n\nKeys made by an admin through POST /api/keys are not sandboxed, and neither are the owner key or signed-in accounts. They see the whole workspace."
       },
@@ -2278,7 +2284,9 @@ export const DOC_PAGES: DocPage[] = [
       }
     ],
     "badge": "new",
-    "badgeUntil": "2027-01-31"
+    "badgeUntil": "2027-01-31",
+    "updated": "2026-10-18T17:50:12Z",
+    "added": "2026-10-18T17:50:12Z"
   },
   {
     "slug": "custom-tools",
@@ -2979,6 +2987,11 @@ export const DOC_PAGES: DocPage[] = [
             "Public: an agent creates its own sandboxed write key, no sign-in."
           ],
           [
+            "GET",
+            "/api/agent/signup",
+            "Public: the same as a plain link, for tools that can only fetch a URL."
+          ],
+          [
             "POST",
             "/api/agent/keys/renew",
             "Agent key: get a fresh key for the same agent."
@@ -3133,7 +3146,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T13:09:37Z",
+    "updated": "2026-10-18T17:50:12Z",
     "added": "2026-10-15T22:20:52+01:00"
   },
   {
@@ -3166,7 +3179,7 @@ export const DOC_PAGES: DocPage[] = [
         "text": "This release does not provide arbitrary SVG paths, Lottie import, 3D, expressions, nested compositions or motion blur. Shape fill and size are static; transforms animate. Preview and export can differ slightly in font metrics, cubic easing approximation and shape edge antialiasing. Inspect exported frames for final approval."
       }
     ],
-    "updated": "2026-10-17T08:48:53Z",
+    "updated": "2026-10-18T17:50:12Z",
     "added": "2026-10-15T22:20:52+01:00"
   },
   {
@@ -3324,7 +3337,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T08:48:53Z",
+    "updated": "2026-10-18T17:50:12Z",
     "added": "2026-10-17T08:48:53Z"
   },
   {
@@ -3592,7 +3605,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T20:03:54Z",
+    "updated": "2026-10-18T17:50:12Z",
     "added": "2026-10-17T13:09:37Z"
   },
   {
@@ -4380,7 +4393,7 @@ export const DOC_PAGES: DocPage[] = [
 
 export const CONTRIBUTORS: { name: string; commits: number }[] = [
   {
-    "commits": 77,
+    "commits": 79,
     "name": "HomekidChud"
   },
   {

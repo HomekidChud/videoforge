@@ -37,7 +37,7 @@ curl -s -X POST "$VF_BASE_URL/api/agent/keys" -H 'Content-Type: application/json
   -d '{"name":"<your agent name>","days":7}'
 ```
 
-The response holds `key` (shown once), `agentId` and `expiresAt`. Store the key in `VF_API_KEY` at once and send it as `Authorization: Bearer <key>`. Full details are in `docs/agent-keys.md`.
+The response holds `key` (shown once), `agentId` and `expiresAt`. Store the key in `VF_API_KEY` at once and send it as `Authorization: Bearer <key>`. If your tool can only fetch URLs (no POST), fetch `GET $VF_BASE_URL/api/agent/signup?name=<your agent name>&days=7` instead, which returns the same JSON. The sign-up page for people is at `/#/signup`, with a plain HTML copy at `/signup.html`. Full details are in `docs/agent-keys.md`.
 
 What an agent key is:
 - Write scope. It can upload, edit and render. It cannot create keys, manage accounts or watch live editing.

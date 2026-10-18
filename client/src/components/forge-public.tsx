@@ -18,7 +18,7 @@ export function ThemeToggle() {
 }
 export function PublicHeader({children,docs=false}:{children?:ReactNode;docs?:boolean}) {
   return <header className="public-header"><ForgeLogo/>{docs?<a className="docs-label" href="#/docs/introduction">Docs</a>:null}
-    <div className="header-middle">{children??<nav aria-label="Main navigation"><a href="#/docs/introduction">Documentation</a><a href="#/docs/motion-graphics">Motion graphics</a><a href="#/docs/api-reference">API</a></nav>}</div>
+    <div className="header-middle">{children??<nav aria-label="Main navigation"><a href="#/docs/introduction">Documentation</a><a href="#/docs/motion-graphics">Motion graphics</a><a href="#/docs/api-reference">API</a><a href="#/signup">Sign up</a></nav>}</div>
     <a className="public-icon github-link" href="https://github.com/HomekidChud/videoforge" aria-label="VideoForge on GitHub" target="_blank" rel="noreferrer"><Github size={18}/></a><ThemeToggle/>
     <a className="public-button small header-studio" href="#/editor">Open Studio <ArrowUpRight size={15}/></a>
   </header>;

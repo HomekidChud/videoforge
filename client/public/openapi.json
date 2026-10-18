@@ -176,6 +176,25 @@
         }
       }
     },
+    "/api/agent/signup": {
+      "get": {
+        "summary": "Public: the same as a plain link, for tools that can only fetch a URL.",
+        "tags": [
+          "agent"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        }
+      }
+    },
     "/api/agent/keys/renew": {
       "post": {
         "summary": "Agent key: get a fresh key for the same agent.",

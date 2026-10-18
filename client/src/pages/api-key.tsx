@@ -80,7 +80,7 @@ export default function ApiKeyPage() {
   const firstRun = !configQ.isLoading && configQ.data && !configQ.data.hasAccounts;
 
   return <div className="forge-app auth-page">
-    <header className="share-head"><ForgeLogo /><a className="ghost-link" href="#/api-docs">API reference</a></header>
+    <header className="share-head"><ForgeLogo /><span style={{ display: "flex", gap: 16 }}><a className="ghost-link" href="#/signup" data-testid="link-signup">Sign up</a><a className="ghost-link" href="#/api-docs">API reference</a></span></header>
     <main className="auth-grid">
       <section className="auth-copy"><div className="eyebrow">VIDEO PRODUCTION, PROGRAMMABLE</div><h1>Cut, compose and render, from the browser or your code.</h1><p>One workspace for a full timeline editor and an API with scoped, revocable keys. Share finished videos publicly while keeping footage and credentials private.</p>
         <ul className="feature-list"><li><ShieldCheck size={18} /> Accounts that stay signed in across restarts</li><li><Terminal size={18} /> The editor uses the same API you do</li><li><Server size={18} /> Self-hosted, so your footage stays on your server</li></ul></section>
@@ -139,6 +139,7 @@ export default function ApiKeyPage() {
           <>
             <div className="card-icon"><KeyRound size={22} /></div>
             <h2>Sign in with an API key</h2>
+            <p className="muted">No key yet? <a className="ghost-link" href="#/signup">Get one instantly on the sign-up page.</a></p>
             <p className="muted">For AI agents and scripts. The owner key is saved to <span className="mono">data/OWNER_KEY.txt</span> on first server start (or set with <span className="mono">VIDEOFORGE_BOOTSTRAP_KEY</span>). Keys stay in memory for this page session.</p>
             <form onSubmit={submitKey}>
               <label className="field">API key<input type="password" autoComplete="current-password" placeholder="vf_live_… or vf_admin_…" className="mono" value={keyDraft} onChange={(e) => setKeyDraft(e.target.value)} data-testid="input-api-key" /></label>

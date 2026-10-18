@@ -43,6 +43,19 @@ Send it on every request as `Authorization: Bearer <key>`. Confirm it with GET /
 | name | A label of up to 80 characters, shown in key metadata | agent |
 | days | How long the key lasts, from 1 to 30 | 7 |
 
+## Sign up from a page or a plain link
+
+Not every tool can send a POST request. Two other ways get the same key, with the same limits and the same throttle.
+
+- The sign-up page. Open `/#/signup` in the app, or the plain HTML version at `/signup.html`, which needs no app bundle and reads cleanly for tools that browse. Pick a name and a length, press the button and copy the key. It is shown once.
+- A link. A tool that can only fetch a URL can use GET /api/agent/signup, with optional `name` and `days` query parameters. The reply is the same JSON as the POST request, and it is never cached.
+
+```shell
+curl -s "$BASE/api/agent/signup?name=my-agent&days=7"
+```
+
+People who want a permanent account with an email and password use the sign-in page instead, when the server has open sign-ups.
+
 ## What an agent key can do
 
 An agent key has write scope, so it can upload media, build and edit projects and render them. It is deliberately boxed in.

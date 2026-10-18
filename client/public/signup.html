@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VideoForge sign up: get an API key in one step</title>
+<meta name="description" content="Get a VideoForge API key instantly. No email, no existing credential. For people, scripts and AI agents.">
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; background:#111112; color:#f4f1eb; font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  main { max-width:680px; margin:0 auto; padding:40px 20px 80px; }
+  h1 { font-size:28px; line-height:1.2; margin:0 0 8px; }
+  h2 { font-size:18px; margin:32px 0 8px; }
+  p, li { color:#cfcbc6; }
+  a { color:#f6a447; }
+  form, .card { background:#19191b; border:1px solid #303034; border-radius:12px; padding:20px; margin:20px 0; }
+  label { display:block; margin:0 0 14px; font-size:14px; color:#a4a1a0; }
+  input, select { display:block; width:100%; box-sizing:border-box; margin-top:6px; padding:10px; border-radius:8px; border:1px solid #303034; background:#111112; color:#f4f1eb; font:inherit; }
+  button { padding:11px 18px; border:0; border-radius:8px; background:#f6a447; color:#111; font:600 15px system-ui; cursor:pointer; }
+  button:disabled { opacity:.6; cursor:wait; }
+  pre { background:#111112; border:1px solid #303034; border-radius:8px; padding:12px; overflow:auto; white-space:pre-wrap; word-break:break-all; font-size:13px; }
+  .err { color:#ff8a80; margin:0 0 12px; }
+  .hidden { display:none; }
+  code { font-size:13px; }
+</style>
+</head>
+<body>
+<main>
+  <p><a href="./">VideoForge</a> / sign up</p>
+  <h1>Get a VideoForge API key in one step</h1>
+  <p>No email, no password, no existing credential. The key works right away for people, scripts and AI agents. It sees only the projects and media it creates, expires on its own, and can be renewed.</p>
+
+  <form id="form">
+    <label>Name (optional)<input id="name" maxlength="60" placeholder="my-agent"></label>
+    <label>Lasts for<select id="days"><option value="1">1 day</option><option value="7" selected>7 days</option><option value="14">14 days</option><option value="30">30 days</option></select></label>
+    <p class="err hidden" id="err" role="alert"></p>
+    <button id="go" type="submit">Get my key</button>
+  </form>
+
+  <section class="card hidden" id="result" aria-live="polite">
+    <h2 style="margin-top:0">Your key is ready. It is shown once.</h2>
+    <pre id="key"></pre>
+    <p>Expires: <span id="exp"></span></p>
+    <h2>Use it</h2>
+    <pre id="curl"></pre>
+    <pre id="env"></pre>
+    <p><a id="studio" href="./#/api-key">Open the studio</a> and paste the key into the API key tab.</p>
+  </section>
+
+  <h2>If you are an AI agent</h2>
+  <p>You can skip this page and ask the server directly. Any one of these works:</p>
+  <pre id="api-snippets"></pre>
+  <p>Send the key on every call as <code>Authorization: Bearer &lt;key&gt;</code>. Full guide: <a href="./#/docs/agent-keys">agent keys</a>, and a machine-readable index at <a href="llms.txt">llms.txt</a>.</p>
+
+  <h2>Want a permanent account?</h2>
+  <p>Email and password accounts are on the <a href="./#/api-key">sign-in page</a> when this server has open sign-ups.</p>
+</main>
+<script>
+(function () {
+  // The API lives on Render when this page is served from GitHub Pages, and on the same origin otherwise.
+  var HOSTED = "https://videoforge-api-s54w.onrender.com";
+  var base = /\.github\.io$/.test(location.hostname) ? HOSTED : location.origin;
+  var $ = function (id) { return document.getElementById(id); };
+  $("api-snippets").textContent =
+    "POST " + base + "/api/agent/keys   body: {\"name\":\"my-agent\",\"days\":7}\n" +
+    "GET  " + base + "/api/agent/signup?name=my-agent&days=7   (for tools that can only fetch a URL)\n" +
+    "GET  " + base + "/api/agent   (what this server offers, limits, and how to renew)";
+  $("form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    $("err").classList.add("hidden");
+    $("go").disabled = true;
+    fetch(base + "/api/agent/keys", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: $("name").value.trim() || "my-agent", days: Number($("days").value) })
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (d) {
+        if (r.status === 429) throw new Error("Too many keys requested from this network. Try again in " + (r.headers.get("Retry-After") || "a few") + " seconds.");
+        if (!r.ok) throw new Error(d.message || r.statusText);
+        return d;
+      });
+    }).then(function (d) {
+      $("key").textContent = d.key;
+      $("exp").textContent = new Date(d.expiresAt).toUTCString();
+      $("curl").textContent = "curl " + base + "/api/projects \\\n  -H \"Authorization: Bearer " + d.key + "\"";
+      $("env").textContent = "export VF_API_KEY=" + d.key + "\nexport VF_BASE_URL=" + base;
+      $("result").classList.remove("hidden");
+      $("form").classList.add("hidden");
+    }).catch(function (err) {
+      $("err").textContent = err instanceof TypeError ? "Can't reach the VideoForge server. Check your connection." : err.message;
+      $("err").classList.remove("hidden");
+    }).then(function () { $("go").disabled = false; });
+  });
+})();
+</script>
+</body>
+</html>

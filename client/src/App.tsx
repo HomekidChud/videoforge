@@ -13,6 +13,7 @@ import ApiDocsPage from "@/pages/api-docs";
 import HomePage from "@/pages/home";
 import { PublicThemeProvider } from "@/components/forge-public";
 import ApiKeyPage from "@/pages/api-key";
+import SignupPage from "@/pages/signup";
 import { LiveListPage, LiveWatchPage } from "@/pages/live";
 import { useApiKey, ApiKeyProvider, setKeyChangeNotifier } from "@/lib/apiKey";
 import { invalidateMediaTokens } from "@/lib/mediaUrl";
@@ -47,6 +48,7 @@ function AppRouter() {
       <Route path="/live/:id">{(params) => <RequireApiKey><LiveWatchPage params={params as { id: string }} /></RequireApiKey>}</Route>
       <Route path="/live">{() => <RequireApiKey><LiveListPage /></RequireApiKey>}</Route>
       <Route path="/api-key" component={ApiKeyPage} />
+      <Route path="/signup" component={SignupPage} />
       <Route path="/api-docs">{()=> <ApiDocsPage/>}</Route>
       {/* #/docs and #/docs/ land on the introduction instead of a 404. */}
       <Route path="/docs">{() => <Redirect to="/docs/introduction" />}</Route>
