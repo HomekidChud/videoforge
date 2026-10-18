@@ -298,6 +298,8 @@ export const CONTRIBUTORS: { name: string; commits: number }[] = ${JSON.stringif
   if (start >= 0) llms = next >= 0 ? llms.slice(0, start) + list + llms.slice(next + 1) : llms.slice(0, start) + list;
   else llms = `${list}\n## Discovery\n\nUse Authorization: Bearer <scoped-key>. BASE is the user's API server.\n`;
   await writeFile("client/public/llms.txt", llms, "utf-8");
+  // The editing skill is published beside llms.txt so any agent can fetch it from the site.
+  await writeFile("client/public/SKILL.md", await readFile("SKILL.md", "utf-8"), "utf-8");
   return pages;
 }
 

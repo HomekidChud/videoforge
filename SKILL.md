@@ -9,6 +9,38 @@ This file teaches an AI agent two things: how to drive VideoForge, and how to ed
 
 Reference docs live in the repository under `docs/`: `batch-operations.md`, `timeline.md`, `keyframes.md`, `transitions.md`, `motion-presets.md`, `fonts-and-text.md`, `fit-and-layout.md`, `rendering.md` and `agent-workflow.md`. When this file and the live server disagree, the server wins: call `GET /api/capabilities` first and trust it.
 
+## Quick start
+
+This sequence was run against the hosted server and produced a three second title card MP4. Copy it, then read the sections below for everything else.
+
+```shell
+BASE=https://videoforge-api-s54w.onrender.com
+# 1. Get your own key. No sign-in, no email. It is shown once.
+KEY=$(curl -s -X POST $BASE/api/agent/keys -H 'Content-Type: application/json' \
+  -d '{"name":"my-agent","days":7}' | python3 -c "import sys,json;print(json.load(sys.stdin)['key'])")
+AUTH="Authorization: Bearer $KEY"
+
+# 2. Create a project. The clips array is required, even when empty.
+PID=$(curl -s -X POST $BASE/api/projects -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"name":"Demo","timeline":{"fps":30,"resolution":{"width":1280,"height":720},"background":"#111112","clips":[]}}' \
+  | python3 -c "import sys,json;print(json.load(sys.stdin)['id'])")
+
+# 3. Add a title card.
+curl -s -X POST $BASE/api/projects/$PID/timeline/ops -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"ops":[{"op":"add_motion_template","args":{"template":"title-card","title":"Hello","subtitle":"Made through the API","start":0,"duration":3}}]}'
+
+# 4. Look before you render.
+curl -s "$BASE/api/projects/$PID/frame?t=1.5&width=640" -H "$AUTH" -o frame.png
+
+# 5. Render, poll until status is done, then download.
+JOB=$(curl -s -X POST $BASE/api/renders -H "$AUTH" -H 'Content-Type: application/json' \
+  -d "{\"projectId\":\"$PID\"}" | python3 -c "import sys,json;print(json.load(sys.stdin)['jobId'])")
+curl -s $BASE/api/renders/$JOB -H "$AUTH"
+curl -s $BASE/api/renders/$JOB/download -H "$AUTH" -o out.mp4
+```
+
+A project returns `id`. A render returns `jobId`. The hosted server sleeps when idle, so the first request after a quiet spell can take up to a minute. Wait for `GET /api/health` to answer before you decide anything is broken.
+
 ## 1. Ground rules
 
 - Never use em dashes or double hyphens in anything the viewer reads: on screen text, captions, narration, titles, file names. Use commas, colons or full stops.
@@ -46,6 +78,8 @@ What an agent key is:
 - Rate limited to 120 requests a minute. On a 429, wait for Retry-After.
 - Yours to end. Call `DELETE /api/agent/keys/self` when the work is finished.
 
+Working from a browser rather than code? Open the sign-up page, or paste the key on the sign-in page. The Studio then keeps you signed in across refreshes with an HttpOnly cookie. Your own scripts do not need it: send the Authorization header. `POST /api/agent/session` sets the same cookie if a tool wants it.
+
 `GET /api/agent` tells you whether the server allows this, without needing a key. If creation returns 403, the owner turned it off, so fall back to asking the user.
 
 ### Asking the user for a key
@@ -70,7 +104,7 @@ Ask safely:
 
 ### Addresses
 
-- Local server: `http://localhost:5000`.
+- Local server: `http://localhost:5000`. Only reachable from the same machine.
 - Hosted server: `https://videoforge-api-s54w.onrender.com`.
 - Send `Authorization: Bearer <key>` on every request.
 
@@ -132,8 +166,17 @@ Layout
 - Avoid per pixel expressions in custom filters. Opacity and dissolves use `sendcmd` gain changes in the renderer for that reason.
 - Very large filter graphs must go through a script file, not the command line, or the process fails with `E2BIG`. The server already does this; keep your own FFmpeg calls the same.
 - Send operations in batches of 40 to 100 and stop at the first failure. Read the error message, fix the cause, and replay from that batch.
-- Do not edit the interface source while a screen recording is running. The dev server reloads the page and the recording captures a restored draft.
+- Do not change the interface while a screen recording is running. A reload makes the recording capture a restored draft instead of the state you meant to show.
 - Check the first frame of every cut. A clip placed with the wrong `start` leaves a black gap that is easy to miss at normal playback.
+
+### Keeping exports fast
+
+The renderer is already tuned for motion graphics, so most slowness now comes from how a project is built.
+
+- Use `options: {"quality": "draft"}` on `POST /api/renders` for checks, and the default `standard` or `high` only for the final file. Draft uses the fastest encoder preset.
+- Text, shapes, reveals and straight wipes (wipe-left, wipe-right, wipe-up, wipe-down) are cheap. Irises, diamonds and diagonal wipes cost more, so use them sparingly.
+- A full frame clip with no fade, transform or transition is composited as opaque video, the fastest path. Put plain footage on the `video` track and keep effects on separate clips.
+- Preview with `/frame` and `/storyboard` instead of rendering a whole video to check one change.
 
 ## 7. Output checks before delivery
 
@@ -208,6 +251,9 @@ The mechanics above get a video made. This section is what separates a polished 
 
 ## 10. When something fails
 
+- A 401 on a key that used to work means it expired. Renew it with `POST /api/agent/keys/renew`, or create a new one.
+- A 403 on an existing project means your agent key only sees projects it created. Create a new project, or ask for a scoped write key.
+- A 429 carries `Retry-After`. Wait that many seconds.
 - A 400 on an operation lists the field that was rejected. Fix the field, not the whole batch.
 - A 409 means the project changed. Fetch it again and reapply.
 - A render with status `error` includes a message. Reduce the cause (fewer simultaneous overlays, shorter source files) before retrying. Do not retry the same render unchanged.

@@ -267,7 +267,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-18T18:29:40Z",
+    "updated": "2026-10-18T19:00:05Z",
     "added": "2026-10-15T22:20:52+01:00"
   },
   {
@@ -2289,7 +2289,7 @@ export const DOC_PAGES: DocPage[] = [
     ],
     "badge": "new",
     "badgeUntil": "2027-01-31",
-    "updated": "2026-10-18T18:29:40Z",
+    "updated": "2026-10-18T19:00:05Z",
     "added": "2026-10-18T17:50:12Z"
   },
   {
@@ -4407,7 +4407,7 @@ export const DOC_PAGES: DocPage[] = [
 
 export const CONTRIBUTORS: { name: string; commits: number }[] = [
   {
-    "commits": 81,
+    "commits": 82,
     "name": "HomekidChud"
   },
   {

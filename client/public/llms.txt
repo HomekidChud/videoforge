@@ -45,6 +45,9 @@
 - Markdown source for every page: https://github.com/HomekidChud/videoforge/tree/main/docs
 ## Discovery
 
+Agent skill (how to connect, edit well and render): SKILL.md, served beside this file.
+No key yet? POST BASE/api/agent/keys, or GET BASE/api/agent/signup, creates one with no sign-in.
+
 Use Authorization: Bearer <scoped-key>. BASE is the user's API server, which may
 be different from this frontend's origin. Read-capable keys can GET:
 

@@ -43,6 +43,7 @@ Everything else lives in [docs/](docs/). Each page is a markdown file that also 
 | [Authentication & scopes](docs/authentication.md) | Accounts, API keys and restrictions |
 | [Agent keys](docs/agent-keys.md) | An AI agent creates its own API key in one request, or anyone signs up at `/#/signup` |
 | [Agent workflow](docs/agent-workflow.md) | Discover, compose, validate, inspect, render |
+| [SKILL.md](SKILL.md) | One file that teaches an AI agent to connect, edit well and render. Also served at `/SKILL.md` |
 | [Self-hosting](docs/self-hosting.md) | Run it on your own infrastructure |
 | [Storage & durability](docs/storage-and-durability.md) | Disks, backups and the optional MongoDB store |
 | [Full HTTP reference](docs/API.md) | Every endpoint and scope |
