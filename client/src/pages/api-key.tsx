@@ -69,9 +69,9 @@ export default function ApiKeyPage() {
         try { message = (await res.json()).message || message; } catch { /* ignore */ }
         throw new Error(message);
       }
+      // No reload: the key lives only in memory, so a reload would throw it away and bounce back here.
       setApiKey(trimmed);
       window.location.hash = "#/editor";
-      window.location.reload();
     } catch (err) {
       setError(err instanceof TypeError ? "Can't reach the VideoForge server. Check your connection." : err instanceof Error ? err.message : "Could not verify this key.");
     } finally { setBusy(false); }

@@ -51,9 +51,9 @@ export default function SignupPage() {
 
   function openStudio() {
     if (!issued) return;
+    // No reload: the key lives only in memory, so a reload would throw it away and bounce to sign-in.
     setApiKey(issued.key);
     window.location.hash = "#/editor";
-    window.location.reload();
   }
 
   const expires = issued ? new Date(issued.expiresAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "";
