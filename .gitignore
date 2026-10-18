@@ -29,3 +29,7 @@ data.*.db-wal
 client/public/videos/raw/
 
 script/tutorials/work/
+
+# signing secret generated beside the database
+session-secret
+**/session-secret

@@ -14,7 +14,7 @@ Reference docs live in the repository under `docs/`: `batch-operations.md`, `tim
 - Never use em dashes or double hyphens in anything the viewer reads: on screen text, captions, narration, titles, file names. Use commas, colons or full stops.
 - Write in a formal, plain, professional voice. No hype words, no filler openers, no exclamation marks, no emojis. A tutorial should sound like a competent colleague explaining a task.
 - Do not invent facts about the interface. Record the real UI, and read labels from it.
-- Never proceed without a valid API key for the target server. Section 2 says how to ask for one.
+- Never proceed without a valid API key for the target server. Section 2 says how to get one, and an agent can usually create its own.
 - Show the user what you are about to do before any destructive change, such as deleting a project or overwriting a published file.
 
 ## 2. Connect, and always get the API key first
@@ -23,30 +23,49 @@ Nothing in this skill works without a server address and an API key. Settle both
 
 ### The key rule
 
-If you do not already have a VideoForge API key for the server you are about to use, stop and ask the user for it. Do this at the very start, before creating projects, uploading media or planning the edit. Never guess a key, reuse one from a different server, invent a placeholder, or carry on and hope the first request works.
+Never guess a key, reuse one from a different server, invent a placeholder, or carry on and hope the first request works. Get a real key first, before creating projects, uploading media or planning the edit.
 
-Check in this order, and stop at the first one that gives you a key:
+Look for an existing key in this order, and stop at the first one that works:
 1. A credential or secret your platform already stores for the VideoForge host (a connector, vault entry or secret manager).
 2. An environment variable named `VF_API_KEY`, with the server address in `VF_BASE_URL`.
 3. A key the user gave you earlier in this conversation.
 
-If none of those exist, ask. Use this wording, adjusted to the situation:
+If none of those exist, **create your own key. You do not need to ask the user and you do not need to sign in.** Send one unauthenticated request:
+
+```shell
+curl -s -X POST "$VF_BASE_URL/api/agent/keys" -H 'Content-Type: application/json' \
+  -d '{"name":"<your agent name>","days":7}'
+```
+
+The response holds `key` (shown once), `agentId` and `expiresAt`. Store the key in `VF_API_KEY` at once and send it as `Authorization: Bearer <key>`. Full details are in `docs/agent-keys.md`.
+
+What an agent key is:
+- Write scope. It can upload, edit and render. It cannot create keys, manage accounts or watch live editing.
+- Sandboxed. It sees only the projects and media it creates. Existing workspace projects return 403. If the user wants you to edit one of those, ask for a scoped write key instead.
+- Short lived. It lasts 7 days, up to 30 if you ask. Call `POST /api/agent/keys/renew` with the key before it expires to get a fresh one for the same agent. A 401 on a key that used to work means it expired: renew if you still hold it, otherwise create a new one.
+- Rate limited to 120 requests a minute. On a 429, wait for Retry-After.
+- Yours to end. Call `DELETE /api/agent/keys/self` when the work is finished.
+
+`GET /api/agent` tells you whether the server allows this, without needing a key. If creation returns 403, the owner turned it off, so fall back to asking the user.
+
+### Asking the user for a key
+
+Ask only when you cannot create one yourself: the server has self-serve keys turned off, or the task needs access to projects you did not create, or it is an administration task such as creating users. Use this wording, adjusted to the situation:
 
 "I need a VideoForge API key to edit on your server. Which server should I use (the hosted one or your own address), and could you provide a scoped write key for it? Please enter it through your secure credential or secret field if there is one."
 
-### Asking safely
-
+Ask safely:
 - Prefer a secure input. If your platform has a credential form, secret field or vault, request the key through it and never ask the user to type the key into the normal chat.
 - If the user pastes a key into chat anyway, do not repeat it back, do not write it into files, scripts, logs or commit messages, and move it into a secure store or an environment variable straight away.
 - Keep the key in `VF_API_KEY` and read it from there. Print only the first four characters when you must confirm which key you are using.
-- Ask for a scoped write key. Ask for the owner key only when the task is administering the server, such as creating keys or users, and say why.
-- Ask once, clearly. If the user declines or does not answer, say that the work cannot continue against that server and offer what you can still do without it, such as writing the narration, planning the edit or preparing the build script. Do not ask again unprompted.
+- Ask for the owner key only when the task is administering the server, and say why.
+- Ask once, clearly. If the user declines or does not answer, say that the work cannot continue against that server and offer what you can still do without it, such as writing the narration, planning the edit or preparing the build script.
 
 ### Verify before you start
 
 1. Send `GET /api/health` to confirm the server is reachable.
 2. Send `GET /api/capabilities` with `Authorization: Bearer <key>`. A 200 means the key works. Keep this response, because it lists every operation, preset, transition, filter, font, easing and limit.
-3. On a 401 or 403, the key is wrong, expired or from another deployment. Do not retry with a different or broader key. Tell the user which server returned the error and ask for a corrected key. Keys are issued per deployment, so a key from a local server never works on the hosted one.
+3. On a 401 or 403, the key is wrong, expired, revoked or from another deployment. Keys are issued per deployment, so a key from a local server never works on the hosted one. If it was an agent key, renew it or create a new one. If it was a key the user gave you, do not retry with a different or broader key: tell the user which server returned the error and ask for a corrected key.
 4. If the server cannot be reached, say so. A server on `localhost` is not reachable from a cloud environment, so ask for a public HTTPS address instead.
 
 ### Addresses

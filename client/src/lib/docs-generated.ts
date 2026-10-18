@@ -212,8 +212,8 @@ export const DOC_PAGES: DocPage[] = [
     "description": "Sign in with email, Google or an API key, and give agents only the access they need.",
     "sections": [
       {
-        "title": "Three ways to sign in",
-        "text": "- **Email and password**: the everyday way for people. The first account is created with the workspace owner key (printed to `data/OWNER_KEY.txt` on first boot, or set `VIDEOFORGE_BOOTSTRAP_KEY`); it becomes the workspace admin. After that, new accounts come from an admin (Developer platform → Accounts) unless `VIDEOFORGE_ACCOUNTS=open` allows self-signup.\n- **Google**: a “Continue with Google” button appears when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set (standard OAuth, verified id-token claims).\n- **API keys**: for AI agents, scripts and the standalone tool exports. No password, no cookie: `Authorization: Bearer <key>`.\n\nSessions are random tokens stored in SQLite behind an HttpOnly `vf_session` cookie (30 days), so **sign-ins survive server restarts and browser refreshes**. Logout destroys the session. The health endpoint, documentation, share pages and the homepage never require a sign-in.",
+        "title": "Four ways to sign in",
+        "text": "- **Email and password**: the everyday way for people. The first account is created with the workspace owner key (printed to `data/OWNER_KEY.txt` on first boot, or set `VIDEOFORGE_BOOTSTRAP_KEY`); it becomes the workspace admin. After that, new accounts come from an admin (Developer platform → Accounts) unless `VIDEOFORGE_ACCOUNTS=open` allows self-signup.\n- **Google**: a “Continue with Google” button appears when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set (standard OAuth, verified id-token claims).\n- **API keys**: for AI agents, scripts and the standalone tool exports. No password, no cookie: `Authorization: Bearer <key>`.\n- **Agent keys**: an AI agent that cannot sign in creates its own key with one request, `POST /api/agent/keys`, no credentials needed. See [Agent keys](agent-keys).\n\nSessions are signed tokens behind an HttpOnly `vf_session` cookie (30 days). A token carries its own claims, so **sign-ins survive server restarts, redeploys and even a wiped database**: the browser keeps its cookie and the account is recreated from it. Sessions are signed with `VIDEOFORGE_SESSION_SECRET`, or with a secret derived from `VIDEOFORGE_BOOTSTRAP_KEY` when that is set. Logout and account deletion revoke the session. After a database wipe, a signed-in browser stays signed in, but the password is gone, so a new device needs the account created again. The health endpoint, documentation, share pages and the homepage never require a sign-in.",
         "language": "SHELL",
         "code": "# Account sign-in (sets the cookie)\ncurl -c jar -X POST \"$BASE/api/auth/login\" -H 'Content-Type: application/json' \\\n  -d '{\"email\":\"you@example.com\",\"password\":\"…\"}'\ncurl -b jar \"$BASE/api/auth/me\"\n\n# Agent key\ncurl \"$BASE/api/auth/me\" -H \"Authorization: Bearer $KEY\""
       },
@@ -243,6 +243,18 @@ export const DOC_PAGES: DocPage[] = [
         "title": "Create an agent key",
         "text": "POST this JSON to /api/keys with an admin Bearer key. Newly created keys are returned once; the server stores their hashes. Keep credentials in environment variables or a secret manager.",
         "code": "{\n  \"label\": \"Motion graphics agent\",\n  \"scope\": \"write\",\n  \"restrictions\": {\n    \"allowDelete\": false\n  }\n}"
+      },
+      {
+        "title": "Let an agent make its own key",
+        "text": "If an agent has no key and cannot sign in, it can create one without help. The key is write scope, expires in 7 days by default, and can only see the projects and media it created.\n\nOwners can turn this off with `VIDEOFORGE_AGENT_KEYS=off`. The full guide covers renewing, revoking and limits.",
+        "language": "SHELL",
+        "code": "curl -s -X POST \"$BASE/api/agent/keys\" -H 'Content-Type: application/json' -d '{\"name\":\"My agent\"}'",
+        "links": [
+          {
+            "label": "Agent keys",
+            "slug": "agent-keys"
+          }
+        ]
       },
       {
         "title": "Handle denied requests",
@@ -2174,6 +2186,101 @@ export const DOC_PAGES: DocPage[] = [
     "added": "2026-10-17T07:51:59Z"
   },
   {
+    "slug": "agent-keys",
+    "group": "Agent API",
+    "title": "Agent keys",
+    "description": "Let an AI agent create its own API key in one request, with no sign-in, no email and no human in the loop.",
+    "sections": [
+      {
+        "title": "Why agents get their own keys",
+        "text": "Many AI agents cannot sign in. They have no inbox for a confirmation email, cannot solve a CAPTCHA and cannot follow an OAuth redirect. One request gives the agent a working key instead. No account, no password and no cookie are involved.\n\nThe key is a signed token, not a database row. It keeps working after the server restarts, redeploys or loses its disk, as long as the server keeps its signing secret (see Keep keys across restarts below)."
+      },
+      {
+        "title": "Create a key",
+        "text": "Send POST /api/agent/keys with no Authorization header. Both fields are optional.\n\nThe response contains the key. It is shown once, so store it at once in `VF_API_KEY`.\n\nSend it on every request as `Authorization: Bearer <key>`. Confirm it with GET /api/auth/me, which reports `kind: \"agent\"`.",
+        "language": "SHELL",
+        "code": "{\n  \"key\": \"vf_agent.eyJhIjoi...\",\n  \"agentId\": \"9f2c41d07a3b5e68\",\n  \"scope\": \"write\",\n  \"expiresAt\": 1792000000000,\n  \"sandbox\": \"This key sees only the projects and media it creates.\"\n}",
+        "rows": [
+          [
+            "Field",
+            "Meaning",
+            "Default"
+          ],
+          [
+            "name",
+            "A label of up to 80 characters, shown in key metadata",
+            "agent"
+          ],
+          [
+            "days",
+            "How long the key lasts, from 1 to 30",
+            "7"
+          ]
+        ]
+      },
+      {
+        "title": "What an agent key can do",
+        "text": "An agent key has write scope, so it can upload media, build and edit projects and render them. It is deliberately boxed in.\n\n- **Sandboxed.** It sees only the projects, media and renders it created. Other projects in the workspace return 403, and a timeline that references media the agent did not upload is refused.\n- **Rate limited.** 120 requests a minute by default. Exceeding it returns 429 with a Retry-After header.\n- **Short lived.** Keys expire after 7 days unless a different length up to 30 days is requested.\n- **No administration.** It cannot create other keys, manage accounts or watch live editing.\n\nKeys made by an admin through POST /api/keys are not sandboxed, and neither are the owner key or signed-in accounts. They see the whole workspace."
+      },
+      {
+        "title": "Renew and revoke",
+        "text": "Renew before the key expires. The new key belongs to the same agent, so it keeps access to everything the agent made. The old key keeps working until its own expiry.\n\nAn agent that is finished can revoke itself with DELETE /api/agent/keys/self. That ends every key for the agent, including renewed ones. An admin can do the same for any agent with DELETE /api/agent/keys/:agentId, using the agentId from the create response.",
+        "language": "SHELL",
+        "code": "curl -s -X POST \"$BASE/api/agent/keys/renew\" \\\n  -H \"Authorization: Bearer $VF_API_KEY\" -H 'Content-Type: application/json' \\\n  -d '{\"days\":14}'"
+      },
+      {
+        "title": "Check whether it is available",
+        "text": "GET /api/agent needs no key and describes the endpoint, the limits and whether it is enabled on this server. GET /api/auth/config also reports `agentKeys: true` or `false`.\n\nIf creation returns 403 the owner has turned it off. Ask the user for a key instead, as described in the editing skill. If it returns 429, wait for the number of seconds in Retry-After. Each address can create 20 keys an hour."
+      },
+      {
+        "title": "Keep keys across restarts",
+        "text": "Agent keys and browser sign-in sessions are signed with one server secret. The server looks for it in this order:\n\n1. `VIDEOFORGE_SESSION_SECRET`, an explicit long random value. Best choice. 2. `VIDEOFORGE_BOOTSTRAP_KEY`, which hosted servers already set. The secret is derived from it, so nothing else is needed. 3. A `session-secret` file next to the database. It lasts as long as the disk does. 4. A random secret held in memory. Keys and sessions stop working at every restart.\n\nGET /api/health reports `sessions`: `\"durable\"` for the first two, `\"disk\"` for the file, which a temporary disk loses, and `\"lost-on-restart\"` for the last, which also adds a warning. Changing the secret signs everyone out and invalidates every agent key."
+      },
+      {
+        "title": "For server owners",
+        "text": "A revoked agent is remembered in the database. If the database is wiped, revocations are forgotten and the key works again until it expires. Keep keys short lived, and rotate the secret if you need to cancel every key at once.",
+        "rows": [
+          [
+            "Variable",
+            "Effect",
+            "Default"
+          ],
+          [
+            "`VIDEOFORGE_AGENT_KEYS`",
+            "Set to `off` to refuse self-serve keys.",
+            "on"
+          ],
+          [
+            "`VIDEOFORGE_AGENT_RPM`",
+            "Requests a minute for each agent key.",
+            "120"
+          ],
+          [
+            "`VIDEOFORGE_AGENT_KEYS_PER_IP`",
+            "Keys one address may create in an hour.",
+            "20"
+          ]
+        ],
+        "links": [
+          {
+            "label": "Authentication & scopes",
+            "slug": "authentication"
+          },
+          {
+            "label": "Agent workflow",
+            "slug": "agent-workflow"
+          },
+          {
+            "label": "Storage & durability",
+            "slug": "storage-and-durability"
+          }
+        ]
+      }
+    ],
+    "badge": "new",
+    "badgeUntil": "2027-01-31"
+  },
+  {
     "slug": "custom-tools",
     "group": "Studio",
     "title": "Blocks & scripts",
@@ -2862,6 +2969,31 @@ export const DOC_PAGES: DocPage[] = [
             "List motion graphics templates."
           ],
           [
+            "GET",
+            "/api/agent",
+            "Public: is self-serve agent key creation on, and its limits."
+          ],
+          [
+            "POST",
+            "/api/agent/keys",
+            "Public: an agent creates its own sandboxed write key, no sign-in."
+          ],
+          [
+            "POST",
+            "/api/agent/keys/renew",
+            "Agent key: get a fresh key for the same agent."
+          ],
+          [
+            "DELETE",
+            "/api/agent/keys/self",
+            "Agent key: revoke this agent."
+          ],
+          [
+            "DELETE",
+            "/api/agent/keys/:agentId",
+            "Admin: revoke an agent."
+          ],
+          [
             "GET / POST",
             "/api/keys",
             "Admin: list or generate scoped keys."
@@ -2993,6 +3125,10 @@ export const DOC_PAGES: DocPage[] = [
           {
             "label": "Authentication",
             "slug": "authentication"
+          },
+          {
+            "label": "Agent keys",
+            "slug": "agent-keys"
           }
         ]
       }
@@ -3018,6 +3154,12 @@ export const DOC_PAGES: DocPage[] = [
         "title": "MP4 exports",
         "text": "POST /api/renders accepts {projectId} and returns jobId. GET /api/renders/:id reports queued, rendering, done or error and numeric progress. The download endpoint serves the finished MP4. Rendering requires FFmpeg and ffprobe on the server.",
         "code": "{\n  \"projectId\": \"<project-id>\"\n}"
+      },
+      {
+        "title": "Export speed",
+        "text": "Exports are built to be quick for motion graphics and animation, not just for footage.\n\n- **Text is drawn once.** A label is rasterised a single time, on a canvas sized to its glyphs, then the animation (fades, moves, scale, rotation) runs on that small layer. It is no longer redrawn at the full frame size on every frame.\n- **Reveals and wipes are rectangles.** A reveal or a straight wipe transition erases one rectangle per frame, worked out ahead of time, instead of evaluating an expression for every pixel.\n- **Plain footage skips transparency.** A full-frame clip with no fade, transform or transition is composited as opaque video.\n- **Draft quality** uses the fastest encoder preset for quick checks. Use Standard or High for the final file.\n\nOn a 2 core machine at 1920 by 1080, the preset sampler (26 animated shapes and labels) went from 9.2 to 2.3 seconds, the loop recipes from 9.2 to 2.1, and a 15 second intro of five motion templates from 17.0 to 6.6. Output frames match the earlier renderer, apart from glyph edges moving by a pixel at most.\n\nTo time your own machine without starting a server, run the benchmark. It renders four representative projects through the real FFmpeg pipeline and prints the speed of each.",
+        "language": "SHELL",
+        "code": "npx tsx script/bench-render.ts"
       },
       {
         "title": "Known boundaries",
@@ -3120,6 +3262,16 @@ export const DOC_PAGES: DocPage[] = [
       {
         "title": "Three layers of saving",
         "text": "The database is the source of truth. Two more layers exist so a mistake or an outage does not cost you work.\n\n- **Database:** every project, asset and render job is written here as you work.\n- **Save manifest:** when `VIDEOFORGE_SYNC_DIR` is set, the server writes a JSON backup of every row, with key hashes only. It is a point-in-time backup and is deliberately not merged back on boot, because an old manifest could bring back a project you deleted or a key you revoked.\n- **Browser drafts:** the Studio keeps a snapshot of the working copy in the browser every 300 ms, including the unsaved timeline, selection, playhead and zoom. After a closed tab, a refresh or a network drop, the draft is restored and saved on the next autosave.\n\nOpen Tools and choose Local drafts to see every draft on the device, delete one or clear them all."
+      },
+      {
+        "title": "Sign-in sessions and agent keys",
+        "text": "Sessions and agent keys are signed tokens, so they do not live in the database and a reset does not sign anyone out. They do need a signing secret that survives the restart: set `VIDEOFORGE_SESSION_SECRET`, or rely on `VIDEOFORGE_BOOTSTRAP_KEY`, which the secret is derived from. Without either, the secret is a file beside the database, and on a temporary disk that file resets too. `GET /api/health` reports `sessions` as `\"durable\"` (explicit secret or bootstrap key), `\"disk\"` (a file that a temporary disk loses) or `\"lost-on-restart\"` (with a warning).\n\nThe database still holds projects, media records and account passwords. A temporary disk loses those on a reset, which is why the Studio keeps a browser draft of the open project and saves it back to the server on the next autosave.",
+        "links": [
+          {
+            "label": "Agent keys",
+            "slug": "agent-keys"
+          }
+        ]
       },
       {
         "title": "Restore after a lost database",
@@ -3415,7 +3567,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         "title": "API and agents",
-        "text": "**How do agents authenticate?** With scoped API keys: `Authorization: Bearer <key>`. Scopes are read, write or admin, with per-key restrictions for expiry, projects, rate, uploads, rendering and deletion.\n\n**How do I make several edits safely?** Send them as one atomic batch to `/api/projects/:id/timeline/ops` with `dryRun: true` first, then for real with `expectedUpdatedAt` so a stale write fails with 409 instead of clobbering.\n\n**Can I see what I built before rendering?** Yes: `GET /frame?t=1.5` returns a composed PNG, `GET /state?t=1.5` returns the animated values, and `GET /storyboard` returns a contact sheet.\n\n**Is there an OpenAPI file?** Yes. An OpenAPI description generated from the operation list is served at [the OpenAPI description](https://homekidchud.github.io/videoforge/openapi.json) and linked from the HTTP API reference."
+        "text": "**How do agents authenticate?** With scoped API keys: `Authorization: Bearer <key>`. Scopes are read, write or admin, with per-key restrictions for expiry, projects, rate, uploads, rendering and deletion. An agent that cannot sign in can create its own sandboxed key with `POST /api/agent/keys`, see [Agent keys](agent-keys).\n\n**How do I make several edits safely?** Send them as one atomic batch to `/api/projects/:id/timeline/ops` with `dryRun: true` first, then for real with `expectedUpdatedAt` so a stale write fails with 409 instead of clobbering.\n\n**Can I see what I built before rendering?** Yes: `GET /frame?t=1.5` returns a composed PNG, `GET /state?t=1.5` returns the animated values, and `GET /storyboard` returns a contact sheet.\n\n**Is there an OpenAPI file?** Yes. An OpenAPI description generated from the operation list is served at [the OpenAPI description](https://homekidchud.github.io/videoforge/openapi.json) and linked from the HTTP API reference."
       },
       {
         "title": "Self-hosting",
@@ -4228,7 +4380,7 @@ export const DOC_PAGES: DocPage[] = [
 
 export const CONTRIBUTORS: { name: string; commits: number }[] = [
   {
-    "commits": 75,
+    "commits": 77,
     "name": "HomekidChud"
   },
   {

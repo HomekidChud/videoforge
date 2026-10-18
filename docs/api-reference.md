@@ -29,3 +29,4 @@ An [OpenAPI description generated from this endpoint list and the operation cata
 
 - [Your first composition](quickstart)
 - [Authentication](authentication)
+- [Agent keys](agent-keys)

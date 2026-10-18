@@ -35,7 +35,7 @@ description: Short answers to the questions that come up most.
 
 ## API and agents
 
-**How do agents authenticate?** With scoped API keys: `Authorization: Bearer <key>`. Scopes are read, write or admin, with per-key restrictions for expiry, projects, rate, uploads, rendering and deletion.
+**How do agents authenticate?** With scoped API keys: `Authorization: Bearer <key>`. Scopes are read, write or admin, with per-key restrictions for expiry, projects, rate, uploads, rendering and deletion. An agent that cannot sign in can create its own sandboxed key with `POST /api/agent/keys`, see [Agent keys](agent-keys).
 
 **How do I make several edits safely?** Send them as one atomic batch to `/api/projects/:id/timeline/ops` with `dryRun: true` first, then for real with `expectedUpdatedAt` so a stale write fails with 409 instead of clobbering.
 

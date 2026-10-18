@@ -166,6 +166,13 @@ sqlite.exec(`
     updated_at INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS custom_tools_owner_idx ON custom_tools(owner_id);
+  CREATE TABLE IF NOT EXISTS revoked_tokens (
+    id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    PRIMARY KEY (id, kind)
+  );
 `);
 
 // Additive migrations preserve existing projects and keys on upgrade.
@@ -173,6 +180,8 @@ for (const [table, column, definition] of [
   ["projects", "visibility", "TEXT NOT NULL DEFAULT 'private'"],
   ["api_keys", "restrictions_json", "TEXT NOT NULL DEFAULT '{}'"],
   ["api_keys", "last_used_at", "INTEGER"],
+  ["projects", "owner_id", "TEXT"],
+  ["media_assets", "owner_id", "TEXT"],
 ]) {
   const columns = sqlite.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
   if (!columns.some(c => c.name === column)) sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);

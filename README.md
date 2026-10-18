@@ -41,6 +41,7 @@ Everything else lives in [docs/](docs/). Each page is a markdown file that also 
 | [Motion graphics tutorial](docs/motion-graphics-tutorial.md) | Build an animated intro in the Studio |
 | [Using the editor](docs/editor.md) | Panels, shortcuts, collaboration and export |
 | [Authentication & scopes](docs/authentication.md) | Accounts, API keys and restrictions |
+| [Agent keys](docs/agent-keys.md) | An AI agent creates its own API key in one request |
 | [Agent workflow](docs/agent-workflow.md) | Discover, compose, validate, inspect, render |
 | [Self-hosting](docs/self-hosting.md) | Run it on your own infrastructure |
 | [Storage & durability](docs/storage-and-durability.md) | Disks, backups and the optional MongoDB store |

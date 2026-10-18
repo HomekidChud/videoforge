@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, primaryKey } from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
 import type * as z from "zod/mini";
 
@@ -51,6 +51,8 @@ export const mediaAssets = sqliteTable("media_assets", {
   storagePath: text("storage_path").notNull(),
   thumbPath: text("thumb_path"),
   createdAt: integer("created_at").notNull(),
+  /** Set for media uploaded by a self-serve agent key; such a key sees only what it owns. Null means shared. */
+  ownerId: text("owner_id"),
 });
 
 export const projects = sqliteTable("projects", {
@@ -60,6 +62,8 @@ export const projects = sqliteTable("projects", {
   visibility: text("visibility").notNull().default("private"),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
+  /** Set for projects made by a self-serve agent key; such a key sees only what it owns. Null means shared. */
+  ownerId: text("owner_id"),
 });
 
 export const renderJobs = sqliteTable("render_jobs", {
@@ -138,6 +142,16 @@ export type Asset = typeof mediaAssets.$inferSelect;
 export type Project = typeof projects.$inferSelect;
 export type RenderJob = typeof renderJobs.$inferSelect;
 export type ApiKey = typeof apiKeys.$inferSelect;
+// Signed (stateless) sessions and agent keys cannot be deleted, so revoking one writes a row here.
+// kind: "session" (id = sha256 of the token), "agent" (id = agent id), "user" (id = user id; tokens issued
+// at or before `at` are rejected). Rows are dropped once the thing they revoke would have expired anyway.
+export const revokedTokens = sqliteTable("revoked_tokens", {
+  id: text("id").notNull(),
+  kind: text("kind").notNull(),
+  at: integer("at").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+}, (t) => ({ pk: primaryKey({ columns: [t.id, t.kind] }) }));
+
 export type User = typeof users.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type CustomToolRow = typeof customTools.$inferSelect;
@@ -155,6 +169,7 @@ export const insertMediaAssetSchema = createInsertSchema(mediaAssets).pick({
   storagePath: true,
   thumbPath: true,
   createdAt: true,
+  ownerId: true,
 });
 
 export const insertProjectSchema = createInsertSchema(projects).pick({
@@ -164,6 +179,7 @@ export const insertProjectSchema = createInsertSchema(projects).pick({
   visibility: true,
   createdAt: true,
   updatedAt: true,
+  ownerId: true,
 });
 
 export const insertRenderJobSchema = createInsertSchema(renderJobs).pick({

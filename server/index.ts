@@ -4,6 +4,7 @@ import type { Request } from 'express';
 import { registerRoutes } from "./routes";
 import { registerKeyRoutes, ensureOwnerKeyExists } from "./auth";
 import { registerAccountRoutes } from "./accounts";
+import { registerAgentRoutes } from "./agent";
 import { storageDegraded } from "./storage";
 import { serveStatic } from "./static";
 import { createServer } from "node:http";
@@ -126,6 +127,7 @@ app.use((req, res, next) => {
   }
   registerKeyRoutes(app);
   registerAccountRoutes(app);
+  registerAgentRoutes(app);
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

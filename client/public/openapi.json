@@ -126,6 +126,136 @@
         }
       }
     },
+    "/api/agent": {
+      "get": {
+        "summary": "Public: is self-serve agent key creation on, and its limits.",
+        "tags": [
+          "agent"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        }
+      }
+    },
+    "/api/agent/keys": {
+      "post": {
+        "summary": "Public: an agent creates its own sandboxed write key, no sign-in.",
+        "tags": [
+          "agent"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        },
+        "requestBody": {
+          "description": "The request body depends on the route; see the page for the route in the HTTP API reference. Timeline batch operations are documented by name below.",
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/keys/renew": {
+      "post": {
+        "summary": "Agent key: get a fresh key for the same agent.",
+        "tags": [
+          "agent"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        },
+        "requestBody": {
+          "description": "The request body depends on the route; see the page for the route in the HTTP API reference. Timeline batch operations are documented by name below.",
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/keys/self": {
+      "delete": {
+        "summary": "Agent key: revoke this agent.",
+        "tags": [
+          "agent"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        }
+      }
+    },
+    "/api/agent/keys/{agentId}": {
+      "delete": {
+        "summary": "Admin: revoke an agent.",
+        "tags": [
+          "agent"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK. Error bodies include a message; invalid ops return 422 with failedIndex, stale guarded writes return 409, unknown resources return 404."
+          },
+          "401": {
+            "description": "Missing or invalid credentials."
+          },
+          "403": {
+            "description": "The key's scope or restrictions deny this route."
+          }
+        },
+        "parameters": [
+          {
+            "name": "agentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The agentId of the resource."
+          }
+        ]
+      }
+    },
     "/api/keys": {
       "get / post": {
         "summary": "Admin: list or generate scoped keys.",

@@ -2,18 +2,20 @@
 // Accounts: real people sign in with email + password (or Google when
 // configured). API keys stay for AI agents and scripts.
 //
-// Sessions are random tokens stored as sha256 in SQLite, delivered as an
-// HttpOnly cookie. Because the session lives in the database (not memory),
-// sign-ins survive server restarts and redeploys, the browser keeps its
-// cookie and it keeps working. Sessions last 30 days.
+// Sessions are signed tokens (HMAC) delivered as an HttpOnly cookie. They carry
+// their own claims, so they do not depend on the database: a restart, a redeploy
+// or a wiped disk does not sign anyone out, the browser keeps its cookie and the
+// account row is recreated from the token. Sessions last 30 days. See stateless.ts
+// for the secret that signs them.
 // ============================================================================
 
 import type { Express, Request, Response } from "express";
 import crypto from "node:crypto";
 import { db } from "./storage";
-import { users, sessions, customTools, type User } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
-import { requireAdmin, requireScope, hashKey, findKeyByHash } from "./auth";
+import { users, sessions, customTools, revokedTokens, type User } from "@shared/schema";
+import { eq, and, lt } from "drizzle-orm";
+import { signToken, verifyToken } from "./stateless";
+import { requireAdmin, requireScope, hashKey, findKeyByHash, agentKeysEnabled } from "./auth";
 
 const SESSION_COOKIE = "vf_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -52,21 +54,61 @@ export function validatePassword(password: unknown): string {
 // Sessions
 // ---------------------------------------------------------------------------
 
-export function createSession(userId: string): string {
-  const token = crypto.randomBytes(32).toString("base64url");
+/** Claims carried inside a signed session token. */
+type SessionClaims = { u: string; e: string; n: string; r: string; c: number; i: number; x: number };
+
+/**
+ * A signed, stateless session. The token itself says who the user is, so it keeps working after the server's
+ * database is wiped: the account row is recreated from the claims the first time the token is used again.
+ * Legacy database-backed sessions (a plain random token) are still honoured until they expire.
+ */
+export function createSession(user: User): string {
   const now = Date.now();
-  db.insert(sessions).values({ id: hashToken(token), userId, createdAt: now, expiresAt: now + SESSION_TTL_MS }).run();
-  return token;
+  return signToken("v2", { u: user.id, e: user.email, n: user.name, r: user.role, c: user.createdAt, i: now, x: now + SESSION_TTL_MS } satisfies SessionClaims);
 }
 
 function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
 
+function isRevoked(id: string, kind: string): { at: number } | null {
+  const row = db.select().from(revokedTokens).where(and(eq(revokedTokens.id, id), eq(revokedTokens.kind, kind))).get();
+  return row ? { at: row.at } : null;
+}
+
+/** Record a revocation, and forget revocations that have outlived the credential they were for. */
+export function revokeToken(id: string, kind: "session" | "agent" | "user", expiresAt: number): void {
+  const now = Date.now();
+  db.insert(revokedTokens).values({ id, kind, at: now, expiresAt }).onConflictDoUpdate({ target: [revokedTokens.id, revokedTokens.kind], set: { at: now, expiresAt } }).run();
+  db.delete(revokedTokens).where(lt(revokedTokens.expiresAt, now)).run();
+}
+export function tokenRevocation(id: string, kind: "session" | "agent" | "user"): { at: number } | null {
+  return isRevoked(id, kind);
+}
+
+/** The account a verified token stands for, recreating it when the database has lost it. */
+function userFromClaims(claims: SessionClaims): User | null {
+  const byId = db.select().from(users).where(eq(users.id, claims.u)).get();
+  if (byId) return byId;
+  const byEmail = db.select().from(users).where(eq(users.email, claims.e)).get();
+  if (byEmail) return byEmail; // the account was re-created after a reset, the email is the identity
+  const user: User = { id: claims.u, email: claims.e, passwordHash: null, googleSub: null, name: claims.n, role: claims.r === "admin" ? "admin" : "user", createdAt: claims.c };
+  try { db.insert(users).values(user).run(); } catch { return db.select().from(users).where(eq(users.email, claims.e)).get() ?? null; }
+  return user;
+}
+
 /** The signed-in user for a request, or null. Expiring sessions are deleted. */
 export function sessionUser(req: Request): User | null {
   const token = readCookie(req.headers.cookie, SESSION_COOKIE);
   if (!token) return null;
+  if (token.startsWith("v2.")) {
+    const claims = verifyToken<SessionClaims>("v2", token);
+    if (!claims) return null;
+    if (isRevoked(hashToken(token), "session")) return null;
+    const gone = isRevoked(claims.u, "user");
+    if (gone && claims.i <= gone.at) return null;
+    return userFromClaims(claims);
+  }
   const row = db.select().from(sessions).where(eq(sessions.id, hashToken(token))).get();
   if (!row) return null;
   if (row.expiresAt < Date.now()) {
@@ -79,7 +121,12 @@ export function sessionUser(req: Request): User | null {
 export function destroySession(req: Request): void {
   const token = readCookie(req.headers.cookie, SESSION_COOKIE);
   if (!token) return;
-  try { db.delete(sessions).where(eq(sessions.id, hashToken(token))).run(); } catch { /* best effort */ }
+  try {
+    if (token.startsWith("v2.")) {
+      const claims = verifyToken<SessionClaims>("v2", token);
+      if (claims) revokeToken(hashToken(token), "session", claims.x);
+    } else db.delete(sessions).where(eq(sessions.id, hashToken(token))).run();
+  } catch { /* best effort */ }
 }
 
 function readCookie(header: unknown, name: string): string | null {
@@ -240,13 +287,13 @@ function originOf(req: Request): string {
 export function registerAccountRoutes(app: Express) {
   // Public: what sign-in methods this deployment offers.
   app.get("/api/auth/config", (_req, res) => {
-    res.json({ google: googleConfigured(), accountsOpen: process.env.VIDEOFORGE_ACCOUNTS === "open", hasAccounts: userCount() > 0 });
+    res.json({ google: googleConfigured(), accountsOpen: process.env.VIDEOFORGE_ACCOUNTS === "open", hasAccounts: userCount() > 0, agentKeys: agentKeysEnabled() });
   });
 
   app.post("/api/auth/register", (req, res) => {
     try {
       const user = registerUser(req.body?.email, req.body?.password, req.body?.name, req.body?.ownerKey);
-      setSessionCookie(res, createSession(user.id), req);
+      setSessionCookie(res, createSession(user), req);
       res.json({ kind: "account", id: user.id, email: user.email, name: user.name, role: user.role, scope: user.role === "admin" ? "admin" : "write" });
     } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
@@ -254,7 +301,7 @@ export function registerAccountRoutes(app: Express) {
   app.post("/api/auth/login", (req, res) => {
     try {
       const user = authenticate(req.body?.email, req.body?.password);
-      setSessionCookie(res, createSession(user.id), req);
+      setSessionCookie(res, createSession(user), req);
       res.json({ kind: "account", id: user.id, email: user.email, name: user.name, role: user.role, scope: user.role === "admin" ? "admin" : "write" });
     } catch (e: any) { res.status(401).json({ message: e.message }); }
   });
@@ -306,7 +353,7 @@ export function registerAccountRoutes(app: Express) {
         if ((payload.exp ?? 0) * 1000 < Date.now()) return fail("token expired");
         const user = upsertGoogleUser(payload.sub, payload.email.toLowerCase(), payload.name ?? "");
         res.setHeader("Set-Cookie", `vf_oauth_state=; Path=/; HttpOnly; Max-Age=0`);
-        setSessionCookie(res, createSession(user.id), req);
+        setSessionCookie(res, createSession(user), req);
         // Back to the app: the SPA origin when the frontend is hosted elsewhere.
         const spa = process.env.CORS_ORIGIN?.trim() || `${originOf(req)}/`;
         res.redirect(302, `${spa.replace(/\/$/, "")}/#/editor`);
@@ -332,6 +379,7 @@ export function registerAccountRoutes(app: Express) {
     const admins = listUsers().filter((u) => u.role === "admin");
     if (user.role === "admin" && admins.length <= 1) return res.status(400).json({ message: "the last admin account cannot be deleted" });
     db.delete(sessions).where(eq(sessions.userId, id)).run();
+    revokeToken(id, "user", Date.now() + SESSION_TTL_MS); // signed sessions cannot be deleted, so refuse them by account
     db.delete(users).where(eq(users.id, id)).run();
     res.json({ ok: true });
   });

@@ -18,7 +18,8 @@ import { GRAPHICS_SCHEMA, MOTION_TEMPLATES } from "@shared/graphics";
 import { buildRenderPlan, runFfmpeg } from "./render";
 import { sanitizeRenderOptions, type RenderOptions } from "@shared/render-options";
 import { ensureTimelineFonts } from "./fonts";
-import { requireScope, requireMediaAccess, projectAllowed, assetAllowed, keyRestrictions } from "./auth";
+import { secretSource } from "./stateless";
+import { requireScope, requireMediaAccess, projectAllowed, assetAllowed, keyRestrictions, ownerOf } from "./auth";
 import { actorOf, syncTimeline, logEvent, renameLive, dropLive, registerLiveRoutes } from "./live";
 import { mongoConfigured } from "./mongo";
 
@@ -191,6 +192,7 @@ export async function registerRoutes(
   app.get("/api/health", (_req, res) => {
     const warnings: string[] = [];
     if (storageDegraded) warnings.push("configured database path is not writable; the server is running on an in-memory database and rejects write requests (503) until VIDEOFORGE_DB points inside a mounted, writable persistent disk");
+    if (secretSource() === "memory") warnings.push("sign-in sessions and agent keys are signed with a secret that is lost on restart; set VIDEOFORGE_SESSION_SECRET (or VIDEOFORGE_BOOTSTRAP_KEY) so they survive a restart");
     // Configuration status only, never pings the cluster, so an unreachable
     // optional integration cannot delay or fail app liveness. Use
     // `npm run mongo:check` to verify connectivity on demand.
@@ -198,6 +200,7 @@ export async function registerRoutes(
       ok: !storageDegraded,
       service: "videoforge-api",
       version: 1,
+      sessions: ({ env: "durable", bootstrap: "durable", file: "disk", memory: "lost-on-restart" } as const)[secretSource()],
       ...(mongoConfigured() ? { mongo: "configured" } : {}),
       ...(warnings.length ? { warnings } : {}),
     });
@@ -265,6 +268,7 @@ export async function registerRoutes(
         return storage.createAsset({
           id: f.id, filename: f.filename, kind, mime: f.mime || "application/octet-stream",
           duration, width, height, hasAudio, sizeBytes: stat.size, storagePath: f.dest, thumbPath: null, createdAt: now(),
+          ownerId: ownerOf(req),
         });
       }));
       for (const asset of made) {
@@ -391,6 +395,7 @@ export async function registerRoutes(
         timelineJson: JSON.stringify(t),
         createdAt: now(),
         updatedAt: now(),
+        ownerId: ownerOf(req),
       });
       res.status(201).json({
         id: p.id,
@@ -548,7 +553,7 @@ export async function registerRoutes(
     const p = storage.getProject(String(req.params.id));
     if (!p || !projectAllowed((req as any).apiKey, p.id)) return res.status(404).json({ message: "project not found" });
     if (keyRestrictions((req as any).apiKey).projectIds !== null) return res.status(403).json({ message: "Project-restricted keys cannot create projects." });
-    const copy = storage.createProject({ id: uid(), name: `${p.name} copy`.slice(0, 200), timelineJson: p.timelineJson, createdAt: now(), updatedAt: now() });
+    const copy = storage.createProject({ id: uid(), name: `${p.name} copy`.slice(0, 200), timelineJson: p.timelineJson, createdAt: now(), updatedAt: now(), ownerId: ownerOf(req) });
     res.status(201).json({ id: copy.id, name: copy.name, visibility: copy.visibility, timeline: parseTimeline(copy.timelineJson), createdAt: copy.createdAt, updatedAt: copy.updatedAt });
   });
 

@@ -19,7 +19,8 @@ import { storage, db } from "./storage";
 import { apiKeys, users, type ApiKey } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { restrictionsSchema, DEFAULT_RESTRICTIONS, type KeyRestrictions } from "@shared/policy";
-import { sessionUser } from "./accounts";
+import { sessionUser, tokenRevocation } from "./accounts";
+import { signToken, verifyToken } from "./stateless";
 
 export type Scope = "read" | "write" | "admin";
 export const SCOPES: Scope[] = ["read", "write", "admin"];
@@ -149,6 +150,69 @@ export function findKeyById(id: string): ApiKey | undefined {
 }
 
 // ---------------------------------------------------------------------------
+// Self-serve agent keys.
+//
+// Many AI agents cannot complete a sign-in: no inbox for a confirmation email, no
+// way to solve a CAPTCHA or run an OAuth redirect. POST /api/agent/keys lets an
+// agent mint its own key with no human in the loop.
+//
+// The key is a signed token (see stateless.ts), not a database row, so it keeps
+// working after the server restarts or its disk is wiped. It is sandboxed: write
+// scope, short expiry, a request rate limit, and it can only see the projects and
+// media it created itself, never the rest of the workspace. Set
+// VIDEOFORGE_AGENT_KEYS=off to turn the endpoint off.
+// ---------------------------------------------------------------------------
+
+export const AGENT_KEY_KIND = "vf_agent";
+export const AGENT_KEY_DEFAULT_DAYS = 7;
+export const AGENT_KEY_MAX_DAYS = 30;
+export const AGENT_KEY_DEFAULT_RPM = 120;
+
+export type AgentClaims = { a: string; l: string; i: number; x: number };
+/** A key row that exists only for the length of a request: agent keys are never stored. */
+export type AgentApiKey = ApiKey & { agentId: string };
+
+export function agentKeysEnabled(): boolean {
+  return (process.env.VIDEOFORGE_AGENT_KEYS ?? "open").trim().toLowerCase() !== "off";
+}
+export function agentRequestsPerMinute(): number {
+  const n = Number(process.env.VIDEOFORGE_AGENT_RPM);
+  return Number.isInteger(n) && n >= 1 && n <= 10000 ? n : AGENT_KEY_DEFAULT_RPM;
+}
+
+export function agentPseudoKey(agentId: string, label: string, issuedAt: number, expiresAt: number | null): AgentApiKey {
+  const restrictions: KeyRestrictions = { ...DEFAULT_RESTRICTIONS, expiresAt, requestsPerMinute: agentRequestsPerMinute() };
+  return { id: `agent:${agentId}`, agentId, label, scope: "write", keyHash: "", restrictionsJson: JSON.stringify(restrictions), lastUsedAt: Date.now(), revoked: 0, createdAt: issuedAt };
+}
+
+/** Mint an agent key. Pass `agentId` to renew: the same identity keeps ownership of its projects. */
+export function issueAgentKey(label: string, days: number, agentId: string = crypto.randomBytes(8).toString("hex")): { key: string; agentId: string; expiresAt: number } {
+  const ttlDays = Math.min(AGENT_KEY_MAX_DAYS, Math.max(1, Math.floor(Number.isFinite(days) ? days : AGENT_KEY_DEFAULT_DAYS)));
+  const now = Date.now(), expiresAt = now + ttlDays * 24 * 60 * 60 * 1000;
+  const cleanLabel = label.replace(/[\u0000-\u001f]/g, " ").trim().slice(0, 80) || "agent";
+  const key = signToken(AGENT_KEY_KIND, { a: agentId, l: cleanLabel, i: now, x: expiresAt } satisfies AgentClaims);
+  return { key, agentId, expiresAt };
+}
+
+export function isAgentKeyToken(token: string): boolean {
+  return token.startsWith(`${AGENT_KEY_KIND}.`);
+}
+
+/** The request-scoped key for a valid, unrevoked agent token, or why it was refused. */
+export function resolveAgentKey(token: string): { key: AgentApiKey } | { error: string; status: number } {
+  const claims = verifyToken<AgentClaims>(AGENT_KEY_KIND, token);
+  if (!claims) return { status: 401, error: "Unknown or expired agent key. Request a new one with POST /api/agent/keys." };
+  if (tokenRevocation(claims.a, "agent")) return { status: 403, error: "This agent key has been revoked." };
+  return { key: agentPseudoKey(claims.a, claims.l, claims.i, claims.x) };
+}
+
+/** The agent identity behind a request, or null for owner keys, admin-made keys and signed-in accounts. */
+export function ownerOf(req: Request): string | null {
+  return ((req as any).apiKey as AgentApiKey | undefined)?.agentId ?? null;
+}
+const agentIdOf = (key: ApiKey): string | null => (key as AgentApiKey).agentId ?? null;
+
+// ---------------------------------------------------------------------------
 // Short-lived signed tokens for media URLs. <img>/<video>/download links can
 // not send Bearer headers, so the server issues a scoped HMAC token valid for
 // 6 hours, bound to a specific resource (asset or render job) and read-only.
@@ -209,6 +273,10 @@ export function verifyMediaToken(token: string, resourceId: string): boolean {
   } else if (issuingKeyId.startsWith("user:")) {
     const user = db.select().from(users).where(eq(users.id, issuingKeyId.slice(5))).get();
     if (!user) return false;
+  } else if (issuingKeyId.startsWith("agent:")) {
+    const agentId = issuingKeyId.slice(6);
+    if (tokenRevocation(agentId, "agent")) return false;
+    if (!resourceAllowed(agentPseudoKey(agentId, "agent", 0, null), resourceId)) return false;
   } else {
     return false;
   }
@@ -236,10 +304,14 @@ export function keyRestrictions(key: ApiKey): KeyRestrictions {
   return restrictionsSchema.parse(JSON.parse(key.restrictionsJson || "{}"));
 }
 export function projectAllowed(key: ApiKey, id: string): boolean {
+  const agent = agentIdOf(key);
+  if (agent) return storage.getProject(id)?.ownerId === agent;
   const ids = keyRestrictions(key).projectIds;
   return ids === null || ids.includes(id);
 }
 export function assetAllowed(key: ApiKey, id: string): boolean {
+  const agent = agentIdOf(key);
+  if (agent) return storage.getAsset(id)?.ownerId === agent;
   const ids = keyRestrictions(key).projectIds;
   if (ids === null) return true;
   return storage.listProjects().some(p => ids.includes(p.id) && JSON.parse(p.timelineJson).clips.some((c: any) => c.assetId === id));
@@ -249,7 +321,7 @@ function resourceAllowed(key: ApiKey, id: string): boolean {
   return render ? projectAllowed(key, render.projectId) : assetAllowed(key, id);
 }
 export function keyMetadata(k: ApiKey) {
-  return { id: k.id, label: k.label, scope: k.scope, revoked: !!k.revoked, createdAt: k.createdAt, lastUsedAt: k.lastUsedAt, restrictions: keyRestrictions(k) };
+  return { ...(agentIdOf(k) ? { kind: "agent", agentId: agentIdOf(k) } : {}), id: k.id, label: k.label, scope: k.scope, revoked: !!k.revoked, createdAt: k.createdAt, lastUsedAt: k.lastUsedAt, restrictions: keyRestrictions(k) };
 }
 const rateWindows = new Map<string, { start: number; count: number }>();
 function enforcePolicy(key: ApiKey, req: Request, res: Response): boolean {
@@ -266,8 +338,9 @@ function enforcePolicy(key: ApiKey, req: Request, res: Response): boolean {
   if (req.method === "DELETE" && !p.allowDelete) return deny("Deletion is disabled for this API key.");
   if (normPath === "/api/media/upload" && !p.allowUpload) return deny("Uploads are disabled for this API key.");
   if (req.method === "POST" && normPath === "/api/renders" && !p.allowRender) return deny("Rendering is disabled for this API key.");
-  if (p.projectIds !== null) {
-    if ((normPath === "/api/projects" && req.method === "POST") || normPath === "/api/media/upload" || (normPath.startsWith("/api/media/") && req.method === "DELETE")) return deny("Project-restricted keys cannot create projects, upload, or delete shared media.");
+  // Agent keys are sandboxed to what they created; project-restricted keys to the projects they were given.
+  if (p.projectIds !== null || agentIdOf(key)) {
+    if (p.projectIds !== null && ((normPath === "/api/projects" && req.method === "POST") || normPath === "/api/media/upload" || (normPath.startsWith("/api/media/") && req.method === "DELETE"))) return deny("Project-restricted keys cannot create projects, upload, or delete shared media.");
     const projectMatch = normPath.match(/^\/api\/(?:projects|live)\/([^/]+)/);
     const mediaMatch = normPath.match(/^\/api\/media\/([^/]+)/);
     const renderMatch = normPath.match(/^\/api\/renders\/([^/]+)/);
@@ -282,7 +355,7 @@ function enforcePolicy(key: ApiKey, req: Request, res: Response): boolean {
     const refs = Array.isArray(rawClips) ? rawClips.map((c: any) => c?.assetId).filter(Boolean) : [];
     if (req.body?.args?.assetId) refs.push(req.body.args.assetId);
     if (Array.isArray(req.body?.ops)) req.body.ops.forEach((o: any) => { if (o?.args?.assetId) refs.push(o.args.assetId); });
-    if (refs.some((id: string) => !assetAllowed(key, id))) return deny("Timeline contains media outside this API key's restrictions.");
+    if (refs.some((id: string) => !assetAllowed(key, id))) return deny(agentIdOf(key) ? "Timeline contains media this agent key did not upload." : "Timeline contains media outside this API key's restrictions.");
   }
   // Editors publish live state about ten times a second; that heartbeat is not metered.
   if (p.requestsPerMinute && !/^\/api\/(?:live\/[^/]+\/publish|projects\/[^/]+\/presence)$/.test(normPath)) {
@@ -297,7 +370,7 @@ function enforcePolicy(key: ApiKey, req: Request, res: Response): boolean {
     w.count++;
   }
   // Throttle metadata writes while keeping request-rate tracking in memory.
-  if (!key.lastUsedAt || Date.now() - key.lastUsedAt > 60000) db.update(apiKeys).set({ lastUsedAt: Date.now() }).where(eq(apiKeys.id, key.id)).run();
+  if (!agentIdOf(key) && (!key.lastUsedAt || Date.now() - key.lastUsedAt > 60000)) db.update(apiKeys).set({ lastUsedAt: Date.now() }).where(eq(apiKeys.id, key.id)).run();
   return true;
 }
 export function requireScope(scope: Scope) {
@@ -315,7 +388,12 @@ export function requireScope(scope: Scope) {
     const authHeader = req.headers.authorization;
     const m = authHeader.match(/^Bearer\s+(.+)$/i);
     if (!m) return res.status(401).json({ message: "Authorization must be Bearer <api-key>." });
-    const key = findKeyByHash(hashKey(m[1]));
+    let key: ApiKey | undefined;
+    if (isAgentKeyToken(m[1])) {
+      const resolved = resolveAgentKey(m[1]);
+      if ("error" in resolved) return res.status(resolved.status).json({ message: resolved.error });
+      key = resolved.key;
+    } else key = findKeyByHash(hashKey(m[1]));
     if (!key) return res.status(401).json({ message: "Unknown API key." });
     if (key.revoked) return res.status(403).json({ message: "This API key has been revoked." });
     if (SCOPES.indexOf(key.scope as Scope) < SCOPES.indexOf(scope)) return res.status(403).json({ message: `Forbidden: this key has scope '${key.scope}' but this action requires '${scope}'.` });
@@ -360,7 +438,7 @@ export function requireMediaAccess(kind: "asset" | "render") {
       (req as any).apiKey = { id: issuingId, label: user.email, scope: "read" as Scope, revoked: 0, keyHash: "", createdAt: 0 };
       return next();
     }
-    const issuingKey = findKeyById(issuingId)!;
+    const issuingKey = issuingId.startsWith("agent:") ? agentPseudoKey(issuingId.slice(6), "agent", 0, null) : findKeyById(issuingId)!;
     if (!enforcePolicy(issuingKey, req, res)) return;
     (req as any).apiKey = { id: `st:${resourceId}`, label: "media token", scope: "read" as Scope, revoked: 0, keyHash: "", createdAt: 0 };
     return next();

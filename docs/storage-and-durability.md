@@ -29,6 +29,14 @@ The database is the source of truth. Two more layers exist so a mistake or an ou
 
 Open Tools and choose Local drafts to see every draft on the device, delete one or clear them all.
 
+## Sign-in sessions and agent keys
+
+Sessions and agent keys are signed tokens, so they do not live in the database and a reset does not sign anyone out. They do need a signing secret that survives the restart: set `VIDEOFORGE_SESSION_SECRET`, or rely on `VIDEOFORGE_BOOTSTRAP_KEY`, which the secret is derived from. Without either, the secret is a file beside the database, and on a temporary disk that file resets too. `GET /api/health` reports `sessions` as `"durable"` (explicit secret or bootstrap key), `"disk"` (a file that a temporary disk loses) or `"lost-on-restart"` (with a warning).
+
+The database still holds projects, media records and account passwords. A temporary disk loses those on a reset, which is why the Studio keeps a browser draft of the open project and saves it back to the server on the next autosave.
+
+- [Agent keys](agent-keys)
+
 ## Restore after a lost database
 
 If a rebuild loses the database, restore by hand with the explicit command. It merges only rows that are missing from the live database and never overwrites a row that already exists.

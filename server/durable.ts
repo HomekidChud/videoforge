@@ -51,12 +51,16 @@ const now = () => Date.now();
 export type SaveManifest = {
   version: 1;
   updatedAt: number;
-  mediaAssets: { id: string; filename: string; kind: string; mime: string; duration: number; width: number; height: number; sizeBytes: number; hasAudio: number; createdAt: number }[];
-  projects: { id: string; name: string; timelineJson: string; visibility: string; createdAt: number; updatedAt: number }[];
+  mediaAssets: { id: string; filename: string; kind: string; mime: string; duration: number; width: number; height: number; sizeBytes: number; hasAudio: number; createdAt: number; ownerId?: string | null }[];
+  projects: { id: string; name: string; timelineJson: string; visibility: string; createdAt: number; updatedAt: number; ownerId?: string | null }[];
   renderJobs: { id: string; projectId: string; status: string; progress: number; outputPath: string | null; error: string | null; createdAt: number; updatedAt: number }[];
   apiKeyHashes: { id: string; label: string; scope: string; keyHash: string; restrictionsJson: string; lastUsedAt: number | null; revoked: number; createdAt: number }[];
   bootstrapKeyHash: string | null;
 };
+
+type Db = { prepare: (sql: string) => { run: (...args: unknown[]) => void; get: (...args: unknown[]) => any; all: (...args: unknown[]) => any[] } };
+/** Older databases (and test fixtures) may predate the owner_id column. */
+const hasOwner = (db: Db, table: string) => (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === "owner_id");
 
 function loadManifest(): SaveManifest {
   try { return JSON.parse(fs.readFileSync(MANIFEST, "utf8")) as SaveManifest; }
@@ -89,10 +93,15 @@ export function restoreFromManifest(db: { prepare: (sql: string) => { run: (...a
   const existingProjects = new Set(db.prepare("SELECT id FROM projects").all().map((r: any) => r.id));
   const existingRenders = new Set(db.prepare("SELECT id FROM render_jobs").all().map((r: any) => r.id));
   const existingKeys = new Set(db.prepare("SELECT id FROM api_keys").all().map((r: any) => r.id));
-  const insertMedia = db.prepare("INSERT OR IGNORE INTO media_assets (id, filename, kind, mime, duration, has_audio, width, height, size_bytes, storage_path, thumb_path, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
-  for (const a of m.mediaAssets) if (!existingMedia.has(a.id)) { insertMedia.run(a.id, a.filename, a.kind, a.mime, a.duration, a.hasAudio, a.width, a.height, a.sizeBytes, path.join("data/media", a.id), null, a.createdAt); counts.mediaAssets++; }
-  const insertProject = db.prepare("INSERT OR IGNORE INTO projects (id, name, timeline_json, created_at, updated_at) VALUES (?,?,?,?,?)");
-  for (const p of m.projects) if (!existingProjects.has(p.id)) { insertProject.run(p.id, p.name, p.timelineJson, p.createdAt, p.updatedAt); counts.projects++; }
+  const ownedMedia = hasOwner(db, "media_assets"), ownedProjects = hasOwner(db, "projects");
+  const insertMedia = ownedMedia
+    ? db.prepare("INSERT OR IGNORE INTO media_assets (id, filename, kind, mime, duration, has_audio, width, height, size_bytes, storage_path, thumb_path, created_at, owner_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
+    : db.prepare("INSERT OR IGNORE INTO media_assets (id, filename, kind, mime, duration, has_audio, width, height, size_bytes, storage_path, thumb_path, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
+  for (const a of m.mediaAssets) if (!existingMedia.has(a.id)) { insertMedia.run(a.id, a.filename, a.kind, a.mime, a.duration, a.hasAudio, a.width, a.height, a.sizeBytes, path.join("data/media", a.id), null, a.createdAt, ...(ownedMedia ? [a.ownerId ?? null] : [])); counts.mediaAssets++; }
+  const insertProject = ownedProjects
+    ? db.prepare("INSERT OR IGNORE INTO projects (id, name, timeline_json, created_at, updated_at, owner_id) VALUES (?,?,?,?,?,?)")
+    : db.prepare("INSERT OR IGNORE INTO projects (id, name, timeline_json, created_at, updated_at) VALUES (?,?,?,?,?)");
+  for (const p of m.projects) if (!existingProjects.has(p.id)) { insertProject.run(p.id, p.name, p.timelineJson, p.createdAt, p.updatedAt, ...(ownedProjects ? [p.ownerId ?? null] : [])); counts.projects++; }
   const insertRender = db.prepare("INSERT OR IGNORE INTO render_jobs (id, project_id, status, progress, output_path, error, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)");
   for (const j of m.renderJobs) if (!existingRenders.has(j.id)) { insertRender.run(j.id, j.projectId, j.status, j.progress, j.outputPath, j.error, j.createdAt, j.updatedAt); counts.renderJobs++; }
   const insertKey = db.prepare("INSERT OR IGNORE INTO api_keys (id, label, scope, key_hash, restrictions_json, last_used_at, revoked, created_at) VALUES (?,?,?,?,?,?,?,?)");
@@ -107,11 +116,11 @@ export function restoreFromManifest(db: { prepare: (sql: string) => { run: (...a
  * snapshot, not a live mirror.
  */
 export function manifestFromDb(db: { prepare: (sql: string) => { run: (...args: unknown[]) => void; get: (...args: unknown[]) => any; all: (...args: unknown[]) => any[] } }): Omit<SaveManifest, "updatedAt" | "version"> {
-  const mediaAssets = (db.prepare("SELECT id, filename, kind, mime, duration, has_audio as hasAudio, width, height, size_bytes as sizeBytes, created_at as createdAt FROM media_assets").all() as any[]).map((r) => ({
-    id: r.id, filename: r.filename, kind: r.kind, mime: r.mime, duration: r.duration, width: r.width, height: r.height, sizeBytes: r.sizeBytes, hasAudio: r.hasAudio, createdAt: r.createdAt,
+  const mediaAssets = (db.prepare(`SELECT id, filename, kind, mime, duration, has_audio as hasAudio, width, height, size_bytes as sizeBytes, created_at as createdAt, ${hasOwner(db, "media_assets") ? "owner_id" : "NULL"} as ownerId FROM media_assets`).all() as any[]).map((r) => ({
+    id: r.id, filename: r.filename, kind: r.kind, mime: r.mime, duration: r.duration, width: r.width, height: r.height, sizeBytes: r.sizeBytes, hasAudio: r.hasAudio, createdAt: r.createdAt, ownerId: r.ownerId ?? null,
   }));
-  const projects = (db.prepare("SELECT id, name, timeline_json as timelineJson, visibility, created_at as createdAt, updated_at as updatedAt FROM projects").all() as any[]).map((r) => ({
-    id: r.id, name: r.name, timelineJson: r.timelineJson, visibility: r.visibility ?? "private", createdAt: r.createdAt, updatedAt: r.updatedAt,
+  const projects = (db.prepare(`SELECT id, name, timeline_json as timelineJson, visibility, created_at as createdAt, updated_at as updatedAt, ${hasOwner(db, "projects") ? "owner_id" : "NULL"} as ownerId FROM projects`).all() as any[]).map((r) => ({
+    id: r.id, name: r.name, timelineJson: r.timelineJson, visibility: r.visibility ?? "private", createdAt: r.createdAt, updatedAt: r.updatedAt, ownerId: r.ownerId ?? null,
   }));
   const renderJobs = (db.prepare("SELECT id, project_id as projectId, status, progress, output_path as outputPath, error, created_at as createdAt, updated_at as updatedAt FROM render_jobs").all() as any[]).map((r) => ({
     id: r.id, projectId: r.projectId, status: r.status, progress: r.progress, outputPath: r.outputPath, error: r.error, createdAt: r.createdAt, updatedAt: r.updatedAt,

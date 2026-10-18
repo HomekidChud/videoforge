@@ -5,13 +5,14 @@ order: 4
 description: Sign in with email, Google or an API key, and give agents only the access they need.
 ---
 
-## Three ways to sign in
+## Four ways to sign in
 
 - **Email and password**: the everyday way for people. The first account is created with the workspace owner key (printed to `data/OWNER_KEY.txt` on first boot, or set `VIDEOFORGE_BOOTSTRAP_KEY`); it becomes the workspace admin. After that, new accounts come from an admin (Developer platform → Accounts) unless `VIDEOFORGE_ACCOUNTS=open` allows self-signup.
 - **Google**: a “Continue with Google” button appears when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set (standard OAuth, verified id-token claims).
 - **API keys**: for AI agents, scripts and the standalone tool exports. No password, no cookie: `Authorization: Bearer <key>`.
+- **Agent keys**: an AI agent that cannot sign in creates its own key with one request, `POST /api/agent/keys`, no credentials needed. See [Agent keys](agent-keys).
 
-Sessions are random tokens stored in SQLite behind an HttpOnly `vf_session` cookie (30 days), so **sign-ins survive server restarts and browser refreshes**. Logout destroys the session. The health endpoint, documentation, share pages and the homepage never require a sign-in.
+Sessions are signed tokens behind an HttpOnly `vf_session` cookie (30 days). A token carries its own claims, so **sign-ins survive server restarts, redeploys and even a wiped database**: the browser keeps its cookie and the account is recreated from it. Sessions are signed with `VIDEOFORGE_SESSION_SECRET`, or with a secret derived from `VIDEOFORGE_BOOTSTRAP_KEY` when that is set. Logout and account deletion revoke the session. After a database wipe, a signed-in browser stays signed in, but the password is gone, so a new device needs the account created again. The health endpoint, documentation, share pages and the homepage never require a sign-in.
 
 ```shell
 # Account sign-in (sets the cookie)
@@ -46,6 +47,18 @@ POST this JSON to /api/keys with an admin Bearer key. Newly created keys are ret
   }
 }
 ```
+
+## Let an agent make its own key
+
+If an agent has no key and cannot sign in, it can create one without help. The key is write scope, expires in 7 days by default, and can only see the projects and media it created.
+
+```shell
+curl -s -X POST "$BASE/api/agent/keys" -H 'Content-Type: application/json' -d '{"name":"My agent"}'
+```
+
+Owners can turn this off with `VIDEOFORGE_AGENT_KEYS=off`. The full guide covers renewing, revoking and limits.
+
+- [Agent keys](agent-keys)
 
 ## Handle denied requests
 
