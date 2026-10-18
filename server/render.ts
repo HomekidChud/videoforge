@@ -226,14 +226,14 @@ export function maxInputsPerWindow(quality: RenderOptions["quality"], width: num
 
 /**
  * Split the timeline into render windows so no single ffmpeg process opens more
- * inputs than the memory budget allows, and no single pass runs longer than
- * MAX_WINDOW_SECONDS (which bounds how long the one-at-a-time ffmpeg lane can be
- * held — a preview requested mid-export waits for the current pass, not the
- * whole export). Clips keep their original absolute timestamps (a clip crossing
- * a boundary is simply present in both windows, fully intact), so fades,
- * keyframes, transitions and audio all stay continuous. A timeline that fits in
- * one window returns a single window covering it, which the caller renders with
- * the existing single-pass path.
+ * inputs than the memory budget allows, and no single pass covers more than
+ * MAX_WINDOW_SECONDS of timeline (which bounds how long the one-at-a-time ffmpeg
+ * lane can be held — a preview requested mid-export waits for the current pass,
+ * not the whole export). Clips keep their original absolute timestamps (a clip
+ * crossing a boundary is simply present in both windows, fully intact), so
+ * fades, keyframes, transitions and audio all stay continuous. A timeline that
+ * fits in one window returns a single window covering it, which the caller
+ * renders with the existing single-pass path.
  *
  * Split points prefer exact media clip boundaries: a window straddling a cut
  * must open both clips, so cutting exactly at the cut is what lets sequential
@@ -242,9 +242,10 @@ export function maxInputsPerWindow(quality: RenderOptions["quality"], width: num
  * does planning give up and throw, meaning those clips genuinely play at the same
  * moment and no split can bound the per-process inputs.
  */
-/** Upper bound on one render pass's duration. Windows are bounded so the
- *  ffmpeg lane (one process at a time) frees up at least this often: a preview
- *  requested mid-export waits for the current pass, never the whole export. */
+/** Upper bound on how much TIMELINE one render pass covers (not wall-clock
+ *  time — encoding speed varies by host). Bounded so the ffmpeg lane (one
+ *  process at a time) turns over between passes: a preview requested mid-export
+ *  waits for the current pass, never the whole export. */
 const MAX_WINDOW_SECONDS = 60;
 
 /** How many output frame timestamps (k/fps) fall in [start, end). */

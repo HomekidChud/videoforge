@@ -411,7 +411,14 @@ await test("API: dense timeline renders via windowed passes and finishes", async
   process.on("exit", kill);
   try {
     const H2 = (p: string) => `http://127.0.0.1:${PORT_E2E}${p}`;
-    const deadline = Date.now() + 30000;
+
+/** fetch that retries once on a network error: the server closes idle
+ *  keep-alive sockets after 5s, so the first request after a long blocking
+ *  step (media generation) can land on a dead pooled socket. */
+const jfetch = async (url: string, init?: RequestInit): Promise<Response> => {
+  try { return await fetch(url, init); }
+  catch { return await fetch(url, init); }
+};    const deadline = Date.now() + 30000;
     while (Date.now() < deadline) {
       try { const r = await fetch(H2("/api/health")); if (r.ok) break; } catch {}
       await new Promise((r) => setTimeout(r, 200));
@@ -474,8 +481,10 @@ await test("API: dense timeline renders via windowed passes and finishes", async
       // them between render passes (they queue behind at most one window).
       if (s.status === "rendering") {
         const t0 = Date.now();
-        const fr = await fetch(H2(`/api/projects/${goodId}/frame?t=1&width=320`), { headers: AUTH });
-        if (fr.ok) worstFrameMs = Math.max(worstFrameMs, Date.now() - t0);
+        const fr = await fetch(H2(`/api/projects/${goodId}/frame?t=1&width=320`), { headers: AUTH, signal: AbortSignal.timeout(30000) });
+        ok(fr.ok, `frame during render returned ${fr.status}`);
+        await fr.arrayBuffer(); // consume the PNG before recording elapsed time
+        worstFrameMs = Math.max(worstFrameMs, Date.now() - t0);
       }
       if (s.status !== "queued" && s.status !== "rendering") { final = s; break; }
     }
@@ -493,6 +502,45 @@ await test("API: dense timeline renders via windowed passes and finishes", async
     ok(d.streams.some((s: any) => s.codec_type === "audio"), "audio in the exported file");
     ok(meanVolume(outFile) > -45, `exported audio bed is audible after its ramp (${meanVolume(outFile)}dB)`);
     ok(frameCount(outFile) >= 24 * 24 - 2, `frame count ≈ 576 (got ${frameCount(outFile)})`);
+
+    // A long single-source 1080x1920 export at standard quality: frame previews
+    // requested while it runs must stay responsive. The ffmpeg lane queues a
+    // preview behind at most one duration-bounded pass (windows are capped at
+    // 60s of timeline), and each request carries an explicit 30s deadline, is
+    // asserted successful, and is fully consumed before its time is recorded.
+    // Local evidence on a 2-vCPU sandbox — not a slower-host guarantee.
+    const longMedia = path.join(WORK, "long.mp4");
+    const gen = spawnSync("ffmpeg", ["-y", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=1080x1920:rate=24:duration=70", "-f", "lavfi", "-i", "sine=frequency=440:duration=70", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", "-f", "mp4", longMedia], { encoding: "utf8" });
+    ok(gen.status === 0, `long media generated: ${gen.stderr.slice(-200)}`);
+    const lfd = new FormData();
+    lfd.append("file", new Blob([fs.readFileSync(longMedia)], { type: "video/mp4" }), "long.mp4");
+    const lup = await jfetch(H2("/api/media/upload"), { method: "POST", headers: AUTH, body: lfd });
+    eq(lup.status, 201, "long media uploaded");
+    const longAsset = ((await lup.json()) as any).assets[0].id;
+    const lproj = await (await jfetch(H2("/api/projects"), { method: "POST", headers: { ...AUTH, "Content-Type": "application/json" }, body: JSON.stringify({ name: "long", timeline: { fps: 24, resolution: { width: 1080, height: 1920 }, clips: [{ assetId: longAsset, track: "video", start: 0, inPoint: 0, outPoint: 70 }] } }) })).json() as any;
+    const lr = await jfetch(H2("/api/renders"), { method: "POST", headers: { ...AUTH, "Content-Type": "application/json" }, body: JSON.stringify({ projectId: lproj.id, options: { quality: "standard" } }) });
+    eq(lr.status, 201, "long render accepted");
+    const ljob = await lr.json() as any;
+    let lfinal: any = null, worstLongMs = 0, previews = 0;
+    for (let i = 0; i < 600; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      const s = await (await jfetch(H2(`/api/renders/${ljob.jobId}`), { headers: AUTH })).json();
+      if (s.status === "rendering") {
+        // t=65 sits in the later window; the preview may wait out the current
+        // pass but must answer well inside the deadline
+        const t0 = Date.now();
+        const fr = await jfetch(H2(`/api/projects/${lproj.id}/frame?t=65&width=480`), { headers: AUTH, signal: AbortSignal.timeout(30000) });
+        ok(fr.ok, `frame during long render returned ${fr.status}`);
+        await fr.arrayBuffer();
+        worstLongMs = Math.max(worstLongMs, Date.now() - t0);
+        previews++;
+      }
+      if (s.status !== "queued" && s.status !== "rendering") { lfinal = s; break; }
+    }
+    ok(lfinal, "long render reached a terminal state");
+    eq(lfinal?.status, "done", `long render done (error: ${lfinal?.error})`);
+    ok(previews >= 1, `requested ${previews} frame previews during the long render`);
+    ok(worstLongMs < 30000, `frame previews during the long 1080p export stayed responsive (worst ${(worstLongMs / 1000).toFixed(1)}s)`);
   } finally { kill(); }
 });
 

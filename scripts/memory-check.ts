@@ -107,7 +107,8 @@ const main = async () => {
       runFfmpeg(previewPlan.args, 1, () => {}).then((r) => { if (r.code !== 0) throw new Error(r.stderrTail.slice(-200)); }),
     ]);
     clearInterval(counter);
-    console.log(`concurrency check: at most ${maxConcurrent} ffmpeg process(es) live at once (lane serializes: ${maxConcurrent <= 1 ? "yes" : "NO — BAD"})`);
+    if (maxConcurrent > 1) throw new Error(`ffmpeg executions must serialize, saw ${maxConcurrent} concurrent`);
+    console.log(`concurrency check: at most ${maxConcurrent} ffmpeg process live at once (lane serializes)`);
     console.log(`tree peak with chunk + queued preview: ${Math.max(peakTree, t0).toFixed(0)} MB (the chunk alone is the ceiling)`);
     void both;
   }
