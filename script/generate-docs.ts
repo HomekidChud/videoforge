@@ -30,7 +30,7 @@ export const DOC_ENDPOINTS = [
 
 export type DocTask = { text: string; status: "todo" | "doing" | "done"; priority?: "High" | "Medium" | "Low" };
 export type DocSection = { title: string; text: string; callouts?: { kind: "note" | "tip" | "warning"; text: string }[]; code?: string; language?: string; rows?: string[][]; links?: { label: string; slug: string }[]; tasks?: DocTask[]; taskStats?: { done: number; doing: number; todo: number }; video?: string };
-export type DocPage = { slug: string; group: string; title: string; description: string; sections: DocSection[]; updated?: string; added?: string; taskStats?: { done: number; doing: number; todo: number } };
+export type DocPage = { slug: string; group: string; title: string; description: string; sections: DocSection[]; updated?: string; added?: string; gitUpdated?: string; taskStats?: { done: number; doing: number; todo: number } };
 
 /** Tables that must always match the code: generated from the shared catalogs. */
 const AUTO_ROWS: Record<string, () => string[][]> = {
@@ -186,13 +186,29 @@ export function parseDocPage(slug: string, md: string): DocPage {
   flushParagraph();
   if (current) sections.push(current);
   if (!sections.length) throw new Error(`${slug}.md: no sections`);
-  return { slug, group: fm.group, title: fm.title, description: fm.description, sections };
+  return { slug, group: fm.group, title: fm.title, description: fm.description, sections, added: badgeDate(slug, fm.added, "added"), updated: badgeDate(slug, fm.updated, "updated") };
 }
 
-/** Git dates for a docs page; absent in shallow checkouts, so every failure is tolerated. */
-const gitDates = (file: string): { updated?: string; added?: string } => {
-  const run = (args: string) => { try { return execSync(`git ${args}`, { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim() || undefined; } catch { return undefined; } };
-  return { updated: run(`log -1 --format=%cI -- ${file}`), added: run(`log --diff-filter=A --format=%cI -1 -- ${file}`) };
+/** New/Updated badges are opt-in: frontmatter `added:` / `updated:` (YYYY-MM-DD).
+ *  Git history no longer decides them — a migrated page would otherwise look brand
+ *  new. Declared dates are validated: a malformed or future date fails the build
+ *  rather than silently mislabeling the page. */
+export function badgeDate(slug: string, value: string | undefined, key: "added" | "updated"): string | undefined {
+  if (value === undefined) return undefined;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error(`${slug}.md: ${key} must be a plain ISO date like 2026-10-20, got "${value}"`);
+  const ms = Date.parse(`${value}T00:00:00Z`);
+  if (Number.isNaN(ms)) throw new Error(`${slug}.md: ${key} is not a real date: "${value}"`);
+  // JS rolls out-of-range days over (Feb 30 becomes Mar 2), so compare the round trip.
+  if (new Date(ms).toISOString().slice(0, 10) !== value) throw new Error(`${slug}.md: ${key} is not a real date: "${value}"`);
+  if (ms > Date.now() + 86400000) throw new Error(`${slug}.md: ${key} is in the future: "${value}"`);
+  return new Date(ms).toISOString();
+}
+
+/** The footer's "Updated" fact, from the file's last commit; absent in shallow
+ *  checkouts, so every failure is tolerated. Badges never read this — only the
+ *  declared frontmatter above decides whether a page looks New or Updated. */
+const gitUpdated = (file: string): string | undefined => {
+  try { return execSync(`git log -1 --format=%cI -- ${file}`, { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim() || undefined; } catch { return undefined; }
 };
 
 /** Checksums of the hand-written numbers on a task page: fail the build when they disagree with the checkboxes. */
@@ -237,9 +253,10 @@ export async function readDocPages(): Promise<DocPage[]> {
       validateTaskPage(slug, md, page.taskStats);
       for (const s of page.sections) if (s.tasks?.length) s.taskStats = statsOf(s.tasks);
     }
-    const dates = gitDates(path.join("docs", entry.name));
-    if (dates.updated) page.updated = dates.updated;
-    if (dates.added) page.added = dates.added;
+    // Badges come only from the frontmatter the author declared (see badgeDate);
+    // the footer keeps the file's last-commit date as a plain fact.
+    const last = gitUpdated(path.join("docs", entry.name));
+    if (last) page.gitUpdated = last;
     pages.push({ order: orderMatch ? Number(orderMatch[1]) : 999, page });
   }
   pages.sort((a, b) => a.order - b.order || a.page.slug.localeCompare(b.page.slug));

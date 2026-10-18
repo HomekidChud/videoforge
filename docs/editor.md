@@ -71,7 +71,9 @@ Shortcuts are ignored while typing in an input. Editing commands require a write
 
 ## Save and export
 
-Projects autosave as you edit. Check the save status before leaving. Export queues a server-side MP4 job. Public sharing requires an admin to change visibility and a completed render. A public share link does not expose your API key or source footage.
+Projects autosave as you edit. Check the save status before leaving. Export is a menu, not a single button: pick a quality (Draft for the fastest render, Standard, or High for the most detail) and a resolution (the project's own, or 480p/720p/1080p with the aspect kept), then start the export. Your choices are remembered for next time, and a failed save stops the export rather than rendering something stale. The download supports resuming, so a dropped connection does not restart from zero. Public sharing requires an admin to change visibility and a completed render. A public share link does not expose your API key or source footage.
+
+The studio bar also shows a live clock with the time of day, and a language selector that switches the Studio chrome and the block studio between English and Español together.
 
 - [Motion graphics tutorial](motion-graphics-tutorial)
 - [Transitions](transitions)

@@ -46,6 +46,13 @@ The editor has grown crowded. The goal is a calmer layout where the common contr
 - [x] Calmer top bar: keep Edit and Animate, Add title, Project and Export in view and move the rest into a single More menu.
 - [x] Workspace presets (Edit, Animate, Graphics, Audio, Blocks) that show only the panels each job needs, and remember the last one.
 - [x] A command palette on Ctrl+K for every Studio action, with recent commands and shortcuts shown beside each.
+- [x] Export is a menu, not a button: quality (Draft/Standard/High) and resolution (project/480p/720p/1080p, aspect kept) are configured before a render starts, the choices are remembered, and a failed save stops the export.
+- [x] Faster time to download: Draft renders encode with the ultrafast preset, and the download endpoint answers Range requests so a dropped connection resumes instead of restarting.
+- [x] A live clock in the studio bar showing the time of day.
+- [x] A language selector in the studio bar that switches the Studio chrome and the block studio between English and Español together.
+- [x] Smoother preview playback: freeze segments hold an exact frame instead of drifting, mid-playback drift correction no longer stacks seeks, and the selection frame is not measured on every animation frame.
+- [x] Speed-ramp renders fixed: a clip with speed steps (including freezes) failed with an empty ffmpeg filter, so exporting ramped clips now works.
+- [x] API-key sign-in no longer reloads into a dead session: the key lives in memory, and the reload after verifying it dropped the user back on the sign-in page.
 - [x] Inspector with progressive disclosure: the common controls first, advanced groups folded, and a search box inside the inspector.
 - [x] Icon dock for the left panels (Media, Effects, Blocks, Graphics, Tools, Projects) with tooltips, instead of a block of text tabs.
 - [x] Simple and Advanced modes, so a first-time user sees a small set of tools and can switch the rest on.
@@ -71,6 +78,7 @@ Small features that make the docs faster to read and easier to trust.
 - [x] A glossary with hover definitions for words like clip, track, keyframe, scope and rig.
 - [x] Keyboard shortcuts page generated from the Studio's own shortcut list.
 - [x] New and Updated badges on pages and sidebar entries.
+- [x] Badges are opt-in frontmatter (`added:` / `updated:`) validated by the build, so migrated or established pages stop showing New just because the files moved; the footer keeps the last-commit date as a plain fact.
 - [ ] **Low.** Click-to-zoom images, a print stylesheet and an offline copy of the docs.
 - [ ] **Low.** Docs search: remember filters, show a preview of the section on hover and add a / hint on every page.
 

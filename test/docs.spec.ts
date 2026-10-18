@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { readFile } from "node:fs/promises";
-import { parseDocPage, readDocPages, generateDocs, validatePages } from "../script/generate-docs";
+import { parseDocPage, readDocPages, generateDocs, validatePages, badgeDate } from "../script/generate-docs";
 import { DOC_PAGES } from "../client/src/lib/docs-content";
 import { applyTimelineOp } from "../shared/editing";
 import { normalizeTimeline } from "../shared/timeline";
@@ -17,9 +17,20 @@ async function check(label: string, fn: () => void | Promise<void>) {
 await check("generated matches source", async () => {
   const pages = await readDocPages();
   assert.equal(pages.length, DOC_PAGES.length);
-  // The updated and added stamps come from git history, which changes the moment the regenerated file is committed, so they are compared separately by shape.
-  const strip = ({ updated, added, ...rest }: any) => rest;
+  // Badge dates come from opt-in frontmatter; gitUpdated is the footer's last-commit
+  // fact, which changes the moment the regenerated file is committed, so all three are
+  // compared separately by shape.
+  const strip = ({ updated, added, gitUpdated, ...rest }: any) => rest;
   for (let i = 0; i < pages.length; i++) assert.deepEqual(strip(pages[i]), strip(DOC_PAGES[i]));
+});
+
+// New/Updated badges are opt-in frontmatter, and a bad declared date fails the build.
+await check("badge dates are opt-in and validated", () => {
+  assert.equal(badgeDate("page", undefined, "added"), undefined, "no date, no badge");
+  assert.equal(badgeDate("page", "2026-10-18", "updated"), "2026-10-18T00:00:00.000Z");
+  assert.throws(() => badgeDate("page", "18/10/2026", "added"), /plain ISO date/);
+  assert.throws(() => badgeDate("page", "2026-02-30", "added"), /not a real date/);
+  assert.throws(() => badgeDate("page", "2999-01-01", "added"), /in the future/);
 });
 
 // Pages are ordered, unique, and every link resolves.

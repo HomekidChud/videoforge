@@ -21,6 +21,7 @@ description: One timeline. A browser studio. An API your agents can actually use
 - `group`: sidebar section (pages with the same group are grouped together)
 - `order`: position in the sidebar and previous/next navigation
 - `description`: lede paragraph and search description
+- `added`, `updated`: optional `YYYY-MM-DD` dates that show a New or Updated badge on the page and its sidebar entry for 30 days. They are opt-in: a page shows no badge unless you declare one, so a migrated page does not look brand new. A malformed or future date fails the build.
 
 The body is a light markdown dialect:
 

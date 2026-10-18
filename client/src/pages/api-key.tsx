@@ -70,8 +70,10 @@ export default function ApiKeyPage() {
         throw new Error(message);
       }
       setApiKey(trimmed);
+      // No reload: the key lives in memory, so a reload would sign the user out.
+      // The hash router picks up the route change, and the key-change event
+      // invalidates the query caches.
       window.location.hash = "#/editor";
-      window.location.reload();
     } catch (err) {
       setError(err instanceof TypeError ? "Can't reach the VideoForge server. Check your connection." : err instanceof Error ? err.message : "Could not verify this key.");
     } finally { setBusy(false); }

@@ -23,7 +23,9 @@ const DEFAULT_FILTER: TaskFilter = { status: "all", priority: "all", area: "all"
 const loadFilter = (): TaskFilter => { try { return { ...DEFAULT_FILTER, ...JSON.parse(localStorage.getItem(TASKS_KEY) ?? "{}") as Partial<TaskFilter> }; } catch { return DEFAULT_FILTER; }; };
 const saveFilter = (f: TaskFilter) => { try { localStorage.setItem(TASKS_KEY, JSON.stringify(f)); } catch { /* storage is optional */ } };
 const PRIORITY_RANK: Record<string, number> = { High: 0, Medium: 1, Low: 2, none: 3 };
-/** New if the page was added within 30 days, Updated if it changed within 30 days. */
+/** New if the page's declared `added:` date is within 30 days, Updated if the declared
+ *  `updated:` date is. Badges are opt-in frontmatter, so only pages the author marks
+ *  show one — migrated or established pages stay badge-free. */
 const pageBadge = (p: { added?: string; updated?: string }): "New" | "Updated" | null => {
   const age = (iso?: string) => (iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000) : Infinity);
   return age(p.added) <= 30 ? "New" : age(p.updated) <= 30 ? "Updated" : null;
@@ -253,7 +255,7 @@ export default function ApiDocsPage({ params }: { params?: { slug: string } }) {
     try { await navigator.clipboard.writeText(url); say("Link copied"); } catch { say("Copy the address bar to share this section"); }
   };
 
-  const updated = current?.updated ? new Date(current.updated) : null;
+  const updatedIso = current?.gitUpdated ?? current?.updated, updated = updatedIso ? new Date(updatedIso) : null;
   const badge = pageBadge(current ?? {});
   const vote = (v: "yes" | "no") => { setHelpful(v); try { localStorage.setItem(`vf.docs.feedback.${slug}`, JSON.stringify(v)); } catch { /* storage is optional */ } };
   useEffect(() => { saveFilter(filter); }, [filter]);

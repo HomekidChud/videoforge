@@ -14,7 +14,8 @@ import {
   type CustomTool, type ToolContext, type ToolGraph, type ToolGraphNode, type ToolParam, type ToolPreset,
 } from "@shared/custom-tools";
 import type { TimelineOp } from "@shared/editing";
-import { loadLang, saveLang, trLabel, trDescription, trGroup, trHeading, trUI, matchesSearch, type BlockLang } from "@shared/block-i18n";
+import { trLabel, trDescription, trGroup, trHeading, trUI, matchesSearch, type BlockLang } from "@shared/block-i18n";
+import { useLang } from "@/lib/lang";
 
 /** The studio's language, so palette chips and node titles can speak it. */
 const LangContext = createContext<BlockLang>("en");
@@ -598,7 +599,9 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, onOpenAnimator,
   const [presetsOpen, setPresetsOpen] = useState(false);
   const [shared, setShared] = useState("");
   const [histTick, bumpHist] = useState(0);
-  const [lang, setLang] = useState<BlockLang>(() => loadLang(window.localStorage));
+  // The shared Studio language store (vf.lang.v1): the top-bar selector and the
+  // Blocks studio switch together and stay in sync live.
+  const [lang, setLang] = useLang();
   /** Always-on field dots (clip/frame/value sockets) vs hover-revealed ones. */
   const [showHandles, setShowHandles] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -1083,7 +1086,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, onOpenAnimator,
           <button className="bs-btn" onClick={() => setTutorialStep(0)} disabled={readOnly} data-testid="bs-tutorial-open" title="Show the studio tutorial"><GraduationCap size={14} aria-hidden="true" /> <span className="bs-lbl">Tutorial</span></button>
         )}
         {tab === "blocks" && (
-          <button className="bs-btn" onClick={() => { const next: BlockLang = lang === "es" ? "en" : "es"; setLang(next); saveLang(next, window.localStorage); }} data-testid="bs-lang" title="Switch language / Cambiar idioma"><Languages size={14} aria-hidden="true" /> {lang === "es" ? "ES" : "EN"}</button>
+          <button className="bs-btn" onClick={() => { setLang(lang === "es" ? "en" : "es"); }} data-testid="bs-lang" title="Switch language / Cambiar idioma"><Languages size={14} aria-hidden="true" /> {lang === "es" ? "ES" : "EN"}</button>
         )}
         {tab === "blocks" && (
           <button className="bs-btn bs-btn-presets" onClick={() => setPresetsOpen((o) => !o)} disabled={readOnly} data-testid="bs-presets" title="Ready-made recipes of connected blocks"><Sparkles size={14} aria-hidden="true" /> Presets</button>

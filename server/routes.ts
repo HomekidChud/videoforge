@@ -9,13 +9,13 @@ import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import Busboy from "busboy";
 import type { Asset } from "@shared/schema";
-import { normalizeTimeline, clipEnd, timelineDuration, type Timeline } from "@shared/timeline";
+import { normalizeTimeline, clipEnd, timelineDuration, exportDimensions, EXPORT_RESOLUTIONS, type Timeline } from "@shared/timeline";
 import { applyTimelineOp } from "@shared/editing";
 import { animatedValues } from "@shared/animation";
 import { capabilities } from "@shared/capabilities";
 import { fitSummary } from "@shared/layout";
 import { GRAPHICS_SCHEMA, MOTION_TEMPLATES } from "@shared/graphics";
-import { buildRenderPlan, runFfmpeg } from "./render";
+import { buildRenderPlan, runFfmpeg, type RenderQuality } from "./render";
 import { ensureTimelineFonts } from "./fonts";
 import { requireScope, requireMediaAccess, projectAllowed, assetAllowed, keyRestrictions } from "./auth";
 import { actorOf, syncTimeline, logEvent, renameLive, dropLive, registerLiveRoutes } from "./live";
@@ -138,7 +138,7 @@ const TMP_DIR = path.resolve("data/tmp");
 ensureDir(TMP_DIR, "tmp");
 
 const SYSTEM = { id: "system", label: "VideoForge", scope: "admin" };
-async function runRender(jobId: string, projectId: string) {
+async function runRender(jobId: string, projectId: string, options: { width?: number; quality?: RenderQuality } = {}) {
   const project = storage.getProject(projectId);
   if (!project) {
     storage.updateRenderJob(jobId, { status: "error", error: "project not found", updatedAt: now() });
@@ -151,7 +151,7 @@ async function runRender(jobId: string, projectId: string) {
     const outPath = path.join(OUTPUT_DIR, `${jobId}.mp4`);
     const jobTimeline = parseTimeline(project.timelineJson);
     await ensureTimelineFonts(jobTimeline); // catalog fonts are fetched once and cached for the renderer
-    const plan = buildRenderPlan(jobTimeline, assets, MEDIA_DIR, TMP_DIR, jobId, outPath);
+    const plan = buildRenderPlan(jobTimeline, assets, MEDIA_DIR, TMP_DIR, jobId, outPath, { width: options.width, quality: options.quality });
     tempFiles = plan.tempFiles;
     console.log(`[render ${jobId}] filter graph:\n${plan.filter.slice(0, 4000)}`);
     let lastWrite = 0;
@@ -583,6 +583,13 @@ export async function registerRoutes(
     if (!projectId) return res.status(400).json({ message: "projectId required" });
     const p = storage.getProject(projectId);
     if (!p) return res.status(404).json({ message: "project not found" });
+    // Export options from the Studio menu: quality trades fidelity for encode speed,
+    // resolution rescales the frame while keeping the project aspect. Both optional.
+    const rawOpts = req.body?.options ?? {};
+    const quality = rawOpts.quality && ["draft", "standard", "high"].includes(rawOpts.quality) ? rawOpts.quality as RenderQuality : undefined;
+    const width = rawOpts.resolution && EXPORT_RESOLUTIONS.includes(rawOpts.resolution)
+      ? exportDimensions(parseTimeline(p.timelineJson).resolution, rawOpts.resolution).width
+      : (typeof rawOpts.width === "number" && rawOpts.width >= 64 && rawOpts.width <= 4096 ? Math.round(rawOpts.width / 2) * 2 : undefined);
     const jobId = uid();
     storage.createRenderJob({
       id: jobId,
@@ -596,7 +603,7 @@ export async function registerRoutes(
     });
     logEvent(projectId, actorOf(req), "render", "Started an export");
     // fire-and-forget; job status is pollable
-    setImmediate(() => runRender(jobId, projectId));
+    setImmediate(() => runRender(jobId, projectId, { width, quality }));
     res.status(201).json({ jobId, status: "queued", statusUrl: `/api/renders/${jobId}` });
   });
 
@@ -616,11 +623,15 @@ export async function registerRoutes(
     if (!j || j.status !== "done") return res.status(404).json({ message: "render not ready" });
     const outPath = path.join(OUTPUT_DIR, `${String(req.params.id)}.mp4`);
     if (!fs.existsSync(outPath)) return res.status(404).json({ message: "rendered file missing" });
-    const stat = fs.statSync(outPath);
-    res.setHeader("Content-Type", "video/mp4");
-    res.setHeader("Content-Length", stat.size);
+    // sendFile answers Range requests, so a dropped download can resume instead of
+    // starting over, and carries ETag/Last-Modified for cheap revalidation. It streams
+    // the file straight from disk, so the browser starts saving immediately.
     res.setHeader("Content-Disposition", `attachment; filename="render_${String(req.params.id)}.mp4"`);
-    fs.createReadStream(outPath).pipe(res);
+    res.setHeader("Cache-Control", "private, no-cache");
+    res.sendFile(outPath, { lastModified: true }, (err) => {
+      // Forward the real status: 416 for an unsatisfiable Range, 404 otherwise.
+      if (err && !res.headersSent) res.status((err as any).status ?? 404).json({ message: (err as any).message ?? "rendered file missing" });
+    });
   });
 
   return httpServer;

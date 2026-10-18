@@ -79,7 +79,9 @@ function rampAudioEntry(c: Clip, idx: number): string {
     si++;
     let post = 0;
     while (si < segs.length && segs[si].kind === "hold") { post += segs[si].duration; si++; }
-    lines.push(`[ar${k}]atrim=start=${f(p.srcFrom)}:end=${f(p.srcFrom + p.speed * p.duration)},asetpts=PTS-STARTPTS,${atempoChain(p.speed)},${fmt}[as${k}]`);
+    // atempoChain(1) is empty, so the comma is only added when there is a tempo filter.
+    const tempo = atempoChain(p.speed);
+    lines.push(`[ar${k}]atrim=start=${f(p.srcFrom)}:end=${f(p.srcFrom + p.speed * p.duration)},asetpts=PTS-STARTPTS${tempo ? `,${tempo}` : ""},${fmt}[as${k}]`);
     parts.push(`[as${k}]`);
     if (post > 0) { lines.push(`anullsrc=r=48000:cl=stereo:d=${f(post)}[post${k}]`); parts.push(`[post${k}]`); }
   }
@@ -160,12 +162,21 @@ function transformFilters(c:Clip, width:number, height:number, dur:number, text=
 
 export type RenderPlan = { args: string[]; total: number; tempFiles: string[]; filter: string };
 
+/** Export quality presets from the Studio export menu. Draft trades some fidelity for the
+ *  fastest encode, High trades encode time for detail; Standard is the previous behaviour. */
+export type RenderQuality = "draft" | "standard" | "high";
+export const RENDER_QUALITY: Record<RenderQuality, { preset: string; crf: string }> = {
+  draft: { preset: "ultrafast", crf: "26" },
+  standard: { preset: "veryfast", crf: "20" },
+  high: { preset: "medium", crf: "18" },
+};
+
 /**
  * Compose every clip onto a black canvas at its timeline position.
  * video/overlay tracks are layered (overlay above video), audio from every
  * unmuted clip is delayed to its start and mixed, text clips are drawn last.
  */
-export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset>, mediaDir: string, tmpDir: string, jobId: string, outPath: string, options: {frameAt?:number;width?:number} = {}): RenderPlan {
+export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset>, mediaDir: string, tmpDir: string, jobId: string, outPath: string, options: {frameAt?:number;width?:number;quality?:RenderQuality} = {}): RenderPlan {
   const tl = normalizeTimeline(rawTimeline);
   const W = options.width ? Math.round(options.width/2)*2 : tl.resolution.width, H = options.width ? Math.round(tl.resolution.height*W/tl.resolution.width/2)*2 : tl.resolution.height, fps = tl.fps;
   const total = Math.max(0.1, timelineDuration(tl));
@@ -236,7 +247,9 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
       else chain.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*(${alpha})'`); }
 
     chain.push(`setpts=PTS+${f(c.start)}/TB`);
-    filters.push(`${entry}${chain.length ? "," + chain.join(",") : ""}[cv${layer}]`);
+    // A ramp entry ends with ";[segv]", a ready input label: the clip chain continues from
+    // it with no comma. A plain entry ends mid-chain and takes a comma.
+    filters.push(`${entry.endsWith(";[segv]") ? entry + chain.join(",") : entry + (chain.length ? "," + chain.join(",") : "")}[cv${layer}]`);
     const next = `base${layer + 1}`;
     const x = `main_w*(${animationExpression(c,"x",`(t-${f(c.start)})`)})-overlay_w/2`;
     const y = `main_h*(${animationExpression(c,"y",`(t-${f(c.start)})`)})-overlay_h/2`;
@@ -277,7 +290,9 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
       else chain.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*(${alpha})'`); }
 
     chain.push(`setpts=PTS+${f(c.start)}/TB`);
-    filters.push(`${entry}${chain.length ? "," + chain.join(",") : ""}[cv${layer}]`);
+    // A ramp entry ends with ";[segv]", a ready input label: the clip chain continues from
+    // it with no comma. A plain entry ends mid-chain and takes a comma.
+    filters.push(`${entry.endsWith(";[segv]") ? entry + chain.join(",") : entry + (chain.length ? "," + chain.join(",") : "")}[cv${layer}]`);
     const next = `base${layer + 1}`;
     const x = `main_w*(${animationExpression(c,"x",`(t-${f(c.start)})`)})-overlay_w/2`;
     const y = `main_h*(${animationExpression(c,"y",`(t-${f(c.start)})`)})-overlay_h/2`;
@@ -486,7 +501,9 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     if ((c.fadeOut ?? 0) > 0) chain.push(`afade=t=out:st=${f(Math.max(0, dur - c.fadeOut!))}:d=${f(Math.min(c.fadeOut!, dur))}`);
     const ms = Math.round(c.start * 1000);
     if (ms > 0) chain.push(`adelay=${ms}|${ms}`);
-    filters.push(`${entry}${chain.length ? "," + chain.join(",") : ""}[ca${i}]`);
+    // A ramp entry ends with ";[sega]", a ready input label: the clip chain continues
+    // from it with no comma. A plain entry ends mid-chain and takes a comma.
+    filters.push(`${entry.endsWith(";[sega]") ? entry + chain.join(",") : entry + (chain.length ? "," + chain.join(",") : "")}[ca${i}]`);
     audioLabels.push(`[ca${i}]`);
   });
   const maps = ["-map", "[vout]"];
@@ -510,7 +527,7 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     ...graphArgs,
     ...(options.frameAt === undefined ? maps : ["-map","[vout]","-ss",String(options.frameAt),"-frames:v","1"]),
     ...(options.frameAt === undefined ? ["-t", String(f(total)),
-    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+    "-c:v", "libx264", "-preset", RENDER_QUALITY[options.quality ?? "standard"].preset, "-crf", RENDER_QUALITY[options.quality ?? "standard"].crf, "-pix_fmt", "yuv420p",
     ...(audioLabels.length ? ["-c:a", "aac", "-b:a", "192k"] : []),
     "-movflags", "+faststart"] : ["-c:v","png","-update","1"]),
     outPath,
