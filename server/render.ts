@@ -123,7 +123,16 @@ function colorFilters(c: Clip): string[] {
  */
 let gainFilter: ((dur: number, gainAt: (t: number) => number) => string) | null = null;
 
-function transformFilters(c:Clip, width:number, height:number, dur:number, text=false):string[] {
+/**
+ * A rectangular wipe that changes over time. geq runs the whole animation expression for every pixel of every
+ * frame (a 1152x38 progress bar cost over a second on its own). drawbox erases a rectangle instead, and the
+ * rectangle for each frame is computed once, in JavaScript, and fed in through sendcmd. `visible` is the part
+ * of the layer to keep, as fractions of the layer: the rest is erased.
+ */
+type Visible = { x0: number; x1: number; y0: number; y1: number };
+let maskFilter: ((dur: number, w: number, h: number, visibleAt: (t: number) => Visible) => string) | null = null;
+
+function transformFilters(c:Clip, width:number, height:number, dur:number, text=false, opaqueBg?:string):string[] {
   const chain:string[]=[];
   const dynamicScale=isAnimated(c,"scale"), rotation=!!c.rotation || isAnimated(c,"rotation");
   // Keep a constant transparent bounding box when scaling. This avoids downstream
@@ -132,7 +141,10 @@ function transformFilters(c:Clip, width:number, height:number, dur:number, text=
   if(!text) {
     chain.push(c.fit==="fill" ? `scale=${width}:${height}` : `scale=${width}:${height}:force_original_aspect_ratio=${c.fit==="cover"?"increase":"decrease"}`);
     if(c.fit==="cover") chain.push(`crop=${width}:${height}`);
-    chain.push("format=yuva420p",`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black@0`);
+    // Plain full-frame footage needs no alpha plane: letterbox bars take the project background directly, which is
+    // what a transparent bar over that background looked like. Skipping alpha makes the overlay a straight copy.
+    if(opaqueBg) chain.push("format=yuv420p",`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${opaqueBg}`);
+    else chain.push("format=yuva420p",`pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black@0`);
     // Spatial crop: fractions of the padded layer box to keep, matching the preview's
     // inset, the layer keeps its box, with transparent padding where pixels were cut.
     if(c.crop){
@@ -142,7 +154,10 @@ function transformFilters(c:Clip, width:number, height:number, dur:number, text=
     }
   }
   // Wipe reveal: a left-to-right alpha mask on the unscaled layer, so it follows later scale/rotation.
-  if(isAnimated(c,"reveal")||(c.reveal??1)<1) chain.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*lt(X,W*(${animationExpression(c,"reveal","T")}))'`);
+  if(isAnimated(c,"reveal")||(c.reveal??1)<1) {
+    if(maskFilter) chain.push(maskFilter(dur,width,height,(t)=>({x0:0,x1:Math.min(1,Math.max(0,valueAt(c,"reveal",t))),y0:0,y1:1})));
+    else chain.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*lt(X,W*(${animationExpression(c,"reveal","T")}))'`);
+  }
   if((c.scale??(c.track==="overlay"&&!text? .35:1))!==1||dynamicScale) {
     chain.push(`scale=w='max(2,trunc(${width}*(${scale})/2)*2)':h='max(2,trunc(${height}*(${scale})/2)*2)':eval=frame`);
   }
@@ -185,6 +200,49 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     fs.writeFileSync(file, lines.join("\n"));
     tempFiles.push(file);
     return `sendcmd=f=${file},colorchannelmixer@${name}=aa=${Math.min(1, Math.max(0, gainAt(0))).toFixed(4)}`;
+  };
+  let maskCount = 0;
+  maskFilter = (dur, w, h, visibleAt) => {
+    const id = maskCount++, name = `mask${id}`;
+    const file = path.join(tmpDir, `${jobId}_mask${id}.txt`);
+    // The erased box is the layer minus the visible rectangle. Wipes only ever trim one side, so one box is enough;
+    // when nothing is erased the box is parked outside the frame (w=0 would mean the full width).
+    const box = (v: Visible) => {
+      const x0 = Math.round(v.x0 * w), x1 = Math.round(v.x1 * w), y0 = Math.round(v.y0 * h), y1 = Math.round(v.y1 * h);
+      if (x1 <= x0 || y1 <= y0) return { x: 0, y: 0, w, h };                 // nothing visible: erase it all
+      if (x0 > 0) return { x: 0, y: 0, w: x0, h };                           // left edge trimmed
+      if (x1 < w) return { x: x1, y: 0, w: Math.max(1, w - x1), h };         // right edge trimmed
+      if (y0 > 0) return { x: 0, y: 0, w, h: y0 };                           // top trimmed
+      if (y1 < h) return { x: 0, y: y1, w, h: Math.max(1, h - y1) };         // bottom trimmed
+      return { x: w, y: h, w: 1, h: 1 };                                     // everything visible
+    };
+    const line = (t: number) => { const b = box(visibleAt(t)); return `${t.toFixed(4)} drawbox@${name} x ${b.x}, drawbox@${name} y ${b.y}, drawbox@${name} w ${b.w}, drawbox@${name} h ${b.h};`; };
+    const steps = Math.ceil(dur * fps) + 1, lines: string[] = [];
+    for (let i = 0; i <= steps; i++) lines.push(line(Math.min(i / fps, dur)));
+    fs.writeFileSync(file, lines.join("\n"));
+    tempFiles.push(file);
+    const b0 = box(visibleAt(0));
+    return `sendcmd=f=${file},drawbox@${name}=x=${b0.x}:y=${b0.y}:w=${b0.w}:h=${b0.h}:color=black@0:t=fill:replace=1`;
+  };
+
+  // Dissolves and the four straight wipes never need a per-pixel expression: a dissolve is an opacity ramp and a
+  // wipe is one erased rectangle. Only the shaped transitions (iris, barn doors, diamond, diagonal) use geq.
+  const transitionFilter = (tr: NonNullable<ReturnType<typeof incomingTransition>>, dur: number, w: number, h: number): string => {
+    const prog = (t: number) => Math.min(1, Math.max(0, t / tr.duration));
+    if (tr.type === "dissolve" && gainFilter) return gainFilter(dur, prog);
+    if (maskFilter) {
+      const v: Record<string, ((p: number) => Visible) | undefined> = {
+        "wipe-left": (p) => ({ x0: 0, x1: p, y0: 0, y1: 1 }),
+        "wipe-right": (p) => ({ x0: 1 - p, x1: 1, y0: 0, y1: 1 }),
+        "wipe-down": (p) => ({ x0: 0, x1: 1, y0: 0, y1: p }),
+        "wipe-up": (p) => ({ x0: 0, x1: 1, y0: 1 - p, y1: 1 }),
+      };
+      const fn = v[tr.type];
+      if (fn) return maskFilter(dur, w, h, (t) => fn(prog(t)));
+    }
+    const p = `min(1,max(0,T/${f(tr.duration)}))`;
+    const alpha = ({dissolve:p,'wipe-left':`lte(X,W*(${p}))`,'wipe-right':`gte(X,W*(1-(${p})))`,'wipe-up':`gte(Y,H*(1-(${p})))`,'wipe-down':`lte(Y,H*(${p}))`,iris:`lte(hypot(X-W/2,Y-H/2),hypot(W/2,H/2)*(${p}))`,'barn-h':`lte(abs(X-W/2),W/2*(${p}))`,'barn-v':`lte(abs(Y-H/2),H/2*(${p}))`,diamond:`lte(abs(X-W/2)/W+abs(Y-H/2)/H,${p})`,'wipe-diagonal':`lte(X/W+Y/H,2*(${p}))`} as Record<string,string>)[tr.type];
+    return `geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*(${alpha})'`;
   };
   let inputCount = 0;
 
@@ -232,18 +290,20 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     chain.push(...colorFilters(c));
     const aspect = a.width && a.height ? a.width/a.height : W/H;
     const width=c.track==="overlay" ? W : W, height=c.track==="overlay" ? Math.max(2,Math.round(W/aspect/2)*2) : H;
-    chain.push(...transformFilters(c,width,height,dur));
     const tr = incomingTransition(tl,c);
-    if(tr) { const p=`min(1,max(0,T/${f(tr.duration)}))`, alpha=({dissolve:p,'wipe-left':`lte(X,W*(${p}))`,'wipe-right':`gte(X,W*(1-(${p})))`,'wipe-up':`gte(Y,H*(1-(${p})))`,'wipe-down':`lte(Y,H*(${p}))`,iris:`lte(hypot(X-W/2,Y-H/2),hypot(W/2,H/2)*(${p}))`,'barn-h':`lte(abs(X-W/2),W/2*(${p}))`,'barn-v':`lte(abs(Y-H/2),H/2*(${p}))`,diamond:`lte(abs(X-W/2)/W+abs(Y-H/2)/H,${p})`,'wipe-diagonal':`lte(X/W+Y/H,2*(${p}))`} as Record<string,string>)[tr.type];
-      if (tr.type === "dissolve" && gainFilter) chain.push(gainFilter(dur, (t) => Math.min(1, Math.max(0, t / tr.duration))));
-      else chain.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*(${alpha})'`); }
+    // Opaque fast path: nothing about this clip needs transparency or a moving layer.
+    const plain = c.track === "video" && !tr && !c.crop && !c.rotation && (c.scale ?? 1) === 1 && (c.opacity ?? 1) >= 1 && (c.reveal ?? 1) >= 1
+      && !(c.fadeIn ?? 0) && !(c.fadeOut ?? 0) && (c.x ?? .5) === .5 && (c.y ?? .5) === .5
+      && !(["scale", "rotation", "opacity", "reveal", "x", "y"] as AnimationProperty[]).some((p) => isAnimated(c, p));
+    chain.push(...transformFilters(c,width,height,dur,false,plain ? (tl.background ?? "#000000") : undefined));
+    if(tr) chain.push(transitionFilter(tr, dur, width, height));
 
     chain.push(`setpts=PTS+${f(c.start)}/TB`);
     filters.push(`${entry}${chain.length ? "," + chain.join(",") : ""}[cv${layer}]`);
     const next = `base${layer + 1}`;
     const x = `main_w*(${animationExpression(c,"x",`(t-${f(c.start)})`)})-overlay_w/2`;
     const y = `main_h*(${animationExpression(c,"y",`(t-${f(c.start)})`)})-overlay_h/2`;
-    filters.push(`[${current}][cv${layer}]overlay=x='${x}':y='${y}':eof_action=pass:enable='between(t,${f(c.start)},${f(c.start + dur)})':format=auto[${next}]`);
+    filters.push(`[${current}][cv${layer}]overlay=x='${x}':y='${y}':eof_action=pass:enable='between(t,${f(c.start)},${f(c.start + dur)})':format=${plain ? "yuv420" : "auto"}[${next}]`);
     current = next;
     layer++;
   }
@@ -275,9 +335,7 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     const width=c.track==="overlay" ? W : W, height=c.track==="overlay" ? Math.max(2,Math.round(W/aspect/2)*2) : H;
     chain.push(...transformFilters(c,width,height,dur));
     const tr = incomingTransition(tl,c);
-    if(tr) { const p=`min(1,max(0,T/${f(tr.duration)}))`, alpha=({dissolve:p,'wipe-left':`lte(X,W*(${p}))`,'wipe-right':`gte(X,W*(1-(${p})))`,'wipe-up':`gte(Y,H*(1-(${p})))`,'wipe-down':`lte(Y,H*(${p}))`,iris:`lte(hypot(X-W/2,Y-H/2),hypot(W/2,H/2)*(${p}))`,'barn-h':`lte(abs(X-W/2),W/2*(${p}))`,'barn-v':`lte(abs(Y-H/2),H/2*(${p}))`,diamond:`lte(abs(X-W/2)/W+abs(Y-H/2)/H,${p})`,'wipe-diagonal':`lte(X/W+Y/H,2*(${p}))`} as Record<string,string>)[tr.type];
-      if (tr.type === "dissolve" && gainFilter) chain.push(gainFilter(dur, (t) => Math.min(1, Math.max(0, t / tr.duration))));
-      else chain.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*(${alpha})'`); }
+    if(tr) chain.push(transitionFilter(tr, dur, width, height));
 
     chain.push(`setpts=PTS+${f(c.start)}/TB`);
     filters.push(`${entry}${chain.length ? "," + chain.join(",") : ""}[cv${layer}]`);
@@ -452,7 +510,22 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
         });
       });
     }
-    const textChain=[`color=c=black@0:s=${W}x${H}:r=${fps}:d=${f(dur)}`,"format=yuva420p",...lineFilters,...transformFilters(tc,W,H,dur,true),`setpts=PTS+${f(c.start)}/TB`];
+    // Text used to allocate a full project-sized transparent frame for EVERY
+    // label on EVERY frame. Most of it is empty, especially on Animator rigs.
+    // Bound the canvas around the glyphs, retaining generous font-substitution,
+    // stroke and background margins. Reveal is defined across the full layer
+    // width, so that effect deliberately keeps the original canvas.
+    const fullCanvas = isAnimated(tc, "reveal") || (tc.reveal ?? 1) < 1;
+    const even = (v: number) => Math.max(2, Math.ceil(v / 2) * 2);
+    const perLine = Math.max(size * 1.5, lh ?? 0);
+    const tw = fullCanvas ? W : Math.min(W, even(maxW * size * 1.3 + size * 2.5));
+    const th = fullCanvas ? H : Math.min(H, even(n * perLine + size * 2));
+    // A static label is rasterised once. Transforms, fades, opacity and motion
+    // still run at the requested fps AFTER the loop, so animation is unchanged.
+    const staticText = !reveal && !cycle;
+    const textChain=[`color=c=black@0:s=${tw}x${th}:r=${fps}:d=${f(staticText ? 1 / fps : dur)}`,"format=yuva420p",...lineFilters,
+      ...(staticText ? [`loop=loop=${Math.ceil(dur * fps)}:size=1:start=0`, `setpts=N/(${fps}*TB)`, `trim=duration=${f(dur)}`] : []),
+      ...transformFilters(tc,tw,th,dur,true),`setpts=PTS+${f(c.start)}/TB`];
     filters.push(`${textChain.join(",")}[ct${i}]`);
     const x=`main_w*(${animationExpression(tc,"x",`(t-${f(c.start)})`)})-overlay_w/2`;
     const y=`main_h*(${animationExpression(tc,"y",`(t-${f(c.start)})`)})-overlay_h/2`;
