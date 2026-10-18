@@ -161,6 +161,7 @@ export function rememberUILang(lang: UILang): void {
 }
 
 export function saveUILang(lang: UILang, storage: { setItem(k: string, v: string): void }): void {
+  rememberUILang(lang); // the in-session fallback follows every write
   saveLang(lang, storage);
 }
 

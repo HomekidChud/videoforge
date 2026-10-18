@@ -613,7 +613,7 @@ export default function EditorPage() {
       { id: "play", group: "Playback", label: playing ? "Pause" : "Play", shortcut: sc("play"), run: togglePlay, disabled: !duration },
       { id: "to-start", group: "Playback", label: "Jump to the start", shortcut: sc("start"), run: () => seek(0) },
       { id: "to-end", group: "Playback", label: "Jump to the end", shortcut: sc("end"), run: () => seek(duration) },
-      { id: "export", group: "Project", label: "Export video…", run: () => { setRenderJobId(null); setExportOpen(true); }, disabled: !timeline.clips.length || readOnly },
+      { id: "export", group: "Project", label: "Export video…", run: () => { setExportOpen(true); }, disabled: !timeline.clips.length || readOnly },
       { id: "save", group: "Project", label: "Save now", shortcut: sc("save"), run: () => { void saveNow(); } },
       { id: "new-project", group: "Project", label: "New project", run: newProject, disabled: readOnly },
       { id: "project-settings", group: "Project", label: "Project settings and sharing", run: () => { setSelectedId(null); setInspectorOpen(true); setMobilePanel("inspector"); } },
@@ -677,12 +677,12 @@ export default function EditorPage() {
         <span className="divider" />
         <div className="menu-wrap hide-sm"><button className="secondary-btn" onClick={() => addTitle()} disabled={readOnly} data-testid="button-add-title"><Type size={15} />{t("btn.addTitle")}</button><button className="icon-btn menu-caret" aria-label="Title styles" aria-expanded={titleMenu} disabled={readOnly} onClick={() => setTitleMenu(!titleMenu)} data-testid="button-title-menu"><ChevronDown size={14} /></button>{titleMenu && <div className="menu-pop" role="menu">{TITLE_PRESETS.map((p) => <button key={p.id} role="menuitem" onClick={() => addTitle(p)} data-testid={`title-${p.id}`}>{p.label}</button>)}</div>}</div>
         <button className="secondary-btn hide-sm" onClick={() => {setSelectedId(null);setInspectorOpen(true);setMobilePanel("inspector");}} title="Project settings and sharing" data-testid="button-project-settings"><Share2 size={15} />{t("btn.project")}</button>
-        <div className="menu-wrap hide-sm" ref={langMenuRef}>
+        <div className="menu-wrap" ref={langMenuRef}>
           <button className="icon-btn menu-caret" aria-label={t("language")} aria-expanded={langMenu} onClick={() => setLangMenu(!langMenu)} data-testid="button-language" title={t("language")}><Languages size={16} />{UI_LANGS.find((l) => l.id === lang)?.native}</button>
           {langMenu && <div className="menu-pop menu-pop-end" role="menu" aria-label={t("language")}>{UI_LANGS.map((l) => <button key={l.id} role="menuitem" aria-pressed={lang === l.id} onClick={() => { setLang(l.id); setLangMenu(false); }} data-testid={`lang-${l.id}`}>{l.native}{lang === l.id && <Check size={13} />}</button>)}</div>}
         </div>
         <StudioClock locale={lang === "es" ? "es-ES" : "en-GB"} />
-        <button className="primary-btn" onClick={() => { setRenderJobId(null); setExportOpen(true); }} disabled={!timeline.clips.length || readOnly} data-testid="button-export"><Download size={15} />{t("btn.export")}</button>
+        <button className="primary-btn" onClick={() => { setExportOpen(true); }} disabled={!timeline.clips.length || readOnly} data-testid="button-export"><Download size={15} />{t("btn.export")}</button>
         <details className="studio-tools" ref={moreRef}><summary data-testid="button-studio-tools" aria-label="More options" title="More options"><MoreHorizontal size={18} /></summary><div className="studio-tools-menu" onClick={(e) => { if ((e.target as HTMLElement).closest("button,a") && moreRef.current) moreRef.current.open = false; }}>
           <h5>Tools</h5>
           {advanced && <button onClick={() => setAnimatorOpen(true)} data-testid="button-animator" title="Pose clips, text and shapes like rigs and key them on a timeline"><Clapperboard size={15} />Animator</button>}

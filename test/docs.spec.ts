@@ -55,6 +55,21 @@ check("unknown marker", () => assert.throws(() => parseDocPage("bad", '---\ntitl
 check("unknown link", () => assert.throws(() => validatePages([parseDocPage("bad", "---\ntitle: x\ngroup: g\ndescription: d\n---\n\n## S\n\n- [Link](missing-page)\n")]), /unknown page/));
 check("missing title", () => assert.throws(() => parseDocPage("bad", "---\n---\n\n## S\n\ntext"), /missing title/));
 
+// Badges are explicit frontmatter, never git-date guesses.
+check("badge frontmatter", () => {
+  const page = parseDocPage("badged", "---\ntitle: x\ngroup: g\ndescription: d\nbadge: new\nbadgeUntil: 2099-01-01\n---\n\n## S\n\ntext");
+  assert.equal(page.badge, "new");
+  assert.equal(page.badgeUntil, "2099-01-01");
+});
+check("badge expiry date format", () => assert.throws(() => parseDocPage("bad", "---\ntitle: x\ngroup: g\ndescription: d\nbadge: new\nbadgeUntil: soon\n---\n\n## S\n\ntext"), /badgeUntil/));
+check("badge value whitelist", () => assert.throws(() => parseDocPage("bad", "---\ntitle: x\ngroup: g\ndescription: d\nbadge: fresh\n---\n\n## S\n\ntext"), /badge must be/));
+check("badgeUntil needs a badge", () => assert.throws(() => parseDocPage("bad", "---\ntitle: x\ngroup: g\ndescription: d\nbadgeUntil: 2099-01-01\n---\n\n## S\n\ntext"), /badgeUntil needs a badge/));
+check("no badge by default", () => {
+  const page = parseDocPage("plain", "---\ntitle: x\ngroup: g\ndescription: d\n---\n\n## S\n\ntext");
+  assert.equal(page.badge, undefined);
+  assert.equal(page.badgeUntil, undefined);
+});
+
 // Tables with pipes inside cells survive the round trip.
 check("pipes in cells", () => {
   const page = parseDocPage("pipes", "---\ntitle: t\ngroup: g\ndescription: d\n---\n\n## S\n\n| Field | Values |\n|---|---|\n| type | rectangle | ellipse | line |\n");

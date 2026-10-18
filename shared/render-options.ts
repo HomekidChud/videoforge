@@ -42,10 +42,11 @@ export function sanitizeRenderOptions(raw: unknown): RenderOptions {
   const out: RenderOptions = {};
   if (!raw || typeof raw !== "object") return out;
   const r = raw as Record<string, unknown>;
-  if (typeof r.quality === "string" && r.quality in RENDER_QUALITIES) out.quality = r.quality as RenderQuality;
+  // Own-property check: "constructor"/"toString" must not pass as a quality name.
+  if (typeof r.quality === "string" && Object.hasOwn(RENDER_QUALITIES, r.quality)) out.quality = r.quality as RenderQuality;
   if (typeof r.width === "number" && Number.isFinite(r.width)) {
     const w = Math.round(r.width);
-    if (w >= 256 && w <= 4096) out.width = Math.round(w / 2) * 2;
+    if (w >= 256 && w <= 4096) out.width = Math.floor(w / 2) * 2; // even, never above the request
   }
   if (typeof r.fps === "number" && Number.isFinite(r.fps)) {
     const fps = Math.round(r.fps);

@@ -74,7 +74,7 @@ export function parseDocPage(slug: string, md: string): DocPage {
   if (fmEnd < 0) throw new Error(`${slug}.md: unterminated frontmatter`);
   const fm: Record<string, string> = {};
   for (const line of lines.slice(1, fmEnd)) {
-    const m = line.match(/^([a-z]+):\s*(.*)$/);
+    const m = line.match(/^([a-zA-Z][a-zA-Z0-9]*):\s*(.*)$/);
     if (m) fm[m[1]] = m[2].trim();
   }
   for (const key of ["title", "group", "description"]) if (!fm[key]) throw new Error(`${slug}.md: frontmatter is missing ${key}`);

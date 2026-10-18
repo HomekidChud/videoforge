@@ -4242,5 +4242,9 @@ export const CONTRIBUTORS: { name: string; commits: number }[] = [
   {
     "commits": 1,
     "name": "AgentMedia1942"
+  },
+  {
+    "commits": 1,
+    "name": "Computer"
   }
 ];

@@ -310,6 +310,12 @@ async function main() {
       p.on("close", () => res(parseFloat(out)));
     });
     assert(Math.abs(dur - 2) < 0.3, `render duration ~2s, got ${dur}`);
+    // Range requests: interrupted downloads can resume instead of restarting.
+    const range = await fetch(`${H}/api/renders/${jobId}/download`, { headers: { ...AUTH_WRITE, Range: "bytes=0-99" } });
+    assert(range.status === 206, `range download 206, got ${range.status}`);
+    const rangeBody = Buffer.from(await range.arrayBuffer());
+    assert(rangeBody.length === 100, `range serves exactly 100 bytes, got ${rangeBody.length}`);
+    assert(range.headers.get("content-range")?.startsWith("bytes 0-99/"), "content-range header present");
   }
 
   // --- 14. Revoked key → 403

@@ -70,12 +70,16 @@ function MediaLayer({clip,asset,time,playing,source,hidden,muted,onError,timelin
   const innerMask=cropClip(clip.crop,ev.reveal),transitionMask=tr&&p<1?transitionClipPath(tr.type,p):undefined;
   // A layer can need two masks at once: a crop or reveal wipe on the media plus a
   // transition wipe on top. One element cannot intersect two clip-paths, so the
-  // media then sits in a wrapper that carries the transition mask.
-  const needsWrap=!!transitionMask&&innerMask!==undefined;
+  // media then sits in a wrapper that carries the transition mask. The wrapper
+  // stays mounted for the whole clip (not just while the transition runs) so
+  // the media element is never remounted mid-playback.
+  const needsWrap=!!tr&&innerMask!==undefined;
   const base={opacity,filter:previewFilter(ev,.6),display:active&&!hidden?undefined:"none",transform:g.transform,mixBlendMode:undefined};
-  const position=clip.track==="overlay"?{left:`${g.x*100}%`,top:`${g.y*100}%`,width:`${g.scale*100}%`,height:"auto"}:{left:`${g.x*100}%`,top:`${g.y*100}%`,width:"100%",height:"100%",objectFit:clip.fit==="cover"?"cover" as const:clip.fit==="fill"?"fill" as const:"contain" as const,transform:`${g.transform} scale(${g.scale})`};
-  const style=needsWrap?{...position,...base,clipPath:transitionMask}:{...position,...base,clipPath:transitionMask??innerMask};
-  const innerStyle=needsWrap?{width:"100%",height:"100%",objectFit:position.objectFit,clipPath:innerMask}:undefined;
+  const position=clip.track==="overlay"?{left:`${g.x*100}%`,top:`${g.y*100}%`,width:`${g.scale*100}%`,height:"auto"}:{left:`${g.x*100}%`,top:`${g.y*100}%`,width:"100%",height:"100%",objectFit:clip.fit==="cover"?"cover" as const:clip.fit==="fill"?"fill" as const:"contain" as const};
+  const style={...position,...base,...(clip.track!=="overlay"?{transform:`${g.transform} scale(${g.scale})`}:{}),clipPath:transitionMask??innerMask};
+  // Inside the wrapper the media is statically positioned so it can size the
+  // wrapper (overlay media keeps its aspect; video-track media fills the box).
+  const innerStyle=needsWrap?{position:"static" as const,width:"100%",height:clip.track==="overlay"?"auto":"100%",objectFit:position.objectFit,clipPath:innerMask}:undefined;
   const fail=()=>{if(!failed){setFailed(true);onError(`Couldn’t load ${asset.filename}. Check the source or API key.`);}};
   const common={"data-layer":clip.id} as any;
   if(asset.kind==="image"){
