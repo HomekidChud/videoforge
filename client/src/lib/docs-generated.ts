@@ -4407,7 +4407,7 @@ export const DOC_PAGES: DocPage[] = [
 
 export const CONTRIBUTORS: { name: string; commits: number }[] = [
   {
-    "commits": 85,
+    "commits": 86,
     "name": "HomekidChud"
   },
   {

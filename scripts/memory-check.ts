@@ -120,7 +120,8 @@ const main = async () => {
     // confirm the requested encoder settings are actually in the invocation
     if (i === 0) {
       const preset = plan.args[plan.args.indexOf("-preset") + 1], crf = plan.args[plan.args.indexOf("-crf") + 1];
-      console.log(`encoder args: preset=${preset} crf=${crf} (standard = veryfast/20)`);
+      if (preset !== "veryfast" || crf !== "20") throw new Error(`encoder args preset=${preset} crf=${crf}, expected veryfast/20`);
+      console.log(`encoder args confirmed: preset=${preset} crf=${crf} (standard)`);
     }
     await run(plan.args, `chunk ${i + 1}/${windows.length} [${w.start.toFixed(2)},${w.end.toFixed(2)}]`);
     chunks.push(path.join(WORK, `seg${i}.mp4`));
@@ -133,11 +134,16 @@ const main = async () => {
   const out = path.join(WORK, "export.mp4");
   await run(["-y", "-hide_banner", "-f", "concat", "-safe", "0", "-i", list, "-i", path.join(WORK, "aud.m4a"), "-map", "0:v", "-map", "1:a", "-c", "copy", "-movflags", "+faststart", out], "concat + mux");
 
-  // verify the finished export: duration, frame count, full decode
+  // verify the finished export: duration, frame count, full decode — asserted,
+  // so an invalid export cannot reach DONE with exit zero.
   const d = JSON.parse(spawnSync("ffprobe", ["-v", "error", "-print_format", "json", "-show_entries", "format=duration:stream=nb_frames,codec_type", out], { encoding: "utf8" }).stdout);
-  const frames = d.streams.find((s: any) => s.codec_type === "video")?.nb_frames ?? 0;
+  const frames = Number(d.streams.find((s: any) => s.codec_type === "video")?.nb_frames ?? 0);
+  const expectedFrames = Math.round(total * 24);
+  if (Math.abs(parseFloat(d.format.duration) - total) > 0.5) throw new Error(`export duration ${d.format.duration}s, expected ~${total}s`);
+  if (frames !== expectedFrames) throw new Error(`export frames ${frames}, expected ${expectedFrames}`);
   const dec = spawnSync("ffmpeg", ["-v", "error", "-i", out, "-f", "null", "-"], { encoding: "utf8" });
-  console.log(`export: duration ${d.format.duration}s (expected ~${total}), frames ${frames} (expected ${Math.round(total * 24)}), full decode ${dec.status === 0 && !dec.stderr.trim() ? "clean" : `ERRORS: ${dec.stderr.slice(-200)}`}`);
+  if (dec.status !== 0 || dec.stderr.trim()) throw new Error(`full decode errors: ${dec.stderr.slice(-300)}`);
+  console.log(`export verified: duration ${d.format.duration}s, frames ${frames}, full decode clean`);
   console.log(`peak tree RSS across the whole export: ${peakTree.toFixed(0)} MB (budget 512 MB)`);
   const nodeRss = (fs.readFileSync("/proc/self/status", "utf8").match(/VmRSS:\s+(\d+)/)?.[1] ?? "0");
   console.log(`node process: ${nodeRss} KB RSS (the API server idles ~75MB)`);

@@ -226,11 +226,14 @@ export function maxInputsPerWindow(quality: RenderOptions["quality"], width: num
 
 /**
  * Split the timeline into render windows so no single ffmpeg process opens more
- * inputs than the memory budget allows. Clips keep their original absolute
- * timestamps (a clip crossing a boundary is simply present in both windows,
- * fully intact), so fades, keyframes, transitions and audio all stay continuous.
- * A timeline that fits in one window returns a single window covering it, which
- * the caller renders with the existing single-pass path.
+ * inputs than the memory budget allows, and no single pass runs longer than
+ * MAX_WINDOW_SECONDS (which bounds how long the one-at-a-time ffmpeg lane can be
+ * held — a preview requested mid-export waits for the current pass, not the
+ * whole export). Clips keep their original absolute timestamps (a clip crossing
+ * a boundary is simply present in both windows, fully intact), so fades,
+ * keyframes, transitions and audio all stay continuous. A timeline that fits in
+ * one window returns a single window covering it, which the caller renders with
+ * the existing single-pass path.
  *
  * Split points prefer exact media clip boundaries: a window straddling a cut
  * must open both clips, so cutting exactly at the cut is what lets sequential
@@ -239,6 +242,11 @@ export function maxInputsPerWindow(quality: RenderOptions["quality"], width: num
  * does planning give up and throw, meaning those clips genuinely play at the same
  * moment and no split can bound the per-process inputs.
  */
+/** Upper bound on one render pass's duration. Windows are bounded so the
+ *  ffmpeg lane (one process at a time) frees up at least this often: a preview
+ *  requested mid-export waits for the current pass, never the whole export. */
+const MAX_WINDOW_SECONDS = 60;
+
 /** How many output frame timestamps (k/fps) fall in [start, end). */
 function framesIn(start: number, end: number, fps: number): number {
   const first = Math.ceil(start * fps - 1e-9), last = Math.floor((end - 1e-9) * fps);
@@ -258,7 +266,9 @@ export function planRenderWindows(tl: Timeline, options?: RenderOptions): Render
   for (const c of tl.clips) if (c.assetId && c.track !== "audio") { boundaries.add(c.start); boundaries.add(clipEnd(c)); }
   const windows: RenderWindow[] = [];
   const split = (start: number, end: number): void => {
-    if (windowInputs(tl, start, end) <= maxInputs) { windows.push({ start, end }); return; }
+    const overInputs = windowInputs(tl, start, end) > maxInputs;
+    const overLength = end - start > MAX_WINDOW_SECONDS + 1e-6;
+    if (!overInputs && !overLength) { windows.push({ start, end }); return; }
     const middle = start + (end - start) / 2;
     // Try an exact clip boundary near the middle first: a window straddling a
     // cut must open both clips, so cutting exactly at the cut is what lets
@@ -272,15 +282,12 @@ export function planRenderWindows(tl: Timeline, options?: RenderOptions): Render
       const d = Math.abs(b - middle);
       if (d < best) { best = d; mid = b; }
     }
-    if (mid === null) {
-      // No usable clip boundary inside: every clip in this span crosses it
-      // whole, so the inputs are genuinely simultaneous. Windows shorter than
-      // the minimum cannot be split; longer ones fall back to the frame-aligned
-      // midpoint (which must also leave a frame on each side).
-      if (end - start > MIN_WINDOW_SECONDS + 1e-6) {
-        const aligned = Math.round(middle * fps) / fps;
-        if (aligned > start + 1e-9 && aligned < end - 1e-9 && framesIn(start, aligned, fps) >= 1 && framesIn(aligned, end, fps) >= 1) mid = aligned;
-      }
+    if (mid === null && (overLength || end - start > MIN_WINDOW_SECONDS + 1e-6)) {
+      // Frame-aligned midpoint: valid for an over-length window whatever the
+      // inputs (it bounds the pass), and for over-input windows long enough to
+      // split. Must still leave a frame on each side.
+      const aligned = Math.round(middle * fps) / fps;
+      if (aligned > start + 1e-9 && aligned < end - 1e-9 && framesIn(start, aligned, fps) >= 1 && framesIn(aligned, end, fps) >= 1) mid = aligned;
     }
     if (mid === null) {
       const at = Math.min(end, Math.max(start, middle));
@@ -775,8 +782,8 @@ export function runFfmpeg(args: string[], total: number, onProgress: (pct: numbe
   // One ffmpeg at a time per process: an export chunk and a frame preview both
   // running at once would stack their memory on a host sized for one of them.
   // Everything that spawns ffmpeg here is render-shaped work (chunks, previews,
-  // storyboards), so a preview may briefly wait for the current chunk — seconds,
-  // well inside request timeouts — instead of competing with it for memory.
+  // storyboards), so a preview requested mid-export waits for the current pass
+  // — windows are duration-bounded, so the wait is one pass, not the export.
   return runOneAtATime(() => new Promise((resolve, reject) => {
     const p = spawn("ffmpeg", args);
     let tail = "";

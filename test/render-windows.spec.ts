@@ -14,7 +14,7 @@ import os from "node:os";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { buildRenderPlan, planRenderWindows, runFfmpeg } from "../server/render";
-import { normalizeTimeline, type Timeline } from "../shared/timeline";
+import { MIN_CLIP, normalizeTimeline, type Timeline } from "../shared/timeline";
 import { incomingTransition } from "../shared/transitions";
 import type { Asset } from "@shared/schema";
 
@@ -172,19 +172,33 @@ const framesInMs = (w: { start: number; end: number }) => Math.max(0, Math.floor
 
 await test("minimum-length sequential clips split at their boundary", () => {
   // The shortest legal clip is MIN_CLIP (0.1s — normalization bumps anything
-  // shorter, which would make two "one-frame" clips overlap and stack). Two
+  // shorter, which would make two shorter "clips" overlap and stack). Two
   // minimum-length clips at the 1080p cap (1 input per pass) must split exactly
   // at the cut between them, even though each window is only a few frames.
   const tall = normalizeTimeline({ fps: 24, resolution: { width: 1080, height: 1920 }, clips: [
-    { id: "a", assetId: "m0", track: "video", start: 0, inPoint: 0, outPoint: 0.1 },
-    { id: "b", assetId: "m1", track: "video", start: 0.1, inPoint: 0, outPoint: 0.2 },
+    { id: "a", assetId: "m0", track: "video", start: 0, inPoint: 0, outPoint: MIN_CLIP },
+    { id: "b", assetId: "m1", track: "video", start: MIN_CLIP, inPoint: MIN_CLIP, outPoint: 2 * MIN_CLIP },
   ] });
   eq(tall.clips.length, 2, "both minimum-length clips survive normalization");
+  for (const c of tall.clips) ok(Math.abs((c.outPoint - c.inPoint) - MIN_CLIP) < 1e-9, `clip ${c.id} keeps its ${MIN_CLIP}s duration`);
   const w = planRenderWindows(tall);
   eq(w.length, 2, `two minimum-length clips split at the cut (${w.length} windows)`);
-  ok(Math.abs(w[1].start - 0.1) < 1e-9, `split lands exactly on the cut (${w[1].start})`);
+  ok(Math.abs(w[1].start - MIN_CLIP) < 1e-9, `split lands exactly on the cut (${w[1].start})`);
   ok(framesInMs(w[0]) >= 1 && framesInMs(w[1]) >= 1, `each window holds frames (${framesInMs(w[0])}, ${framesInMs(w[1])})`);
 });
+await test("long timelines are split into duration-bounded windows", () => {
+  // One 300s clip fits the input cap in a single window, but windows are also
+  // duration-bounded so the one-at-a-time ffmpeg lane frees up between passes
+  // (a preview requested mid-export waits for one pass, not the whole export).
+  const tl = normalizeTimeline({ fps: 24, resolution: { width: 320, height: 180 }, clips: [
+    { id: "long", assetId: "m0", track: "video", start: 0, inPoint: 0, outPoint: 300 },
+  ] });
+  const w = planRenderWindows(tl);
+  ok(w.length >= Math.ceil(300 / 60), `300s clip is split into ${w.length} windows`);
+  for (const win of w) ok(win.end - win.start <= 60 + 1e-6, `window [${win.start},${win.end}] is at most 60s`);
+  for (let i = 1; i < w.length; i++) ok(Math.abs(w[i].start - w[i - 1].end) < 1e-6, "contiguous");
+});
+
 await test("an empty timeline is still a plain render error", () => {
   const tl = normalizeTimeline({ fps: 24, resolution: { width: 320, height: 180 }, clips: [] });
   assert.throws(() => planRenderWindows(tl), /empty/i);
@@ -317,8 +331,10 @@ await test("windowed render matches the single-pass render", async () => {
   } finally { process.env.VIDEOFORGE_RENDER_BUDGET_MB = ""; }
 });
 
-function meanVolume(file: string): number {
-  const r = spawnSync("ffmpeg", ["-i", file, "-af", "volumedetect", "-f", "null", "-"], { encoding: "utf8" });
+function meanVolume(file: string, from = 3): number {
+  // measured from `from` seconds in, past the audio bed's 0..2s volume ramp,
+  // so the number reflects the ramped-up bed and not the silent lead-in
+  const r = spawnSync("ffmpeg", ["-ss", String(from), "-i", file, "-af", "volumedetect", "-f", "null", "-"], { encoding: "utf8" });
   const m = r.stderr.match(/mean_volume:\s*(-?[\d.]+) dB/);
   if (!m) throw new Error(`volumedetect failed: ${r.stderr.slice(-300)}`);
   return parseFloat(m[1]);
@@ -450,14 +466,24 @@ await test("API: dense timeline renders via windowed passes and finishes", async
     eq(jr.status, 201, "render accepted");
     const job = await jr.json() as any;
     let final: any = null;
+    let worstFrameMs = 0;
     for (let i = 0; i < 300; i++) {
       await new Promise((r) => setTimeout(r, 400));
       const s = await (await fetch(H2(`/api/renders/${job.jobId}`), { headers: AUTH })).json();
+      // While the export is running, request frames: the ffmpeg lane must answer
+      // them between render passes (they queue behind at most one window).
+      if (s.status === "rendering") {
+        const t0 = Date.now();
+        const fr = await fetch(H2(`/api/projects/${goodId}/frame?t=1&width=320`), { headers: AUTH });
+        if (fr.ok) worstFrameMs = Math.max(worstFrameMs, Date.now() - t0);
+      }
       if (s.status !== "queued" && s.status !== "rendering") { final = s; break; }
     }
     ok(final, "render reached a terminal state");
     eq(final?.status, "done", `render done (error: ${final?.error})`);
     ok(final?.progress === 1, "progress reported as complete");
+    ok(worstFrameMs > 0, "at least one frame was requested while the render was running");
+    ok(worstFrameMs < 30000, `frame previews during the render stayed responsive (worst ${worstFrameMs}ms)`);
     const dl = await fetch(H2(`/api/renders/${job.jobId}/download`), { headers: AUTH });
     eq(dl.status, 200, "download works");
     const outFile = path.join(WORK, "e2e-out.mp4");
