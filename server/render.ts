@@ -195,7 +195,7 @@ function windowInputs(tl: Timeline, start: number, end: number): number {
 }
 
 /** Absolute ceiling on inputs per ffmpeg process, whatever the host. */
-export const MAX_INPUTS_PER_WINDOW = 32;
+export const MAX_INPUTS_PER_WINDOW = 6;
 const MIN_WINDOW_SECONDS = 0.5;
 
 /** Empirical memory model for one ffmpeg render process, measured with ffmpeg 8
@@ -239,6 +239,12 @@ export function maxInputsPerWindow(quality: RenderOptions["quality"], width: num
  * does planning give up and throw, meaning those clips genuinely play at the same
  * moment and no split can bound the per-process inputs.
  */
+/** How many output frame timestamps (k/fps) fall in [start, end). */
+function framesIn(start: number, end: number, fps: number): number {
+  const first = Math.ceil(start * fps - 1e-9), last = Math.floor((end - 1e-9) * fps);
+  return Math.max(0, last - first + 1);
+}
+
 export function planRenderWindows(tl: Timeline, options?: RenderOptions): RenderWindow[] {
   const total = timelineDuration(tl);
   if (total <= 0) throw new Error("Timeline is empty, add at least one clip before rendering.");
@@ -254,21 +260,26 @@ export function planRenderWindows(tl: Timeline, options?: RenderOptions): Render
   const split = (start: number, end: number): void => {
     if (windowInputs(tl, start, end) <= maxInputs) { windows.push({ start, end }); return; }
     const middle = start + (end - start) / 2;
-    // Try an exact clip boundary near the middle first — even in a window shorter
-    // than MIN_WINDOW_SECONDS, a cut inside it is a valid split point.
+    // Try an exact clip boundary near the middle first: a window straddling a
+    // cut must open both clips, so cutting exactly at the cut is what lets
+    // sequential timelines split down to the input limit. Any interior boundary
+    // is allowed — even sub-second or single-frame windows — as long as both
+    // sides keep at least one frame.
     let mid: number | null = null, best = Infinity;
     for (const b of Array.from(boundaries)) {
-      if (b <= start + 1 / fps || b >= end - 1 / fps) continue;
+      if (b <= start + 1e-9 || b >= end - 1e-9) continue;
+      if (framesIn(start, b, fps) < 1 || framesIn(b, end, fps) < 1) continue;
       const d = Math.abs(b - middle);
       if (d < best) { best = d; mid = b; }
     }
     if (mid === null) {
-      // No clip boundary inside: every clip in this span crosses it whole, so
-      // the inputs are genuinely simultaneous. Windows shorter than the minimum
-      // cannot be split; longer ones fall back to the frame-aligned midpoint.
+      // No usable clip boundary inside: every clip in this span crosses it
+      // whole, so the inputs are genuinely simultaneous. Windows shorter than
+      // the minimum cannot be split; longer ones fall back to the frame-aligned
+      // midpoint (which must also leave a frame on each side).
       if (end - start > MIN_WINDOW_SECONDS + 1e-6) {
         const aligned = Math.round(middle * fps) / fps;
-        if (aligned > start + 1 / fps && aligned < end - 1 / fps) mid = aligned;
+        if (aligned > start + 1e-9 && aligned < end - 1e-9 && framesIn(start, aligned, fps) >= 1 && framesIn(aligned, end, fps) >= 1) mid = aligned;
       }
     }
     if (mid === null) {
@@ -761,7 +772,12 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
 }
 
 export function runFfmpeg(args: string[], total: number, onProgress: (pct: number) => void): Promise<{ code: number | null; signal: NodeJS.Signals | null; stderrTail: string }> {
-  return new Promise((resolve, reject) => {
+  // One ffmpeg at a time per process: an export chunk and a frame preview both
+  // running at once would stack their memory on a host sized for one of them.
+  // Everything that spawns ffmpeg here is render-shaped work (chunks, previews,
+  // storyboards), so a preview may briefly wait for the current chunk — seconds,
+  // well inside request timeouts — instead of competing with it for memory.
+  return runOneAtATime(() => new Promise((resolve, reject) => {
     const p = spawn("ffmpeg", args);
     let tail = "";
     p.stderr!.on("data", (d: Buffer) => {
@@ -778,5 +794,12 @@ export function runFfmpeg(args: string[], total: number, onProgress: (pct: numbe
     // null, and "exit null" alone says nothing about why it died.
     p.on("close", (code, signal) => resolve({ code, signal, stderrTail: tail }));
     p.on("error", reject);
-  });
+  }));
 }
+
+const ffmpegLane = { tail: Promise.resolve() as Promise<unknown> };
+const runOneAtATime = <T>(job: () => Promise<T>): Promise<T> => {
+  const run = ffmpegLane.tail.then(job, job);
+  ffmpegLane.tail = run.then(() => undefined, () => undefined);
+  return run;
+};

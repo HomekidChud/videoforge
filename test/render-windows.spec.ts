@@ -160,14 +160,31 @@ await test("sub-second sequential cuts still split at their boundaries", () => {
 });
 
 await test("a requested output width relaxes the input cap", () => {
-  // 8 clips stacked at 1080p exceed the budget at full size, but a 480p-wide
-  // export of the same timeline fits it.
-  const stacked = normalizeTimeline({ fps: 24, resolution: { width: 1080, height: 1920 }, clips: Array.from({ length: 8 }, (_, i) => ({ id: `s${i}`, assetId: `m${i}`, track: "video", start: 0, inPoint: 0, outPoint: 4 })) });
+  // 6 clips stacked at 1080p exceed the budget at full size (cap 1), but a
+  // 480p-wide export of the same timeline fits it (cap rises to the ceiling).
+  const stacked = normalizeTimeline({ fps: 24, resolution: { width: 1080, height: 1920 }, clips: Array.from({ length: 6 }, (_, i) => ({ id: `s${i}`, assetId: `m${i}`, track: "video", start: 0, inPoint: 0, outPoint: 4 })) });
   assert.throws(() => planRenderWindows(stacked), /simultaneous/i, "full-size is over budget");
   const w = planRenderWindows(stacked, { width: 480 });
   ok(w.length >= 1, `a 480p export plans (${w.length} windows)`);
 });
 
+const framesInMs = (w: { start: number; end: number }) => Math.max(0, Math.floor((w.end - 1e-9) * 24) - Math.ceil(w.start * 24 - 1e-9) + 1);
+
+await test("minimum-length sequential clips split at their boundary", () => {
+  // The shortest legal clip is MIN_CLIP (0.1s — normalization bumps anything
+  // shorter, which would make two "one-frame" clips overlap and stack). Two
+  // minimum-length clips at the 1080p cap (1 input per pass) must split exactly
+  // at the cut between them, even though each window is only a few frames.
+  const tall = normalizeTimeline({ fps: 24, resolution: { width: 1080, height: 1920 }, clips: [
+    { id: "a", assetId: "m0", track: "video", start: 0, inPoint: 0, outPoint: 0.1 },
+    { id: "b", assetId: "m1", track: "video", start: 0.1, inPoint: 0, outPoint: 0.2 },
+  ] });
+  eq(tall.clips.length, 2, "both minimum-length clips survive normalization");
+  const w = planRenderWindows(tall);
+  eq(w.length, 2, `two minimum-length clips split at the cut (${w.length} windows)`);
+  ok(Math.abs(w[1].start - 0.1) < 1e-9, `split lands exactly on the cut (${w[1].start})`);
+  ok(framesInMs(w[0]) >= 1 && framesInMs(w[1]) >= 1, `each window holds frames (${framesInMs(w[0])}, ${framesInMs(w[1])})`);
+});
 await test("an empty timeline is still a plain render error", () => {
   const tl = normalizeTimeline({ fps: 24, resolution: { width: 320, height: 180 }, clips: [] });
   assert.throws(() => planRenderWindows(tl), /empty/i);
@@ -209,17 +226,19 @@ const mediaAssets = new Map(COLORS.map((_, i) => [`m${i}`, asset(`m${i}`, `m${i}
 
 // 8 sequential clips with fades, genuinely overlapping dissolves (the from-clip
 // extends 0.6s past the next clip's start), fractional non-frame-aligned cut
-// points, source trims, a typewriter caption that animates across window joins,
-// and an audio bed whose volume is animated up from zero: the shape of timeline
-// that used to die on the free-tier container.
+// points, source trims, a typewriter caption whose reveal spans the whole
+// timeline (so it is mid-animation at every window join), and an audio bed
+// whose volume is animated up from zero — the ONLY audio source, since the
+// video clips are muted: the shape of timeline that used to die on the free-tier
+// container.
 const complex = normalizeTimeline({ fps: 24, resolution: { width: 320, height: 180 }, clips: [
   ...Array.from({ length: 8 }, (_, i) => ({
     id: `c${i}`, assetId: `m${i}`, track: "video", start: i * 3 + 0.17, inPoint: 0.3, outPoint: 3.9,
-    fadeIn: 0.4, fadeOut: 0.4,
+    fadeIn: 0.4, fadeOut: 0.4, muted: true,
     ...(i > 0 ? { transitionIn: { fromClipId: `c${i - 1}`, type: "dissolve", duration: 0.6 } } : {}),
   })),
   { id: "t0", assetId: "", track: "overlay", text: "burn-in caption", start: 0, inPoint: 0, outPoint: 24.77,
-    textReveal: { mode: "typewriter", duration: 3, delay: 0.5 } },
+    textReveal: { mode: "typewriter", duration: 20, delay: 2 } },
   { id: "bed", assetId: "m0", track: "audio", start: 0, inPoint: 0, outPoint: 24.77, volume: 0,
     keyframes: { volume: [{ time: 0, value: 0 }, { time: 2, value: 1 }] } },
 ] });
@@ -234,6 +253,13 @@ await test("windowed render matches the single-pass render", async () => {
   ok(windows.length > 1, `timeline is split into ${windows.length} windows`);
   // the dissolves genuinely activate (an incoming transition needs the overlap)
   ok(complex.clips.filter((c) => incomingTransition(complex, c)).length === 7, "all seven dissolves are active");
+  // the caption animation is mid-flight at every window join
+  const cap = complex.clips.find((c) => c.id === "t0")!;
+  for (let i = 1; i < windows.length; i++) {
+    const t = windows[i].start;
+    ok(t > cap.textReveal!.delay && t < cap.textReveal!.delay + cap.textReveal!.duration,
+      `typewriter is mid-animation at join ${i} (${t}s inside [${cap.textReveal!.delay}, ${cap.textReveal!.delay + cap.textReveal!.duration}])`);
+  }
 
   // reference: single pass (the old path, unchanged for simple timelines)
   const single = path.join(WORK, "single.mp4");
@@ -271,22 +297,34 @@ await test("windowed render matches the single-pass render", async () => {
   const fS = frameCount(single), fW = frameCount(out);
   eq(fS, fW, `frame counts match (${fS} vs ${fW})`);
   ok(dW.streams.some((s: any) => s.codec_type === "audio"), "audio present in windowed render");
+  // and it is actually audible after the volume ramp (the video clips are
+  // muted, so the only sound source is the keyframed bed)
+  const vol = meanVolume(out);
+  ok(vol > -45, `audio bed is audible after its ramp (mean volume ${vol}dB)`);
   const p = psnr(single, out);
   ok(p > 40, `windowed render is pixel-faithful to the single pass (psnr ${p}dB)`);
 
   // per-join check: the frames around every window boundary must match the
-  // single pass too, not just the whole-video average.
+  // single pass too, not just the whole-video average — on BOTH sides of the
+  // join, comparing every extracted frame.
   for (let i = 1; i < windows.length; i++) {
     const t = windows[i].start;
     const a = framesAround(single, t), b = framesAround(out, t);
     ok(a.length === b.length && a.length >= 3, `join ${i} at ${t}s extracted ${a.length} frames`);
     const jp = joinPsnr(a, b);
-    ok(jp > 35, `frames around join ${i} (${t}s) match (psnr ${jp}dB)`);
+    ok(jp > 35, `frames around join ${i} (${t}s) match (worst-frame psnr ${jp}dB)`);
   }
   } finally { process.env.VIDEOFORGE_RENDER_BUDGET_MB = ""; }
 });
 
-/** Extract a few frames on both sides of a time point (input seek + decode). */
+function meanVolume(file: string): number {
+  const r = spawnSync("ffmpeg", ["-i", file, "-af", "volumedetect", "-f", "null", "-"], { encoding: "utf8" });
+  const m = r.stderr.match(/mean_volume:\s*(-?[\d.]+) dB/);
+  if (!m) throw new Error(`volumedetect failed: ${r.stderr.slice(-300)}`);
+  return parseFloat(m[1]);
+}
+
+/** Extract frames on both sides of a time point (input seek + decode). */
 function framesAround(file: string, t: number): string[] {
   const dir = fs.mkdtempSync(path.join(WORK, "join-"));
   const r = spawnSync("ffmpeg", ["-y", "-v", "error", "-ss", String(Math.max(0, t - 0.08)), "-i", file, "-frames:v", "6", path.join(dir, "f%02d.png")], { encoding: "utf8" });
@@ -294,10 +332,15 @@ function framesAround(file: string, t: number): string[] {
   return fs.readdirSync(dir).sort().map((n) => path.join(dir, n));
 }
 function joinPsnr(a: string[], b: string[]): number {
-  const r = spawnSync("ffmpeg", ["-v", "info", "-i", a[0], "-i", b[0], "-filter_complex", "[0:v][1:v]psnr", "-f", "null", "-"], { encoding: "utf8" });
-  const m = r.stderr.match(/average:([\d.]+|inf)/);
-  if (!m) throw new Error(`joinPsnr failed: ${r.stderr.slice(-300)}`);
-  return m[1] === "inf" ? Infinity : parseFloat(m[1]);
+  // compare every corresponding frame around the join, not just the first
+  let worst = Infinity;
+  for (let i = 0; i < a.length; i++) {
+    const r = spawnSync("ffmpeg", ["-v", "info", "-i", a[i], "-i", b[i], "-filter_complex", "[0:v][1:v]psnr", "-f", "null", "-"], { encoding: "utf8" });
+    const m = r.stderr.match(/average:([\d.]+|inf)/);
+    if (!m) throw new Error(`joinPsnr failed: ${r.stderr.slice(-300)}`);
+    worst = Math.min(worst, m[1] === "inf" ? Infinity : parseFloat(m[1]));
+  }
+  return worst;
 }
 
 // ---------------------------------------------------------------------------
@@ -390,11 +433,13 @@ await test("API: dense timeline renders via windowed passes and finishes", async
 
     // the renderable 8-clip timeline with fades, dissolves, a caption, and an
     // audio bed whose volume animates up from zero (regression: the windowed
-    // path must still include its audio in the export)
+    // path must still include its audio in the export). The video clips are
+    // muted so the bed is the ONLY audio source — if the windowed path drops
+    // it, the export is silent and this test fails on volume, not just streams.
     const goodId = await makeProject([
       ...Array.from({ length: 8 }, (_, i) => ({
         assetId: ids[i], track: "video", start: i * 3 + 0.17, inPoint: 0.3, outPoint: 3.9,
-        fadeIn: 0.4, fadeOut: 0.4,
+        fadeIn: 0.4, fadeOut: 0.4, muted: true,
         ...(i > 0 ? { transitionIn: { fromClipId: `x${i - 1}`, type: "dissolve", duration: 0.6 } } : {}),
       })).map((c: any, i: number) => ({ ...c, id: `x${i}` })),
       { id: "cap", assetId: "", track: "overlay", text: "e2e caption", start: 0, inPoint: 0, outPoint: 24.77 },
@@ -420,6 +465,7 @@ await test("API: dense timeline renders via windowed passes and finishes", async
     const d = probe(outFile);
     ok(Math.abs(parseFloat(d.format.duration) - 24.77) < 0.5, `duration ≈ 24.77s (got ${d.format.duration})`);
     ok(d.streams.some((s: any) => s.codec_type === "audio"), "audio in the exported file");
+    ok(meanVolume(outFile) > -45, `exported audio bed is audible after its ramp (${meanVolume(outFile)}dB)`);
     ok(frameCount(outFile) >= 24 * 24 - 2, `frame count ≈ 576 (got ${frameCount(outFile)})`);
   } finally { kill(); }
 });
