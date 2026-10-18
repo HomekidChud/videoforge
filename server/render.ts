@@ -10,6 +10,7 @@ import type { Asset } from "@shared/schema";
 import { clipDuration, clipScale, clipSpeed, clipX, clipY, normalizeTimeline, timelineDuration, type Clip, type Timeline } from "@shared/timeline";
 
 import { animationExpression, baseValue, isAnimated, valueAt, type AnimationProperty } from "@shared/animation";
+import { RENDER_QUALITIES, type RenderOptions } from "@shared/render-options";
 
 const f = (n: number) => Number(n.toFixed(3));
 
@@ -165,9 +166,9 @@ export type RenderPlan = { args: string[]; total: number; tempFiles: string[]; f
  * video/overlay tracks are layered (overlay above video), audio from every
  * unmuted clip is delayed to its start and mixed, text clips are drawn last.
  */
-export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset>, mediaDir: string, tmpDir: string, jobId: string, outPath: string, options: {frameAt?:number;width?:number} = {}): RenderPlan {
+export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset>, mediaDir: string, tmpDir: string, jobId: string, outPath: string, options: { frameAt?: number; width?: number; fps?: number; audio?: boolean; quality?: RenderOptions["quality"] } = {}): RenderPlan {
   const tl = normalizeTimeline(rawTimeline);
-  const W = options.width ? Math.round(options.width/2)*2 : tl.resolution.width, H = options.width ? Math.round(tl.resolution.height*W/tl.resolution.width/2)*2 : tl.resolution.height, fps = tl.fps;
+  const W = options.width ? Math.round(options.width / 2) * 2 : tl.resolution.width, H = options.width ? Math.round(tl.resolution.height * W / tl.resolution.width / 2) * 2 : tl.resolution.height, fps = options.fps ?? tl.fps;
   const total = Math.max(0.1, timelineDuration(tl));
   if (!tl.clips.length || timelineDuration(tl) <= 0) throw new Error("Timeline is empty, add at least one clip before rendering.");
 
@@ -200,6 +201,8 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     .filter((x) => x.c.track === "audio" || x.a.kind === "video");
 
   if (options.frameAt !== undefined) audioSources.length = 0; // stills never need audio
+  // An export with the sound off skips audio processing entirely, not just the output stream.
+  if (options.audio === false) audioSources.length = 0;
 
   // Missing assets should fail loudly instead of silently dropping footage.
   const missing = tl.clips.filter((c) => c.assetId && !assets.get(c.assetId)).map((c) => c.assetId);
@@ -495,6 +498,10 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     maps.push("-map", "[aout]");
   } else maps.push("-an");
 
+  // Encoding settings come from the whitelisted quality preset; the previous
+  // behaviour (veryfast, crf 20) is exactly the "standard" preset.
+  const quality = RENDER_QUALITIES[options.quality ?? "standard"];
+
   // A long edit produces a filter graph larger than the operating system allows for one argument
   // (spawn E2BIG), so big graphs are handed to FFmpeg as a script file instead.
   const graph = filters.join(";");
@@ -510,7 +517,7 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     ...graphArgs,
     ...(options.frameAt === undefined ? maps : ["-map","[vout]","-ss",String(options.frameAt),"-frames:v","1"]),
     ...(options.frameAt === undefined ? ["-t", String(f(total)),
-    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+    "-c:v", "libx264", "-preset", quality.preset, "-crf", String(quality.crf), "-pix_fmt", "yuv420p",
     ...(audioLabels.length ? ["-c:a", "aac", "-b:a", "192k"] : []),
     "-movflags", "+faststart"] : ["-c:v","png","-update","1"]),
     outPath,

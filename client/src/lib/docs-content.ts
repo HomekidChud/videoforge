@@ -1,6 +1,6 @@
 export type DocTask = { text: string; status: "todo" | "doing" | "done"; priority?: "High" | "Medium" | "Low" };
 export type DocSection = { title: string; text: string; callouts?: { kind: "note" | "tip" | "warning"; text: string }[]; code?: string; language?: string; rows?: string[][]; links?: { label: string; slug: string }[]; tasks?: DocTask[]; taskStats?: { done: number; doing: number; todo: number }; video?: string };
-export type DocPage = { slug: string; group: string; title: string; description: string; sections: DocSection[]; updated?: string; added?: string; taskStats?: { done: number; doing: number; todo: number } };
+export type DocPage = { slug: string; group: string; title: string; description: string; sections: DocSection[]; updated?: string; added?: string; badge?: "new" | "updated"; badgeUntil?: string; taskStats?: { done: number; doing: number; todo: number } };
 // The pages themselves come from docs/*.md, compiled by script/generate-docs.ts.
 export { DOC_PAGES, CONTRIBUTORS } from "./docs-generated";
 const json=(v:unknown)=>JSON.stringify(v,null,2);

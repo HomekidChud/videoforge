@@ -462,3 +462,29 @@
 .bs-start-scope { padding-left: 6px; }
 .bs-studio .bs-title { width: auto; flex: 1 1 200px; max-width: 300px; }
 @media (max-width: 1760px) { .bs-header .bs-lbl { display: none; } .bs-header .bs-btn { padding: 7px 10px; } }
+
+/* ============================================================================
+   Export configuration dialog, studio clock and language selector.
+   ========================================================================== */
+.studio .export-config { display:flex; flex-direction:column; gap:14px; }
+.studio .export-field { display:flex; flex-direction:column; gap:6px; }
+.studio .export-field > label { font-size:var(--text-xs); font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--forge-muted); }
+.studio .export-options { display:flex; gap:6px; flex-wrap:wrap; }
+.studio .export-options button { flex:1; min-width:64px; min-height:32px; padding:6px 10px; border-radius:6px; border:1px solid var(--forge-border); background:var(--forge-panel2); color:var(--forge-muted); font-size:var(--text-xs); font-weight:600; transition:background .12s, border-color .12s, color .12s; }
+.studio .export-options button:hover { background:#2d2d31; color:var(--forge-text); }
+.studio .export-options button.active { background:var(--forge-accent); border-color:var(--forge-accent); color:#23180d; }
+.studio .export-toggle { display:inline-flex; align-items:center; gap:10px; min-height:32px; padding:5px 12px 5px 6px; border-radius:99px; border:1px solid var(--forge-border); background:var(--forge-panel2); color:var(--forge-muted); font-size:var(--text-xs); font-weight:600; transition:background .12s, border-color .12s, color .12s; }
+.studio .export-toggle .export-toggle-knob { display:block; width:22px; height:22px; border-radius:50%; background:#3c3c41; transition:background .12s; }
+.studio .export-toggle[aria-checked="true"] { background:#2c2417; border-color:#57432b; color:var(--forge-text); }
+.studio .export-toggle[aria-checked="true"] .export-toggle-knob { background:var(--forge-accent); }
+.studio .export-summary { font-size:var(--text-xs); }
+.studio .studio-clock { display:inline-flex; align-items:center; min-height:28px; padding:0 8px; border-radius:6px; border:1px solid var(--forge-border); background:var(--forge-panel2); color:var(--forge-muted); font-size:var(--text-xs); letter-spacing:.04em; }
+.studio .menu-pop.menu-pop-end { right:0; }
+.studio .menu-pop .check { margin-left:auto; color:var(--forge-accent); }
+
+/* Media layers: no native image drag or text selection inside the stage. */
+.studio .preview-media { user-select:none; -webkit-user-drag:none; }
+.studio .preview-media-wrap { position:absolute; }
+
+/* Consistent keyboard focus: every control gets the same visible ring. */
+.studio button:focus-visible, .studio a:focus-visible, .studio input:focus-visible, .studio summary:focus-visible, .studio [role="switch"]:focus-visible, .studio [role="slider"]:focus-visible, .studio label.dropzone:focus-within { outline:2px solid var(--forge-accent); outline-offset:2px; }

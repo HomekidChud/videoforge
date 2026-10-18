@@ -19,7 +19,7 @@ function TemplatePreview({ template, color }: { template: string; color: string 
     return () => cancelAnimationFrame(frame);
   }, [hovered]);
   // Render the actual template model rather than unrelated marketing thumbnails.
-  const clips = useMemo(()=>templateClips({ template, color, title: template === "countdown" ? "Let's go" : "Make your move", subtitle: "Created with VideoForge", duration: 4 }, (() => { let i = 0; return () => `preview-${i++}`; })()).map(c => normalizeClip(c as Clip)),[template,color]);
+  const clips = useMemo(()=>templateClips({ template, color, title: template === "countdown" ? "3" : "Your headline", subtitle: "Supporting text", duration: 4 }, (() => { let i = 0; return () => `preview-${i++}`; })()).map(c => normalizeClip(c as Clip)),[template,color]);
   return <span className={`template-preview preview-${template}`} aria-hidden="true"
     onPointerEnter={() => { setHovered(true); setTime(0); }}
     onPointerLeave={() => { setHovered(false); setTime(1); }}>
@@ -36,16 +36,14 @@ function TemplatePreview({ template, color }: { template: string; color: string 
 }
 
 export default function ForgeGraphics({disabled,onApply}:{disabled:boolean;onApply:(op:{op:string;args:any})=>void}) {
-  const [title,setTitle]=useState("Make your next move"),[subtitle,setSubtitle]=useState("Created with VideoForge"),[color,setColor]=useState("#f6a447"),[duration,setDuration]=useState(4);
-  const [chosen,setChosen]=useState<string>("lower-third"),[points,setPoints]=useState("Scriptable timelines\nAnimation by code\nEverything fits"),[chapter,setChapter]=useState("01");
+  const [title,setTitle]=useState("Your headline"),[subtitle,setSubtitle]=useState(""),[color,setColor]=useState("#f6a447"),[duration,setDuration]=useState(4);
+  const [chosen,setChosen]=useState<string>("lower-third"),[points,setPoints]=useState("First point\nSecond point\nThird point"),[chapter,setChapter]=useState("01");
   const items=points.split("\n").map(x=>x.trim()).filter(Boolean).slice(0,6);
   return <div className="effects-panel" data-testid="graphics-library">
-    <div className="library-heading"><h3>Motion graphics</h3><span className="eyebrow">{MOTION_TEMPLATES.length} editable templates</span></div>
-    <p className="help-text">Pick a look. Make it yours. Every element stays editable.</p>
+    <div className="library-heading"><h3>Motion graphics</h3></div>
     <section className="effect-group"><div className="graphics-template-list">{MOTION_TEMPLATES.map(t=><button key={t.id} className={`graphics-template ${chosen===t.id?"chosen":""}`} aria-pressed={chosen===t.id} disabled={disabled} title={t.description} onClick={()=>setChosen(t.id)} data-testid={`template-${t.id}`}>
       <TemplatePreview template={t.id} color={color}/><span className="template-card-label"><b>{t.label}</b><span>{t.description}</span></span>
     </button>)}</div></section>
-    <h4 className="graphics-customize">Customize {MOTION_TEMPLATES.find(t=>t.id===chosen)?.label}</h4>
     <label className="field">Headline<input maxLength={120} value={title} onChange={e=>setTitle(e.target.value)} disabled={disabled} data-testid="graphics-title"/></label>
     <label className="field">Supporting text<input maxLength={120} value={subtitle} onChange={e=>setSubtitle(e.target.value)} disabled={disabled}/></label>
     {chosen==="bullet-list"&&<label className="field">Points (one per line, up to 6)<textarea rows={4} maxLength={400} value={points} onChange={e=>setPoints(e.target.value)} disabled={disabled} data-testid="graphics-items"/></label>}
@@ -53,7 +51,6 @@ export default function ForgeGraphics({disabled,onApply}:{disabled:boolean;onApp
     <div className="two-col"><label className="field">Duration (s)<input type="number" min={.5} max={60} step={.5} value={duration} disabled={disabled} onChange={e=>setDuration(Number(e.target.value))}/></label><label className="field">Accent<input type="color" aria-label="Graphics accent" value={color} disabled={disabled} onChange={e=>setColor(e.target.value)}/></label></div>
     <button className="primary-btn full" disabled={disabled||!title.trim()||(chosen==="bullet-list"&&!items.length)||!Number.isFinite(duration)||duration<.5||duration>60} onClick={()=>onApply({op:"add_motion_template",args:{template:chosen,title,subtitle,color,duration,...(chosen==="bullet-list"?{items}:{}),...(chosen==="chapter-number"?{number:chapter}:{})}})} data-testid="button-insert-template">Add to timeline</button>
     <section className="effect-group"><h4>Shape primitives</h4><div className="effect-grid">{SHAPE_TYPES.map(type=><button key={type} className="effect-chip" disabled={disabled} data-testid={`add-shape-${type}`} onClick={()=>onApply({op:"add_shape_clip",args:{duration,shape:{type,fill:color},label:type}})}>{type}</button>)}</div></section>
-    <a href="#/docs/motion-graphics" className="ghost-link">Motion graphics API guide</a>
   </div>;
 }
 

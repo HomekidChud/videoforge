@@ -28,7 +28,6 @@ function Chip({ effect, disabled, onApply }: { effect: Effect; disabled: boolean
 export default function ForgeEffects({ disabled, onApply }: { disabled: boolean; onApply: (e: Effect) => void }) {
   const group = (title: string, icon: React.ReactNode, items: Effect[]) => <section className="effect-group"><h4>{icon}{title}</h4><div className="effect-grid">{items.map((e) => <Chip key={`${e.kind}-${e.id}`} effect={e} disabled={disabled} onApply={onApply} />)}</div></section>;
   return <div className="effects-panel" data-testid="effects-panel">
-    <p className="help-text">Drag an effect onto a clip in the timeline or the preview. Click applies it to every selected clip. Transitions go on a video clip that follows another.</p>
     {group("Motion", <Sparkles size={13} />, MOTION_PRESETS.map((m) => ({ kind: "motion" as const, id: m.id, label: m.label })))}
     {group("Color", <Palette size={13} />, FILTERS.filter((f) => f !== "none").map((f) => ({ kind: "filter" as const, id: f, label: f[0].toUpperCase() + f.slice(1) })))}
     {group("Fades and looks", <Droplets size={13} />, FADES)}

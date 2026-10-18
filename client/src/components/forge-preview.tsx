@@ -8,6 +8,7 @@ import { textLayout } from "@shared/layout";
 import { getFont } from "@shared/fonts";
 import type { AssetDTO } from "@/lib/editor-model";
 import type { TimelineGesture } from "@/components/forge-timeline";
+import { useUILang } from "@/lib/ui-lang";
 
 export function previewFilter(c:Clip,scaleBlur=1) {
   const preset:Record<string,string>={none:"",mono:"grayscale(1)",sepia:"sepia(1)",vivid:"saturate(1.45) contrast(1.08)",cool:"sepia(.2) hue-rotate(165deg)",warm:"sepia(.25) saturate(1.15)",faded:"saturate(.7) contrast(.88) brightness(1.04)"};
@@ -41,29 +42,51 @@ function MediaLayer({clip,asset,time,playing,source,hidden,muted,onError,timelin
   const rel=Math.max(0,time-clip.start);
   const desired=clip.speedRamp?.length ? clip.inPoint+rampSourceAt(clip.speedRamp,rel) : clip.inPoint+rel*(clip.speed??1);
   const rate=clip.speedRamp?.length ? Math.max(0.0625, rampSpeedAt(clip.speedRamp,rel)) : (clip.speed??1);
+  // A zero-speed ramp segment holds the frame instead of pinning playbackRate near
+  // zero: a clamped rate drifts and needs corrective seeks, which reads as glitching.
+  const frozen=clip.speedRamp?.length ? rampSpeedAt(clip.speedRamp,rel)===0 : false;
+  const playPending=useRef(false);
   const sync=()=>{
     const el=media.current;if(!el)return;
     el.playbackRate=rate;
     el.muted=clip.muted||muted;
     el.volume=Math.min(1,Math.max(0,ev.volume*envelope(clip,time)*transitionAudio(timeline,clip,time)));
-    if(active && (!playing || Math.abs(el.currentTime-desired)>.2) && Number.isFinite(desired)) {
+    if(active && (!playing || frozen || Math.abs(el.currentTime-desired)>.2) && Number.isFinite(desired)) {
       try { el.currentTime=desired; } catch { /* metadata not loaded */ }
     }
-    if(active&&playing&&el.paused) el.play().catch(()=>{}); else if(!active||!playing) el.pause();
+    // play() is async: calling it again while the promise is pending just stacks
+    // requests, so track the intent instead of trusting el.paused between ticks.
+    if(active&&playing&&!frozen&&el.paused&&!playPending.current){
+      playPending.current=true;
+      el.play().then(()=>{playPending.current=false;}).catch(()=>{playPending.current=false;});
+    }
+    else if(!active||!playing||frozen) el.pause();
   };
   useEffect(sync,[time,playing,clip,source,muted]);
   useEffect(()=>{setFailed(false);},[source]);
   const visual=clip.track!=="audio"&&asset.kind!=="audio";
   const tr=incomingTransition(timeline,clip),p=transitionProgress(timeline,clip,time);
   const g=layerTransform(ev),opacity=(ev.opacity??1)*envelope(clip,time)*(tr?.type==="dissolve"?p:1);
-  const base={opacity,clipPath:tr&&p<1?transitionClipPath(tr.type,p):cropClip(clip.crop,ev.reveal),filter:previewFilter(ev,.6),display:active&&!hidden?undefined:"none",transform:g.transform,mixBlendMode:undefined};
-  const style=clip.track==="overlay" ? {left:`${g.x*100}%`,top:`${g.y*100}%`,width:`${g.scale*100}%`,height:"auto",...base} : {left:`${g.x*100}%`,top:`${g.y*100}%`,width:"100%",height:"100%",objectFit:clip.fit==="cover"?"cover" as const:clip.fit==="fill"?"fill" as const:"contain" as const,...base,transform:`${g.transform} scale(${g.scale})`};
+  const innerMask=cropClip(clip.crop,ev.reveal),transitionMask=tr&&p<1?transitionClipPath(tr.type,p):undefined;
+  // A layer can need two masks at once: a crop or reveal wipe on the media plus a
+  // transition wipe on top. One element cannot intersect two clip-paths, so the
+  // media then sits in a wrapper that carries the transition mask.
+  const needsWrap=!!transitionMask&&innerMask!==undefined;
+  const base={opacity,filter:previewFilter(ev,.6),display:active&&!hidden?undefined:"none",transform:g.transform,mixBlendMode:undefined};
+  const position=clip.track==="overlay"?{left:`${g.x*100}%`,top:`${g.y*100}%`,width:`${g.scale*100}%`,height:"auto"}:{left:`${g.x*100}%`,top:`${g.y*100}%`,width:"100%",height:"100%",objectFit:clip.fit==="cover"?"cover" as const:clip.fit==="fill"?"fill" as const:"contain" as const,transform:`${g.transform} scale(${g.scale})`};
+  const style=needsWrap?{...position,...base,clipPath:transitionMask}:{...position,...base,clipPath:transitionMask??innerMask};
+  const innerStyle=needsWrap?{width:"100%",height:"100%",objectFit:position.objectFit,clipPath:innerMask}:undefined;
   const fail=()=>{if(!failed){setFailed(true);onError(`Couldn’t load ${asset.filename}. Check the source or API key.`);}};
   const common={"data-layer":clip.id} as any;
-  if(asset.kind==="image")return source&&visual?<img {...common} src={source} crossOrigin="anonymous" className="preview-media" style={style} alt="" onError={fail}/>:null;
+  if(asset.kind==="image"){
+    if(!source||!visual)return null;
+    if(needsWrap)return <div {...common} className="preview-media-wrap" style={style}><img src={source} crossOrigin="anonymous" decoding="async" draggable={false} className="preview-media" style={innerStyle} alt="" onError={fail}/></div>;
+    return <img {...common} src={source} crossOrigin="anonymous" decoding="async" draggable={false} className="preview-media" style={style} alt="" onError={fail}/>;
+  }
   if(!source)return null;
   if(!visual)return <audio ref={el=>{media.current=el;}} src={source} crossOrigin="anonymous" preload="metadata" onLoadedMetadata={sync} onError={fail}/>;
-  return <video {...common} ref={el=>{media.current=el;}} src={source} crossOrigin="anonymous" preload="auto" playsInline className="preview-media" style={style} onLoadedMetadata={sync} onError={fail}/>;
+  if(needsWrap)return <div {...common} className="preview-media-wrap" style={style}><video ref={el=>{media.current=el;}} src={source} crossOrigin="anonymous" preload="auto" playsInline draggable={false} className="preview-media" style={innerStyle} onLoadedMetadata={sync} onError={fail}/></div>;
+  return <video {...common} ref={el=>{media.current=el;}} src={source} crossOrigin="anonymous" preload="auto" playsInline draggable={false} className="preview-media" style={style} onLoadedMetadata={sync} onError={fail}/>;
 }
 
 type PreviewProps={emptyActions?:React.ReactNode;timeline:Timeline;assets:AssetDTO[];time:number;playing:boolean;selectedId:string|null;readOnly:boolean;gesture:TimelineGesture;mediaUrl:(id:string,url:string)=>string;onError:(message:string)=>void;onValues:(id:string,values:Record<string,number>,live:boolean)=>void;onSelect?:(id:string|null,mode?:"replace"|"toggle")=>void;muted?:boolean;onDropEffect?:(effect:any)=>void;peers?:Peer[];onCursor?:(c:{area:"preview";x:number;y:number}|null)=>void};
@@ -88,6 +111,7 @@ function cycledColor(cycle: { steps: string[]; duration?: number } | undefined, 
 }
 
 export default function ForgePreview({timeline,assets,time,playing,selectedId,readOnly,gesture,mediaUrl,onError,onValues,onSelect,muted,onDropEffect,peers,onCursor,emptyActions}:PreviewProps) {
+  const { t } = useUILang();
   const [dropHot,setDropHot]=useState(false);
   const area=useRef<HTMLDivElement>(null),stage=useRef<HTMLDivElement>(null);
   const [size,setSize]=useState({width:640,height:360}),[box,setBox]=useState<{l:number;t:number;w:number;h:number}|null>(null);
@@ -102,7 +126,9 @@ export default function ForgePreview({timeline,assets,time,playing,selectedId,re
   const selected=timeline.clips.find(c=>c.id===selectedId),selectedActive=!!selected&&time>=selected.start&&time<clipEnd(selected)&&selected.track!=="audio"&&!hiddenTrack(selected);
   // Measure the selected layer so the on-canvas handles follow rotation, scale and keyframes.
   useLayoutEffect(()=>{
-    const root=stage.current;if(!root||!selected||!selectedActive){setBox(prev=>prev?null:prev);return;}
+    // Handles are only shown while paused; skip the per-frame measurement
+    // during playback so the layout pass does not fight the rAF clock.
+    const root=stage.current;if(!root||!selected||!selectedActive||playing){setBox(prev=>prev?null:prev);return;}
     const el=root.querySelector(`[data-layer="${selected.id}"]`) as HTMLElement|null;if(!el){setBox(prev=>prev?null:prev);return;}
     const r=el.getBoundingClientRect(),s=root.getBoundingClientRect();
     // object-fit: contain footage fills the frame element, so use the intrinsic video rect when possible
@@ -146,7 +172,7 @@ export default function ForgePreview({timeline,assets,time,playing,selectedId,re
       }}/>)});
   }
   for(const c of texts){const ev=evaluateClip(c,time),g=layerTransform(c.assetId?{...c,assetId:"",x:.5,y:.82,rotation:0,scale:1,keyframes:undefined}:ev),lay=textLayout(c,timeline.resolution),fitted=c.textFit!=="none",shown=revealedText(fitted?lay.text:(c.text??""),c.textReveal,c.start,time);overlayItems.push({z:c.z??0,start:c.start,node:(
-    <div key={`${c.id}-text`} data-layer={c.assetId?undefined:c.id} className="preview-caption" style={{left:`${g.x*100}%`,top:`${g.y*100}%`,fontSize:fitted?lay.fontSize*size.height/timeline.resolution.height*g.scale:Math.round(size.height*(c.textSize??6)/100*g.scale),maxWidth:fitted?"none":undefined,whiteSpace:fitted?"pre":undefined,color:cycledColor(c.textColorCycle,c.start,time)??c.textColor??"#ffffff",fontFamily:getFont(c.font).stack,fontWeight:c.fontWeight??400,textAlign:c.textAlign,lineHeight:c.lineHeight,letterSpacing:c.letterSpacing?`${c.letterSpacing}em`:undefined,textTransform:c.textTransform==="uppercase"?"uppercase":undefined,background:c.textBg?"rgba(0,0,0,.55)":undefined,padding:c.textBg?".25em .35em":0,opacity:(c.assetId?1:(ev.opacity??1))*envelope(c,time),transform:g.transform,filter:c.blur?`blur(${c.blur*.6}px)`:undefined,textShadow:c.textBg?"none":"0 1px 3px #000"}}>{shown}</div>)});}
+    <div key={`${c.id}-text`} data-layer={c.assetId?undefined:c.id} className="preview-caption" style={{left:`${g.x*100}%`,top:`${g.y*100}%`,fontSize:fitted?lay.fontSize*size.height/timeline.resolution.height*g.scale:Math.round(size.height*(c.textSize??6)/100*g.scale),maxWidth:fitted?"none":undefined,whiteSpace:fitted?"pre":undefined,color:cycledColor(c.textColorCycle,c.start,time)??c.textColor??"#ffffff",fontFamily:getFont(c.font).stack,fontWeight:c.fontWeight??400,textAlign:c.textAlign,lineHeight:c.lineHeight,letterSpacing:c.letterSpacing?`${c.letterSpacing}em`:undefined,textTransform:c.textTransform==="uppercase"?"uppercase":undefined,background:c.textBg?"rgba(0,0,0,.55)":undefined,padding:c.textBg?".25em .35em":0,opacity:(c.assetId?1:(ev.opacity??1))*envelope(c,time),transform:g.transform,filter:c.blur?`blur(${c.blur*.6}px)`:undefined,textShadow:c.textBg?"none":"0 1px 3px #000",clipPath:revealClip(ev.reveal)}}>{shown}</div>)});}
   overlayItems.sort((p,q)=>p.z-q.z||p.start-q.start);
   return <div className={`preview-area ${dropHot?"drop-hot":""}`} ref={area} onDragOver={e=>{if(onDropEffect&&!readOnly&&e.dataTransfer.types.includes("application/x-vf-effect")){e.preventDefault();e.dataTransfer.dropEffect="copy";setDropHot(true);}}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node|null))setDropHot(false);}} onDrop={e=>{setDropHot(false);if(!onDropEffect||readOnly)return;try{const effect=JSON.parse(e.dataTransfer.getData("application/x-vf-effect"));e.preventDefault();e.stopPropagation();onDropEffect(effect);}catch{/* not an effect */}}}>
     <div className={`preview-stage ${onSelect?"selectable-stage":""}`} ref={stage} style={{width:size.width,height:size.height,background:timeline.background??"#000"}} data-testid="preview-stage"
@@ -161,7 +187,7 @@ export default function ForgePreview({timeline,assets,time,playing,selectedId,re
       {overlayItems.map((it)=>it.node)}
       {box&&!playing&&<div className="selection-frame" style={{left:box.l,top:box.t,width:box.w,height:box.h}} onPointerDown={e=>startDrag(e,"move")} data-testid="selection-frame"><span className="scale-handle" onPointerDown={e=>startDrag(e,"scale")} aria-label="Drag to scale"/></div>}
       {peers&&<PreviewCursors peers={peers}/>}
-      {!timeline.clips.length&&<div className="preview-empty"><Film size={28}/><h3>Your next story starts here.</h3><p>Import media or add a title to begin.</p>{emptyActions&&<div className="preview-empty-actions">{emptyActions}</div>}</div>}
+      {!timeline.clips.length&&<div className="preview-empty"><Film size={28}/><p>{t("preview.empty")}</p>{emptyActions&&<div className="preview-empty-actions">{emptyActions}</div>}</div>}
     </div><span className="preview-resolution mono">{timeline.resolution.width} × {timeline.resolution.height} · {timeline.fps} FPS</span>
   </div>;
 }

@@ -37,13 +37,14 @@
 .nav-links a { display:flex; align-items:center; gap:7px; height:100%; color:var(--forge-muted); border-bottom:2px solid transparent; padding-top:2px; }
 .nav-links a:hover { color:var(--forge-text); }
 .nav-links a.active { color:var(--forge-accent); border-color:var(--forge-accent); }
-.primary-btn,.secondary-btn,.danger-btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:36px; padding:8px 14px; border-radius:6px; font-weight:600; font-size:var(--text-sm); line-height:1.25; white-space:nowrap; }
+.primary-btn,.secondary-btn,.danger-btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:36px; padding:8px 14px; border-radius:6px; font-weight:600; font-size:var(--text-sm); line-height:1.25; white-space:nowrap; transition:background .12s ease, border-color .12s ease, color .12s ease, transform .06s ease; }
+.primary-btn:active,.secondary-btn:active,.danger-btn:active,.icon-btn:active { transform:translateY(1px); }
 .primary-btn { background:var(--forge-accent); color:#23180d; border:1px solid var(--forge-accent); }
 .primary-btn:hover { background:var(--forge-accent-hover); }
 .secondary-btn { background:var(--forge-panel2); border:1px solid var(--forge-border); color:var(--forge-text); }
 .secondary-btn:hover { background:#2d2d31; border-color:#49494e; }
 .danger-btn { background:#bc4646; border:1px solid #bc4646; color:white; }
-.icon-btn { display:inline-flex; align-items:center; justify-content:center; width:32px; min-width:32px; height:32px; border-radius:5px; border:1px solid transparent; background:transparent; color:var(--forge-muted); }
+.icon-btn { display:inline-flex; align-items:center; justify-content:center; width:32px; min-width:32px; height:32px; border-radius:5px; border:1px solid transparent; background:transparent; color:var(--forge-muted); transition:background .12s ease, border-color .12s ease, color .12s ease; }
 .icon-btn:hover,.icon-btn.active { color:var(--forge-text); background:var(--forge-panel2); border-color:var(--forge-border); }
 .icon-btn.accent { color:var(--forge-accent); }
 .icon-btn.danger:hover { color:#ff8585; }

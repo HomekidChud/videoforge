@@ -12,6 +12,7 @@ import {
 } from "@shared/rig";
 import type { AssetDTO } from "@/lib/editor-model";
 import ForgePreview from "./forge-preview";
+import { safeLocalStorage } from "@/lib/ui-lang";
 
 type Props = {
   timeline: Timeline;
@@ -44,7 +45,7 @@ export default function ForgeAnimator(props: Props) {
   const { timeline, assets, mediaUrl, projectKey, readOnly, onApply, onCreateClips, onClose, onError, onNote } = props;
   const res = timeline.resolution;
   const [anims, setAnims] = useState<RigAnimation[]>(() => {
-    const saved = loadAnimations(window.localStorage, projectKey);
+    const saved = loadAnimations(safeLocalStorage, projectKey);
     return saved.length ? saved : [newAnimation(uid(), "Animation 1", props.playhead, 2)];
   });
   const [activeId, setActiveId] = useState(() => anims[0].id);
@@ -75,8 +76,8 @@ export default function ForgeAnimator(props: Props) {
   const redo = () => { if (!future.length) return; setPast((p) => [...p, anims]); setAnims(future[0]); setFuture(future.slice(1)); };
 
   // Save to this browser as you go.
-  useEffect(() => { const h = window.setTimeout(() => saveAnimations(window.localStorage, projectKey, anims), 250); return () => window.clearTimeout(h); }, [anims, projectKey]);
-  useEffect(() => () => saveAnimations(window.localStorage, projectKey, anims), []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const h = window.setTimeout(() => saveAnimations(safeLocalStorage, projectKey, anims), 250); return () => window.clearTimeout(h); }, [anims, projectKey]);
+  useEffect(() => () => saveAnimations(safeLocalStorage, projectKey, anims), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- the stage: the edit with this animation baked in, non-destructively ---------------------
   const previewTimeline = useMemo<Timeline>(() => {

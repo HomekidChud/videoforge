@@ -30,7 +30,7 @@ export const DOC_ENDPOINTS = [
 
 export type DocTask = { text: string; status: "todo" | "doing" | "done"; priority?: "High" | "Medium" | "Low" };
 export type DocSection = { title: string; text: string; callouts?: { kind: "note" | "tip" | "warning"; text: string }[]; code?: string; language?: string; rows?: string[][]; links?: { label: string; slug: string }[]; tasks?: DocTask[]; taskStats?: { done: number; doing: number; todo: number }; video?: string };
-export type DocPage = { slug: string; group: string; title: string; description: string; sections: DocSection[]; updated?: string; added?: string; taskStats?: { done: number; doing: number; todo: number } };
+export type DocPage = { slug: string; group: string; title: string; description: string; sections: DocSection[]; updated?: string; added?: string; badge?: "new" | "updated"; badgeUntil?: string; taskStats?: { done: number; doing: number; todo: number } };
 
 /** Tables that must always match the code: generated from the shared catalogs. */
 const AUTO_ROWS: Record<string, () => string[][]> = {
@@ -78,6 +78,10 @@ export function parseDocPage(slug: string, md: string): DocPage {
     if (m) fm[m[1]] = m[2].trim();
   }
   for (const key of ["title", "group", "description"]) if (!fm[key]) throw new Error(`${slug}.md: frontmatter is missing ${key}`);
+  // A page can opt into a "New"/"Updated" label explicitly; git dates alone made
+  // every page look new whenever the repo was recreated or squashed.
+  if (fm.badge && fm.badge !== "new" && fm.badge !== "updated") throw new Error(`${slug}.md: badge must be "new" or "updated"`);
+  if (fm.badgeUntil && !/^\d{4}-\d{2}-\d{2}$/.test(fm.badgeUntil)) throw new Error(`${slug}.md: badgeUntil must be an ISO date (YYYY-MM-DD)`);
 
   const sections: DocSection[] = [];
   let current: DocSection | null = null;
@@ -186,7 +190,10 @@ export function parseDocPage(slug: string, md: string): DocPage {
   flushParagraph();
   if (current) sections.push(current);
   if (!sections.length) throw new Error(`${slug}.md: no sections`);
-  return { slug, group: fm.group, title: fm.title, description: fm.description, sections };
+  const badge = fm.badge === "new" || fm.badge === "updated" ? fm.badge : undefined;
+  const badgeUntil = fm.badgeUntil && /^\d{4}-\d{2}-\d{2}$/.test(fm.badgeUntil) ? fm.badgeUntil : undefined;
+  if (fm.badgeUntil && !fm.badge) throw new Error(`${slug}.md: badgeUntil needs a badge`);
+  return { slug, group: fm.group, title: fm.title, description: fm.description, sections, ...(badge ? { badge } : {}), ...(badge && badgeUntil ? { badgeUntil } : {}) };
 }
 
 /** Git dates for a docs page; absent in shallow checkouts, so every failure is tolerated. */

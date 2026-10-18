@@ -23,10 +23,13 @@ const DEFAULT_FILTER: TaskFilter = { status: "all", priority: "all", area: "all"
 const loadFilter = (): TaskFilter => { try { return { ...DEFAULT_FILTER, ...JSON.parse(localStorage.getItem(TASKS_KEY) ?? "{}") as Partial<TaskFilter> }; } catch { return DEFAULT_FILTER; }; };
 const saveFilter = (f: TaskFilter) => { try { localStorage.setItem(TASKS_KEY, JSON.stringify(f)); } catch { /* storage is optional */ } };
 const PRIORITY_RANK: Record<string, number> = { High: 0, Medium: 1, Low: 2, none: 3 };
-/** New if the page was added within 30 days, Updated if it changed within 30 days. */
-const pageBadge = (p: { added?: string; updated?: string }): "New" | "Updated" | null => {
-  const age = (iso?: string) => (iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000) : Infinity);
-  return age(p.added) <= 30 ? "New" : age(p.updated) <= 30 ? "Updated" : null;
+/** A page's label comes from its own frontmatter (badge / badgeUntil), never from
+ *  git dates: a squashed or recreated repo made every page look "new" at once. */
+const pageBadge = (p: { badge?: "new" | "updated"; badgeUntil?: string }): "New" | "Updated" | null => {
+  if (!p.badge) return null;
+  const until = Date.parse(p.badgeUntil ?? "");
+  if (Number.isFinite(until) && Date.now() > until) return null;
+  return p.badge === "new" ? "New" : "Updated";
 };
 
 /** Words in a page, so every guide can say how long it takes to read. */

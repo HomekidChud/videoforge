@@ -15,6 +15,7 @@ import {
 } from "@shared/custom-tools";
 import type { TimelineOp } from "@shared/editing";
 import { loadLang, saveLang, trLabel, trDescription, trGroup, trHeading, trUI, matchesSearch, type BlockLang } from "@shared/block-i18n";
+import { LANG_CHANGE_EVENT, safeLocalStorage } from "@/lib/ui-lang";
 
 /** The studio's language, so palette chips and node titles can speak it. */
 const LangContext = createContext<BlockLang>("en");
@@ -37,17 +38,17 @@ type StudioProps = {
 
 const uid = () => `n-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 
-/** One line of help per category, shown as a tooltip on the rail and under the palette title. */
+/** One short line of help per category, shown as a tooltip on the rail and under the palette title. */
 const CATEGORY_HELP: Record<string, string> = {
-  Create: "Add new things to your video: titles, shapes, music notes",
-  Edit: "Change clips you already have: move, resize, colour, layer",
-  Animate: "Make clips move: zoom, slide, spin, pop, glow",
-  Rig: "Make clips act like parts of a puppet: pose them together, follow, play Animator animations",
-  Text: "Type-on effects, word reveals and colour changes",
-  Style: "Looks: filters, brightness, blur, borders",
+  Create: "Titles, shapes and markers",
+  Edit: "Move, resize, colour and layer clips",
+  Animate: "Zoom, slide, spin and pop",
+  Rig: "Pose clips together and play Animator animations",
+  Text: "Type-on effects and colour changes",
+  Style: "Filters, brightness and blur",
   Clips: "Copy, delete and reorder clips",
   Timing: "Speed, pauses, fades and start times",
-  Stickers: "Clips you saved as reusable building blocks",
+  Stickers: "Saved reusable clips",
   Values: "Text, number and yes/no boxes that plug into any field",
   Flow: "Repeat, loops, functions and notes",
 };
@@ -598,7 +599,13 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, onOpenAnimator,
   const [presetsOpen, setPresetsOpen] = useState(false);
   const [shared, setShared] = useState("");
   const [histTick, bumpHist] = useState(0);
-  const [lang, setLang] = useState<BlockLang>(() => loadLang(window.localStorage));
+  const [lang, setLang] = useState<BlockLang>(() => loadLang(safeLocalStorage));
+  // The Studio language selector and this panel share one storage key; follow live changes.
+  useEffect(() => {
+    const h = () => setLang(loadLang(safeLocalStorage));
+    window.addEventListener(LANG_CHANGE_EVENT, h);
+    return () => window.removeEventListener(LANG_CHANGE_EVENT, h);
+  }, []);
   /** Always-on field dots (clip/frame/value sockets) vs hover-revealed ones. */
   const [showHandles, setShowHandles] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -944,7 +951,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, onOpenAnimator,
     const position = rf.screenToFlowPosition({ x: event.clientX, y: event.clientY });
     const base = { id: uid(), position: { x: position.x - 90, y: position.y - 20 } };
     if (stickerId) {
-      const sticker = listStickers(window.localStorage).find((s) => s.id === stickerId);
+      const sticker = listStickers(safeLocalStorage).find((s) => s.id === stickerId);
       if (!sticker) return;
       addNode({ ...base, type: "action", op: "add_clip", args: stickerArgs(sticker) });
     } else if (blockId) {
@@ -1083,7 +1090,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, onOpenAnimator,
           <button className="bs-btn" onClick={() => setTutorialStep(0)} disabled={readOnly} data-testid="bs-tutorial-open" title="Show the studio tutorial"><GraduationCap size={14} aria-hidden="true" /> <span className="bs-lbl">Tutorial</span></button>
         )}
         {tab === "blocks" && (
-          <button className="bs-btn" onClick={() => { const next: BlockLang = lang === "es" ? "en" : "es"; setLang(next); saveLang(next, window.localStorage); }} data-testid="bs-lang" title="Switch language / Cambiar idioma"><Languages size={14} aria-hidden="true" /> {lang === "es" ? "ES" : "EN"}</button>
+          <button className="bs-btn" onClick={() => { const next: BlockLang = lang === "es" ? "en" : "es"; setLang(next); saveLang(next, safeLocalStorage); window.dispatchEvent(new CustomEvent(LANG_CHANGE_EVENT)); }} data-testid="bs-lang" title="Switch language / Cambiar idioma"><Languages size={14} aria-hidden="true" /> {lang === "es" ? "ES" : "EN"}</button>
         )}
         {tab === "blocks" && (
           <button className="bs-btn bs-btn-presets" onClick={() => setPresetsOpen((o) => !o)} disabled={readOnly} data-testid="bs-presets" title="Ready-made recipes of connected blocks"><Sparkles size={14} aria-hidden="true" /> Presets</button>
@@ -1186,8 +1193,8 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, onOpenAnimator,
               </div>
             ) : category === "Stickers" ? (
               <div className="bs-palette-group">
-                {listStickers(window.localStorage).length === 0 && <p className="bs-hint">No stickers yet. Add a “Save as sticker” block to turn any clip into one.</p>}
-                {listStickers(window.localStorage).map((s) => (
+                {listStickers(safeLocalStorage).length === 0 && <p className="bs-hint">No stickers yet. Add a “Save as sticker” block to turn any clip into one.</p>}
+                {listStickers(safeLocalStorage).map((s) => (
                   <div key={s.id} className="bs-chip bs-chip-sticker" draggable={!readOnly}
                     data-testid={`bs-sticker-${s.id}`}
                     onDragStart={(e) => { e.dataTransfer.setData("application/videoforge-sticker", s.id); e.dataTransfer.effectAllowed = "move"; }}
@@ -1221,7 +1228,6 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, onOpenAnimator,
             )}
             <div className="bs-palette-group">
               <h4 title={CATEGORY_HELP[category] ?? ""}>{CATEGORY_HELP[category] ?? `${category} blocks`}</h4>
-              <p className="bs-hint">Connect blocks top to bottom to run them in order, shown as green wires. A block's coloured field dots appear when you hover it: drag from a clip, frame or value block into one to fill that field. Bring clips and frames in with the buttons above.</p>
             </div>
           </aside>
           <div className="bs-canvas-col">
@@ -1247,14 +1253,7 @@ function Studio({ tool, ctx, readOnly, onChange, onClose, onRun, onOpenAnimator,
               <Background variant={BackgroundVariant.Dots} gap={22} size={1.4} />
               <Controls showInteractive={false} />
               <MiniMap pannable zoomable className="bs-minimap" nodeColor={(n) => (n.type === "start" ? "#3d9a63" : n.type === "clipRef" ? "#4a8fd6" : n.type === "frame" ? "#d08a2e" : n.type === "repeat" || n.type === "eachClip" ? "#c9a227" : n.type === "function" || n.type === "call" ? "#7d5bb5" : "#4a5058")} />
-              <Panel position="top-right">
-                <div className="bs-legend">
-                  <span><i className="bs-dot bs-dot-run" /> run order</span>
-                  <span><i className="bs-dot bs-dot-body" /> repeat body</span>
-                  <span><i className="bs-dot bs-dot-link" /> clip / frame link</span>
-                  <span><i className="bs-dot bs-dot-param" /> field dot, hover a block</span>
-                </div>
-              </Panel>
+              <Panel position="top-right" />
             </ReactFlow>
           </div>
           {errorsBar}

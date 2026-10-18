@@ -863,7 +863,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T20:03:54Z",
+    "updated": "2026-10-17T22:02:27Z",
     "added": "2026-10-17T20:03:54Z"
   },
   {
@@ -2552,7 +2552,7 @@ export const DOC_PAGES: DocPage[] = [
         ]
       }
     ],
-    "updated": "2026-10-17T20:03:54Z",
+    "updated": "2026-10-17T22:02:27Z",
     "added": "2026-10-17T20:03:54Z"
   },
   {
@@ -4221,14 +4221,14 @@ export const DOC_PAGES: DocPage[] = [
       "doing": 0,
       "todo": 29
     },
-    "updated": "2026-10-17T18:48:19Z",
+    "updated": "2026-10-17T22:02:27Z",
     "added": "2026-10-16T00:27:26Z"
   }
 ];
 
 export const CONTRIBUTORS: { name: string; commits: number }[] = [
   {
-    "commits": 71,
+    "commits": 75,
     "name": "HomekidChud"
   },
   {

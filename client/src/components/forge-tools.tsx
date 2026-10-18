@@ -3,16 +3,17 @@ import { BUILT_IN_TOOLS, loadUserTools, saveUserTools, runTool, saveSticker, dec
 import type { ToolContext } from "@shared/custom-tools";
 import type { TimelineOp } from "@shared/editing";
 import { api } from "@/lib/api";
+import { safeLocalStorage } from "@/lib/ui-lang";
 import BlockStudio, { defaultGraph } from "./forge-block-studio";
 
 export function ForgeTools({ disabled, onRun, onError, onNote, getCtx, studio = true, autoOpen = false, onExitStudio, onOpenAnimator }: { disabled: boolean; onRun: (ops: TimelineOp[]) => void; onError: (message: string) => void; onNote?: (message: string) => void; getCtx: () => ToolContext; studio?: boolean; autoOpen?: boolean; onExitStudio?: () => void; onOpenAnimator?: () => void }) {
-  const [userTools, setUserTools] = useState<CustomTool[]>(() => loadUserTools(window.localStorage));
+  const [userTools, setUserTools] = useState<CustomTool[]>(() => loadUserTools(safeLocalStorage));
   const [editing, setEditing] = useState<CustomTool | null>(null);
   const [freshTool, setFreshTool] = useState(false);
   const [importCode, setImportCode] = useState("");
   /** The untouched state of a brand-new draft, so closing it without changes doesn't save a junk tool. */
   const draftRef = useRef<string | null>(null);
-  useEffect(() => saveUserTools(userTools, window.localStorage), [userTools]);
+  useEffect(() => saveUserTools(userTools, safeLocalStorage), [userTools]);
 
   // The tool library on the server: tools sync per account (or per API key), so
   // they follow you between browsers. The browser keeps an offline copy, but the
@@ -29,11 +30,11 @@ export function ForgeTools({ disabled, onRun, onError, onNote, getCtx, studio = 
         const me = await api<{ id?: string; kind?: string }>("GET", "/api/auth/me");
         const identity = me?.id ?? "anonymous";
         if (!alive) return;
-        const prevOwner = window.localStorage.getItem("vf.custom-tools.owner");
+        const prevOwner = safeLocalStorage.getItem("vf.custom-tools.owner");
         if (prevOwner !== identity) {
           // A different account (or key) is in: start fresh from the server.
-          window.localStorage.setItem("vf.custom-tools.owner", identity);
-          saveUserTools([], window.localStorage);
+          safeLocalStorage.setItem("vf.custom-tools.owner", identity);
+          saveUserTools([], safeLocalStorage);
           setUserTools([]);
         }
         const data = await api<{ tools: CustomTool[] }>("GET", "/api/tools");
@@ -79,7 +80,7 @@ export function ForgeTools({ disabled, onRun, onError, onNote, getCtx, studio = 
         const id = String((op.args as any)?.clipId ?? "");
         const raw = getCtx().clips.find((c) => c.id === id)?.raw;
         if (!raw) return onError("Save as sticker needs a clip. Connect a clip block to its Clip field");
-        saveSticker(window.localStorage, String((op.args as any)?.name ?? "Sticker"), JSON.parse(JSON.stringify(raw)));
+        saveSticker(safeLocalStorage, String((op.args as any)?.name ?? "Sticker"), JSON.parse(JSON.stringify(raw)));
         onNote?.(`Saved sticker “${String((op.args as any)?.name ?? "Sticker")}”`);
       }
       if (!ops.length) return;
@@ -101,7 +102,7 @@ export function ForgeTools({ disabled, onRun, onError, onNote, getCtx, studio = 
         if (!untouched) {
           const next = userTools.some((t) => t.id === editing.id) ? userTools.map((t) => (t.id === editing.id ? editing : t)) : [...userTools, editing];
           setUserTools(next);
-          saveUserTools(next, window.localStorage); // synchronous: the panel switch below can unmount us before an effect runs
+          saveUserTools(next, safeLocalStorage); // synchronous: the panel switch below can unmount us before an effect runs
           void pushTool(editing); // and the server library, so it follows you to other browsers
         }
         setEditing(null);

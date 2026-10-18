@@ -16,6 +16,7 @@ import { capabilities } from "@shared/capabilities";
 import { fitSummary } from "@shared/layout";
 import { GRAPHICS_SCHEMA, MOTION_TEMPLATES } from "@shared/graphics";
 import { buildRenderPlan, runFfmpeg } from "./render";
+import { sanitizeRenderOptions, type RenderOptions } from "@shared/render-options";
 import { ensureTimelineFonts } from "./fonts";
 import { requireScope, requireMediaAccess, projectAllowed, assetAllowed, keyRestrictions } from "./auth";
 import { actorOf, syncTimeline, logEvent, renameLive, dropLive, registerLiveRoutes } from "./live";
@@ -138,7 +139,7 @@ const TMP_DIR = path.resolve("data/tmp");
 ensureDir(TMP_DIR, "tmp");
 
 const SYSTEM = { id: "system", label: "VideoForge", scope: "admin" };
-async function runRender(jobId: string, projectId: string) {
+async function runRender(jobId: string, projectId: string, renderOptions: RenderOptions = {}) {
   const project = storage.getProject(projectId);
   if (!project) {
     storage.updateRenderJob(jobId, { status: "error", error: "project not found", updatedAt: now() });
@@ -151,7 +152,7 @@ async function runRender(jobId: string, projectId: string) {
     const outPath = path.join(OUTPUT_DIR, `${jobId}.mp4`);
     const jobTimeline = parseTimeline(project.timelineJson);
     await ensureTimelineFonts(jobTimeline); // catalog fonts are fetched once and cached for the renderer
-    const plan = buildRenderPlan(jobTimeline, assets, MEDIA_DIR, TMP_DIR, jobId, outPath);
+    const plan = buildRenderPlan(jobTimeline, assets, MEDIA_DIR, TMP_DIR, jobId, outPath, renderOptions);
     tempFiles = plan.tempFiles;
     console.log(`[render ${jobId}] filter graph:\n${plan.filter.slice(0, 4000)}`);
     let lastWrite = 0;
@@ -583,6 +584,7 @@ export async function registerRoutes(
     if (!projectId) return res.status(400).json({ message: "projectId required" });
     const p = storage.getProject(projectId);
     if (!p) return res.status(404).json({ message: "project not found" });
+    const renderOptions = sanitizeRenderOptions(req.body?.options);
     const jobId = uid();
     storage.createRenderJob({
       id: jobId,
@@ -596,7 +598,7 @@ export async function registerRoutes(
     });
     logEvent(projectId, actorOf(req), "render", "Started an export");
     // fire-and-forget; job status is pollable
-    setImmediate(() => runRender(jobId, projectId));
+    setImmediate(() => runRender(jobId, projectId, renderOptions));
     res.status(201).json({ jobId, status: "queued", statusUrl: `/api/renders/${jobId}` });
   });
 
@@ -616,11 +618,14 @@ export async function registerRoutes(
     if (!j || j.status !== "done") return res.status(404).json({ message: "render not ready" });
     const outPath = path.join(OUTPUT_DIR, `${String(req.params.id)}.mp4`);
     if (!fs.existsSync(outPath)) return res.status(404).json({ message: "rendered file missing" });
-    const stat = fs.statSync(outPath);
     res.setHeader("Content-Type", "video/mp4");
-    res.setHeader("Content-Length", stat.size);
     res.setHeader("Content-Disposition", `attachment; filename="render_${String(req.params.id)}.mp4"`);
-    fs.createReadStream(outPath).pipe(res);
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    // sendFile honours Range and conditional requests, so interrupted downloads
+    // can resume instead of restarting from the first byte.
+    res.sendFile(outPath, { dotfiles: "allow", acceptRanges: true, lastModified: false }, (err) => {
+      if (err && !res.headersSent) res.status(404).json({ message: "rendered file missing" });
+    });
   });
 
   return httpServer;
