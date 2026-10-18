@@ -150,7 +150,11 @@ export function timelineDuration(t: Timeline): number {
   return t.clips.reduce((m, c) => Math.max(m, clipEnd(c)), 0);
 }
 
-export function normalizeClip(raw: any): Clip {
+/** Duration of a media asset (source seconds). Returns undefined for images and
+ *  unknown assets, so the caller's fallback applies. */
+export type AssetDurationResolver = (assetId: string) => number | undefined;
+
+export function normalizeClip(raw: any, resolveAssetDuration?: AssetDurationResolver): Clip {
   if (!raw || typeof raw !== "object") throw new Error("clip must be an object");
   const track: TrackName = ["video", "overlay", "audio"].includes(raw.track) ? raw.track : "video";
   const assetId = typeof raw.assetId === "string" ? raw.assetId.slice(0, 64) : "";
@@ -160,7 +164,14 @@ export function normalizeClip(raw: any): Clip {
   if (shape && (assetId || text || track === "audio")) throw new Error("shape clips must be visual and cannot also contain media or text");
   if (!assetId && !shape && ((typeof raw.reveal === "number" && raw.reveal < 1) || raw.keyframes?.reveal?.length || raw.expressions?.reveal)) throw new Error("reveal applies to media and shape clips; use opacity or position keyframes for text");
   const inPoint = round(num(raw.inPoint, 0, 86400, 0));
-  const outPoint = round(Math.max(inPoint + MIN_CLIP, num(raw.outPoint, 0, 86400, inPoint + 5)));
+  // Without an explicit outPoint, a media clip plays to the end of its asset
+  // when the caller can resolve the asset's real duration (the API and the
+  // editing ops both can). The old silent default capped every such clip at
+  // 5 seconds, truncating long audio and video. Callers without asset access
+  // (the browser client) keep the 5-second fallback.
+  const assetDuration = assetId && resolveAssetDuration ? resolveAssetDuration(assetId) : undefined;
+  const defaultOut = assetDuration && assetDuration > 0 ? Math.min(86400, assetDuration) : inPoint + 5;
+  const outPoint = round(Math.max(inPoint + MIN_CLIP, num(raw.outPoint, 0, 86400, defaultOut)));
   // Speed steps: they define the whole timeline of the clip, the source window
   // must cover exactly what the steps play. Media clips only.
   let speedRamp: SpeedStep[] | undefined;
@@ -265,12 +276,12 @@ export function normalizeClip(raw: any): Clip {
   return clip;
 }
 
-export function normalizeTimeline(raw: any): Timeline {
+export function normalizeTimeline(raw: any, resolveAssetDuration?: AssetDurationResolver): Timeline {
   if (!raw || typeof raw !== "object" || !Array.isArray(raw.clips)) throw new Error("timeline.clips must be an array");
   if (raw.clips.length > MAX_CLIPS) throw new Error(`a timeline can contain at most ${MAX_CLIPS} clips`);
   const seen = new Set<string>();
   const clips = raw.clips.map((c: any) => {
-    const clip = normalizeClip(c);
+    const clip = normalizeClip(c, resolveAssetDuration);
     while (seen.has(clip.id)) clip.id = Math.random().toString(36).slice(2, 10);
     seen.add(clip.id);
     return clip;

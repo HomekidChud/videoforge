@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import type { Asset } from "@shared/schema";
-import { clipDuration, clipScale, clipSpeed, clipX, clipY, normalizeTimeline, timelineDuration, type Clip, type Timeline } from "@shared/timeline";
+import { clipDuration, clipEnd, clipScale, clipSpeed, clipX, clipY, normalizeTimeline, timelineDuration, type Clip, type Timeline } from "@shared/timeline";
 
 import { animationExpression, baseValue, isAnimated, valueAt, type AnimationProperty } from "@shared/animation";
 import { RENDER_QUALITIES, type RenderOptions } from "@shared/render-options";
@@ -176,16 +176,148 @@ function transformFilters(c:Clip, width:number, height:number, dur:number, text=
 
 export type RenderPlan = { args: string[]; total: number; tempFiles: string[]; filter: string };
 
+/** A time span of the timeline rendered as one ffmpeg process. `audioOnly`
+ *  renders just the mixed audio stream for the span. */
+export type RenderWindow = { start: number; end: number; audioOnly?: boolean };
+
+/** How many media inputs (decoders) the timeline needs at time t. Audio-track
+ *  clips are not counted: they are opened only by the single cheap audio pass,
+ *  never by a video window. */
+function activeInputsAt(tl: Timeline, t: number): number {
+  return tl.clips.filter((c) => c.assetId && c.track !== "audio" && c.start <= t + 1e-6 && t < clipEnd(c) - 1e-6).length;
+}
+
+/** How many media inputs a video window span would open in one ffmpeg process.
+ *  Audio-track clips are excluded: the video windows render silent and audio is
+ *  mixed in one separate pass. */
+function windowInputs(tl: Timeline, start: number, end: number): number {
+  return tl.clips.filter((c) => c.assetId && c.track !== "audio" && c.start < end - 1e-6 && clipEnd(c) > start + 1e-6).length;
+}
+
+/** Absolute ceiling on inputs per ffmpeg process, whatever the host. */
+export const MAX_INPUTS_PER_WINDOW = 32;
+const MIN_WINDOW_SECONDS = 0.5;
+
+/** Empirical memory model for one ffmpeg render process, measured with ffmpeg 8
+ *  (single-threaded encoder, which is what a small container gives you):
+ *  - the encoder costs roughly `ENCODER_BYTES_PER_PIXEL` bytes per output pixel
+ *    (a plain 1080x1920 encode: ~108MB ultrafast, ~202MB veryfast, ~250MB faster)
+ *  - each additional media input adds ~60 bytes per pixel of graph frame buffers
+ *    (measured ~120-140MB per input at 1080x1920 with fades, which force the
+ *    yuva420p overlay path)
+ *  - the Node server itself needs ~75-120MB.
+ *  All of it scales with resolution; small frames hit the 50MB/15MB floors. */
+const ENCODER_BYTES_PER_PIXEL: Record<string, number> = { draft: 52, standard: 97, high: 125 };
+const INPUT_BYTES_PER_PIXEL = 60;
+const NODE_RESERVE_BYTES = 140 * 1024 * 1024;
+
+/** How many simultaneous media inputs one render pass may open on this host.
+ *  Sized from the memory budget (VIDEOFORGE_RENDER_BUDGET_MB, default 512 — the
+ *  small-container class this deployment runs on) so a pass stays inside it.
+ *  Bigger hosts can raise the budget instead of touching code. */
+export function maxInputsPerWindow(quality: RenderOptions["quality"], width: number, height: number): number {
+  const budgetMB = Number(process.env.VIDEOFORGE_RENDER_BUDGET_MB) || 512;
+  const budget = Math.max(256, budgetMB) * 1024 * 1024;
+  const px = Math.max(1, width) * Math.max(1, height);
+  const enc = Math.max(50 * 1024 * 1024, (ENCODER_BYTES_PER_PIXEL[quality ?? "standard"] ?? 100) * px);
+  const perInput = Math.max(15 * 1024 * 1024, INPUT_BYTES_PER_PIXEL * px);
+  return Math.max(1, Math.min(MAX_INPUTS_PER_WINDOW, Math.floor((budget - NODE_RESERVE_BYTES - enc) / perInput)));
+}
+
+/**
+ * Split the timeline into render windows so no single ffmpeg process opens more
+ * inputs than the memory budget allows. Clips keep their original absolute
+ * timestamps (a clip crossing a boundary is simply present in both windows,
+ * fully intact), so fades, keyframes, transitions and audio all stay continuous.
+ * A timeline that fits in one window returns a single window covering it, which
+ * the caller renders with the existing single-pass path.
+ *
+ * Split points prefer exact media clip boundaries: a window straddling a cut
+ * must open both clips, so cutting exactly at the cut is what lets sequential
+ * timelines (even sub-second ones) split down to the input limit. Only when a
+ * window is too short to split at all — every clip in it spans its whole length —
+ * does planning give up and throw, meaning those clips genuinely play at the same
+ * moment and no split can bound the per-process inputs.
+ */
+export function planRenderWindows(tl: Timeline, options?: RenderOptions): RenderWindow[] {
+  const total = timelineDuration(tl);
+  if (total <= 0) throw new Error("Timeline is empty, add at least one clip before rendering.");
+  // The memory model is sized by the OUTPUT frame, so a width/fps request that
+  // scales the render down also relaxes the input cap.
+  const outW = options?.width ? Math.round(options.width / 2) * 2 : tl.resolution.width;
+  const outH = options?.width ? Math.round(tl.resolution.height * outW / tl.resolution.width / 2) * 2 : tl.resolution.height;
+  const maxInputs = maxInputsPerWindow(options?.quality, outW, outH);
+  const fps = options?.fps ?? tl.fps ?? 30;
+  const boundaries = new Set<number>();
+  for (const c of tl.clips) if (c.assetId && c.track !== "audio") { boundaries.add(c.start); boundaries.add(clipEnd(c)); }
+  const windows: RenderWindow[] = [];
+  const split = (start: number, end: number): void => {
+    if (windowInputs(tl, start, end) <= maxInputs) { windows.push({ start, end }); return; }
+    const middle = start + (end - start) / 2;
+    // Try an exact clip boundary near the middle first — even in a window shorter
+    // than MIN_WINDOW_SECONDS, a cut inside it is a valid split point.
+    let mid: number | null = null, best = Infinity;
+    for (const b of Array.from(boundaries)) {
+      if (b <= start + 1 / fps || b >= end - 1 / fps) continue;
+      const d = Math.abs(b - middle);
+      if (d < best) { best = d; mid = b; }
+    }
+    if (mid === null) {
+      // No clip boundary inside: every clip in this span crosses it whole, so
+      // the inputs are genuinely simultaneous. Windows shorter than the minimum
+      // cannot be split; longer ones fall back to the frame-aligned midpoint.
+      if (end - start > MIN_WINDOW_SECONDS + 1e-6) {
+        const aligned = Math.round(middle * fps) / fps;
+        if (aligned > start + 1 / fps && aligned < end - 1 / fps) mid = aligned;
+      }
+    }
+    if (mid === null) {
+      const at = Math.min(end, Math.max(start, middle));
+      const n = activeInputsAt(tl, at);
+      throw new Error(
+        `This timeline needs ${n} media clips playing simultaneously (around ${f(at)}s), which opens ${windowInputs(tl, start, end)} inputs across the span; a render pass on this host can open at most ${maxInputs} simultaneous inputs. ` +
+        (options?.quality && options.quality !== "draft" ? "Try the draft quality preset, or " : "") +
+        "spread the clips out across the timeline, or raise VIDEOFORGE_RENDER_BUDGET_MB on a bigger host."
+      );
+    }
+    split(start, mid); split(mid, end);
+  };
+  split(0, Math.round(Math.max(total, 0.1) * fps) / fps);
+  return windows;
+}
+
 /**
  * Compose every clip onto a black canvas at its timeline position.
  * video/overlay tracks are layered (overlay above video), audio from every
  * unmuted clip is delayed to its start and mixed, text clips are drawn last.
  */
-export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset>, mediaDir: string, tmpDir: string, jobId: string, outPath: string, options: { frameAt?: number; width?: number; fps?: number; audio?: boolean; quality?: RenderOptions["quality"] } = {}): RenderPlan {
+export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset>, mediaDir: string, tmpDir: string, jobId: string, outPath: string, options: { frameAt?: number; width?: number; fps?: number; audio?: boolean; quality?: RenderOptions["quality"]; window?: RenderWindow } = {}): RenderPlan {
   const tl = normalizeTimeline(rawTimeline);
-  const W = options.width ? Math.round(options.width / 2) * 2 : tl.resolution.width, H = options.width ? Math.round(tl.resolution.height * W / tl.resolution.width / 2) * 2 : tl.resolution.height, fps = options.fps ?? tl.fps;
-  const total = Math.max(0.1, timelineDuration(tl));
   if (!tl.clips.length || timelineDuration(tl) <= 0) throw new Error("Timeline is empty, add at least one clip before rendering.");
+  const W = options.width ? Math.round(options.width / 2) * 2 : tl.resolution.width, H = options.width ? Math.round(tl.resolution.height * W / tl.resolution.width / 2) * 2 : tl.resolution.height, fps = options.fps ?? tl.fps;
+  // The full timeline length, before any window/frame pruning below: the graph
+  // composes absolute timeline time, so a window still composites from 0 up to
+  // its end and the output-side -ss discards the part before the window.
+  const fullTotal = Math.max(0.1, timelineDuration(tl));
+  // Windowed rendering: only clips that intersect the window are opened as
+  // inputs. Clip definitions are untouched (same start, in/out points, effects),
+  // so anything crossing a boundary behaves exactly as in a single-pass render.
+  if (options.window) {
+    const w = options.window;
+    tl.clips = tl.clips.filter((c) => c.start < w.end - 1e-6 && clipEnd(c) > w.start + 1e-6);
+  }
+  // Single-frame requests (preview, storyboard): only clips visible at the
+  // requested instant are opened as inputs; clips outside their enable window
+  // never draw, so the frame is identical. Transition source clips are kept so
+  // a dissolve mid-progress still resolves. An instant between clips renders
+  // the plain background (empty graph = colour base only), not an error.
+  if (options.frameAt !== undefined) {
+    const at = options.frameAt;
+    const active = new Set(tl.clips.filter((c) => c.start <= at + 1e-6 && at < clipEnd(c) - 1e-6).map((c) => c.id));
+    for (const c of tl.clips) if (active.has(c.id) && c.transitionIn?.fromClipId) active.add(c.transitionIn.fromClipId);
+    tl.clips = tl.clips.filter((c) => active.has(c.id));
+  }
+  const total = options.window ? options.window.end : fullTotal;
 
   const inputs: string[] = [];
   const filters: string[] = [];
@@ -246,7 +378,9 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
   };
   let inputCount = 0;
 
-  const visual = tl.clips
+  const visual = options.window?.audioOnly
+    ? []
+    : tl.clips
     .filter((c) => c.assetId && c.track !== "audio" && !tl.tracks?.[c.track]?.hidden)
     .map((c) => ({ c, a: assets.get(c.assetId) }))
     .filter((x): x is { c: Clip; a: Asset } => !!x.a && (x.a.kind === "video" || x.a.kind === "image"))
@@ -261,13 +395,24 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
   if (options.frameAt !== undefined) audioSources.length = 0; // stills never need audio
   // An export with the sound off skips audio processing entirely, not just the output stream.
   if (options.audio === false) audioSources.length = 0;
+  // Video window chunks are silent; the timeline's audio is rendered in one
+  // continuous pass of its own and muxed back in at assembly.
+  if (options.window && !options.window.audioOnly) audioSources.length = 0;
 
   // Missing assets should fail loudly instead of silently dropping footage.
   const missing = tl.clips.filter((c) => c.assetId && !assets.get(c.assetId)).map((c) => c.assetId);
   if (missing.length) throw new Error(`Missing media for clip(s): ${Array.from(new Set(missing)).join(", ")}`);
 
-  filters.push(`color=c=${tl.background ?? "#000000"}:s=${W}x${H}:r=${fps}:d=${f(total)}[base0]`);
-  let current = "base0";
+  // The colour canvas is the video half of the graph; an audio-only window
+  // builds just the audio mix. For a windowed pass the canvas is trimmed to
+  // start at the window: the graph still addresses absolute timeline time
+  // (overlays and animations reference it), but frames before the window are
+  // dropped at the canvas instead of being composited and thrown away.
+  if (!options.window?.audioOnly) {
+    filters.push(`color=c=${tl.background ?? "#000000"}:s=${W}x${H}:r=${fps}:d=${f(total)}[base0]`);
+    if (options.window) filters.push(`[base0]trim=start=${f(options.window.start)}[base1]`);
+  }
+  let current = options.window ? "base1" : "base0";
   let layer = 0;
   const videoInputIndex = new Map<Clip, number>();
 
@@ -351,7 +496,7 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
 
   // text clips (and captions attached to asset clips) via textfile=, so user text never needs filter escaping
   // Procedural graphics use bounded masks, never arbitrary SVG/JS or external media.
-  for (const c of tl.clips.filter(c => c.shape && !tl.tracks?.[c.track]?.hidden)) {
+  for (const c of (options.window?.audioOnly ? [] : tl.clips).filter(c => c.shape && !tl.tracks?.[c.track]?.hidden)) {
     overlayEmitters.push({ z: c.z ?? 0, start: c.start, emit: () => {
     const s = c.shape!, dur = clipDuration(c);
     const w = Math.max(2, Math.round(W * s.width / 2) * 2), h = Math.max(2, Math.round(H * s.height / 2) * 2);
@@ -381,7 +526,7 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     } });
   }
 
-  const texts = tl.clips.filter((c) => c.text && c.text.trim() && !tl.tracks?.[c.track]?.hidden);
+  const texts = (options.window?.audioOnly ? [] : tl.clips).filter((c) => c.text && c.text.trim() && !tl.tracks?.[c.track]?.hidden);
   const escPath = (p: string) => p.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
   texts.forEach((c, i) => {
     overlayEmitters.push({ z: c.z ?? 0, start: c.start, emit: () => {
@@ -536,7 +681,7 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
   });
 
   overlayEmitters.sort((p, q) => p.z - q.z || p.start - q.start).forEach((e) => e.emit());;
-  filters.push(`[${current}]format=yuv420p[vout]`);
+  if (!options.window?.audioOnly) filters.push(`[${current}]format=yuv420p[vout]`);
 
   // audio mix
   const audioLabels: string[] = [];
@@ -585,6 +730,23 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
     tempFiles.push(graphFile);
     graphArgs = ["-filter_complex_script", graphFile];
   }
+  // A windowed pass encodes just its span: the graph composes absolute timeline
+  // time and the output-side -ss/-t select the window out of it.
+  if (options.window) {
+    const w = options.window, dur = String(f(w.end - w.start));
+    if (w.audioOnly) {
+      if (!audioLabels.length) throw new Error("no audio in this timeline");
+      return {
+        args: ["-y", "-hide_banner", ...inputs, ...graphArgs, "-map", "[aout]", "-ss", String(f(w.start)), "-t", dur, "-c:a", "aac", "-b:a", "192k", outPath],
+        total: w.end - w.start, tempFiles, filter: filters.join(";\n"),
+      };
+    }
+    return {
+      args: ["-y", "-hide_banner", ...inputs, ...graphArgs, "-map", "[vout]", "-ss", String(f(w.start)), "-t", dur,
+        "-c:v", "libx264", "-preset", quality.preset, "-crf", String(quality.crf), "-pix_fmt", "yuv420p", "-an", outPath],
+      total: w.end - w.start, tempFiles, filter: filters.join(";\n"),
+    };
+  }
   const args = [
     "-y", "-hide_banner", ...inputs,
     ...graphArgs,
@@ -598,7 +760,7 @@ export function buildRenderPlan(rawTimeline: Timeline, assets: Map<string, Asset
   return { args, total, tempFiles, filter: filters.join(";\n") };
 }
 
-export function runFfmpeg(args: string[], total: number, onProgress: (pct: number) => void): Promise<{ code: number | null; stderrTail: string }> {
+export function runFfmpeg(args: string[], total: number, onProgress: (pct: number) => void): Promise<{ code: number | null; signal: NodeJS.Signals | null; stderrTail: string }> {
   return new Promise((resolve, reject) => {
     const p = spawn("ffmpeg", args);
     let tail = "";
@@ -612,7 +774,9 @@ export function runFfmpeg(args: string[], total: number, onProgress: (pct: numbe
         onProgress(Math.min(0.99, t / total));
       }
     });
-    p.on("close", (code) => resolve({ code, stderrTail: tail }));
+    // Capture the signal too: a child killed by the host (OOM) exits with code
+    // null, and "exit null" alone says nothing about why it died.
+    p.on("close", (code, signal) => resolve({ code, signal, stderrTail: tail }));
     p.on("error", reject);
   });
 }

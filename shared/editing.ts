@@ -57,7 +57,12 @@ function scaleKeys(keys: Record<string, { time: number; value: number; easing?: 
   return out;
 }
 export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:(id:string)=>{kind:string;duration:number;width?:number|null;height?:number|null}|undefined):Timeline {
-  const timeline=normalizeTimeline(JSON.parse(JSON.stringify(raw)));
+  // Media clips added or re-normalised without an explicit outPoint now default
+  // to the asset's real duration (source seconds), not a silent 5-second cap.
+  const timeline=normalizeTimeline(JSON.parse(JSON.stringify(raw)), (id) => {
+    const a = getAsset(id);
+    return a && a.kind !== "image" && a.duration > 0 ? a.duration : undefined;
+  });
   const clips=timeline.clips;
   const find=(id:unknown)=> { const c=clips.find(x=>x.id===id); if(!c) throw new Error(`clip ${id} not found`); return c; };
       switch (op) {
@@ -73,7 +78,7 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
           // idPrefix gives the generated layers stable ids (prefix-0, prefix-1, ...) so later ops in the same batch can target them.
           if (args.idPrefix !== undefined && !/^[\w-]{1,32}$/.test(args.idPrefix)) throw new Error("idPrefix must be 1..32 letters, digits, _ or -");
           let n = 0; const nextId = args.idPrefix ? () => `${args.idPrefix}-${n++}` : uid;
-          const made = templateClips(args, nextId, timeline.resolution.width/timeline.resolution.height).map(normalizeClip);
+          const made = templateClips(args, nextId, timeline.resolution.width/timeline.resolution.height).map((c) => normalizeClip(c));
           if (made.some(m => clips.some(c => c.id === m.id))) throw new Error(`idPrefix ${args.idPrefix} is already in use`);
           clips.push(...made);
           break;
@@ -93,7 +98,9 @@ export function applyTimelineOp(raw:Timeline, {op,args={}}:TimelineOp, getAsset:
           if (!c.assetId && !c.text && !c.shape) throw new Error("assetId, text, or shape required");
           const inPoint = Math.max(0, c.inPoint ?? 0);
           const maxOut = asset && asset.kind !== "image" && asset.duration ? asset.duration : Infinity;
-          const outPoint = Math.min(maxOut, c.outPoint ?? inPoint + (asset?.kind === "video" || asset?.kind === "audio" ? Math.min(asset.duration || 5, 5) : 5));
+          // No explicit outPoint: play to the end of the asset (its duration is
+          // the absolute end of the source window). Images keep the 5s default.
+          const outPoint = Math.min(maxOut, c.outPoint ?? (asset && asset.kind !== "image" && asset.duration > 0 ? asset.duration : inPoint + 5));
           const track = (c.track as any) || (asset?.kind === "audio" ? "audio" : c.assetId ? "video" : "overlay");
           clips.push(normalizeClip({ ...c, id: c.id || uid(), track, start: c.start ?? 0, inPoint, outPoint }));
           break;

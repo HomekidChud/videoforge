@@ -5,7 +5,7 @@ import { registerRoutes } from "./routes";
 import { registerKeyRoutes, ensureOwnerKeyExists } from "./auth";
 import { registerAccountRoutes } from "./accounts";
 import { registerAgentRoutes } from "./agent";
-import { storageDegraded } from "./storage";
+import { storageDegraded, reconcileInterruptedRenderJobs } from "./storage";
 import { serveStatic } from "./static";
 import { createServer } from "node:http";
 
@@ -124,6 +124,10 @@ app.use((req, res, next) => {
   } else {
     // ensure an admin key exists on first boot (writes data/OWNER_KEY.txt)
     try { await ensureOwnerKeyExists(); } catch (e) { console.error("failed to create owner key:", e); }
+    // Render jobs run in-process: anything still active from a previous
+    // process instance is dead with it. Give those jobs a terminal, requeueable
+    // error before the server accepts new work, instead of "rendering" forever.
+    try { reconcileInterruptedRenderJobs(); } catch (e) { console.error("render job reconciliation failed:", e); }
   }
   registerKeyRoutes(app);
   registerAccountRoutes(app);
