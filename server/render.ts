@@ -227,9 +227,9 @@ export function maxInputsPerWindow(quality: RenderOptions["quality"], width: num
 /**
  * Split the timeline into render windows so no single ffmpeg process opens more
  * inputs than the memory budget allows, and no single pass covers more than
- * MAX_WINDOW_SECONDS of timeline (which bounds how long the one-at-a-time ffmpeg
- * lane can be held — a preview requested mid-export waits for the current pass,
- * not the whole export). Clips keep their original absolute timestamps (a clip
+ * MAX_WINDOW_SECONDS of timeline, which creates scheduling points for queued
+ * previews between video passes (encoding time itself is host- and
+ * workload-dependent; a preview waits for the current pass, not the export). Clips keep their original absolute timestamps (a clip
  * crossing a boundary is simply present in both windows, fully intact), so
  * fades, keyframes, transitions and audio all stay continuous. A timeline that
  * fits in one window returns a single window covering it, which the caller

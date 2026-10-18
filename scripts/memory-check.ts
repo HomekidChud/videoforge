@@ -145,7 +145,9 @@ const main = async () => {
   const dec = spawnSync("ffmpeg", ["-v", "error", "-i", out, "-f", "null", "-"], { encoding: "utf8" });
   if (dec.status !== 0 || dec.stderr.trim()) throw new Error(`full decode errors: ${dec.stderr.slice(-300)}`);
   console.log(`export verified: duration ${d.format.duration}s, frames ${frames}, full decode clean`);
-  console.log(`peak tree RSS across the whole export: ${peakTree.toFixed(0)} MB (budget 512 MB)`);
+  const budgetMB = Number(process.env.VIDEOFORGE_RENDER_BUDGET_MB) || 512;
+  console.log(`peak tree RSS across the whole export: ${peakTree.toFixed(0)} MB (budget ${budgetMB} MB)`);
+  if (peakTree > budgetMB) throw new Error(`peak tree RSS ${peakTree.toFixed(0)} MB exceeded the ${budgetMB} MB budget`);
   const nodeRss = (fs.readFileSync("/proc/self/status", "utf8").match(/VmRSS:\s+(\d+)/)?.[1] ?? "0");
   console.log(`node process: ${nodeRss} KB RSS (the API server idles ~75MB)`);
   console.log("DONE");
