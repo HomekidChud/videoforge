@@ -210,8 +210,13 @@ export default function EditorPage() {
       setSaveState("saving"); setSaveError("");
       try {
         const body = { name: nameRef.current, timeline: tlRef.current };
-        if (!idRef.current) { const p = await api<ProjectDTO>("POST", "/api/projects", body); idRef.current = p.id; setProjectId(p.id); setVisibility(p.visibility ?? "private"); }
-        else await api<ProjectDTO>("PUT", `/api/projects/${idRef.current}`, body);
+        const create = async () => { const p = await api<ProjectDTO>("POST", "/api/projects", body); idRef.current = p.id; setProjectId(p.id); setVisibility(p.visibility ?? "private"); };
+        if (!idRef.current) await create();
+        else {
+          try { await api<ProjectDTO>("PUT", `/api/projects/${idRef.current}`, body); }
+          // The server no longer has this project (redeploy or reset disk): recreate it instead of failing every save.
+          catch (e: any) { if (e?.status === 404) await create(); else throw e; }
+        }
         savedRevision.current = rev; setSaveState(revisionRef.current === rev ? "saved" : "dirty");
         qc.invalidateQueries({ queryKey: ["/api/projects"] });
         return true;

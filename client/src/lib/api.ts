@@ -15,7 +15,7 @@ export async function api<T>(method: string, url: string, body?: unknown): Promi
     const text = await res.text();
     let message = text || res.statusText;
     try { message = JSON.parse(text).message || message; } catch { /* plain text */ }
-    throw new Error(message);
+    throw Object.assign(new Error(message), { status: res.status });
   }
   return res.json();
 }
